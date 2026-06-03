@@ -331,6 +331,9 @@ final class AppEnvironmentConfigurer {
                 coordinatorRefs.dictation?.dismissOverlayIfError()
             },
             onToggleMeetingRecording: callbacks.onToggleMeetingRecordingFromHotkey,
+            onFnToggleRecording: { sourceMode in
+                coordinatorRefs.meeting?.toggleRecording(trigger: .hotkey, sourceModeOverride: sourceMode)
+            },
             onTriggerFileTranscription: callbacks.onTriggerFileTranscriptionFromHotkey,
             onTriggerYouTubeTranscription: callbacks.onTriggerYouTubeTranscriptionFromHotkey,
             onDictationHotkeyManagersChanged: { managers in

@@ -8,6 +8,11 @@ public final class HotkeyGestureController {
         case doubleTapOnly
         case holdOnly
         case singleTapToggle
+        /// MacParakeet-MC fork: single bare tap toggles a mic-only recording,
+        /// double tap toggles a mic+system recording. No hold semantics. The
+        /// app routes both outputs to the meeting coordinator's `toggleRecording`,
+        /// which decides start vs stop. See docs/fork-product-model.md.
+        case singleAndDoubleTapToggle
     }
 
     public enum Output: Equatable, Sendable {
@@ -21,6 +26,8 @@ public final class HotkeyGestureController {
         case scheduleHoldWindow(milliseconds: Int)
         case cancelStartupDebounce
         case cancelHoldWindow
+        /// Toggle a recording with the given audio source (fork single/double-tap Fn).
+        case toggleRecording(source: MeetingAudioSourceMode)
     }
 
     public let tapThresholdMs: Int
@@ -41,10 +48,18 @@ public final class HotkeyGestureController {
         case blocked
     }
 
+    /// State for `.singleAndDoubleTapToggle`: after the first bare tap we wait
+    /// `tapThresholdMs` for a possible second tap before resolving single vs double.
+    private enum SingleDoubleTapState: Equatable {
+        case idle
+        case awaitingSecondTap
+    }
+
     private let mode: Mode
     private let stateMachine: FnKeyStateMachine
     private var holdOnlyState: HoldOnlyState = .idle
     private var singleTapState: SingleTapState = .idle
+    private var singleDoubleState: SingleDoubleTapState = .idle
     private var suppressedUntilReset = false
 
     public init(
@@ -89,6 +104,20 @@ public final class HotkeyGestureController {
             }
         }
 
+        // `.singleAndDoubleTapToggle`: the manager routes each completed bare tap
+        // here (via the release path, like `.singleTapToggle`). First tap arms the
+        // double-tap window; a second tap inside it resolves to mic+system.
+        if mode == .singleAndDoubleTapToggle {
+            switch singleDoubleState {
+            case .idle:
+                singleDoubleState = .awaitingSecondTap
+                return [.scheduleHoldWindow(milliseconds: tapThresholdMs)]
+            case .awaitingSecondTap:
+                singleDoubleState = .idle
+                return [.cancelHoldWindow, .toggleRecording(source: .microphoneAndSystem)]
+            }
+        }
+
         let action = stateMachine.fnDown(timestampMs: timestampMs)
         var results = outputs(for: action)
         if mode == .doubleTapAndHold, action == .none, stateMachine.state == .waitingForSecondTap {
@@ -117,7 +146,7 @@ public final class HotkeyGestureController {
             return results
         }
 
-        if mode == .singleTapToggle {
+        if mode == .singleTapToggle || mode == .singleAndDoubleTapToggle {
             return []
         }
 
@@ -149,7 +178,7 @@ public final class HotkeyGestureController {
             return results
         }
 
-        if mode == .singleTapToggle {
+        if mode == .singleTapToggle || mode == .singleAndDoubleTapToggle {
             return []
         }
 
@@ -175,7 +204,7 @@ public final class HotkeyGestureController {
             return nonBareTriggerReleased()
         }
 
-        if mode == .singleTapToggle {
+        if mode == .singleTapToggle || mode == .singleAndDoubleTapToggle {
             return []
         }
 
@@ -226,6 +255,14 @@ public final class HotkeyGestureController {
             }
         }
 
+        if mode == .singleAndDoubleTapToggle {
+            if singleDoubleState == .awaitingSecondTap {
+                singleDoubleState = .idle
+                return [.cancelHoldWindow]
+            }
+            return []
+        }
+
         let wasWaitingForSecondTap = stateMachine.state == .waitingForSecondTap
         let action = stateMachine.escapePressed()
 
@@ -246,7 +283,7 @@ public final class HotkeyGestureController {
         guard !suppressedUntilReset else { return [] }
 
         if mode == .doubleTapOnly { return [] }
-        if mode == .singleTapToggle { return [] }
+        if mode == .singleTapToggle || mode == .singleAndDoubleTapToggle { return [] }
         if mode == .holdOnly {
             guard holdOnlyState == .pressed else { return [] }
             holdOnlyState = .active
@@ -261,6 +298,11 @@ public final class HotkeyGestureController {
         if mode == .doubleTapOnly { return [] }
         if mode == .singleTapToggle { return [] }
         if mode == .holdOnly { return [] }
+        if mode == .singleAndDoubleTapToggle {
+            guard singleDoubleState == .awaitingSecondTap else { return [] }
+            singleDoubleState = .idle
+            return [.toggleRecording(source: .microphoneOnly)]
+        }
         return outputs(for: stateMachine.holdTimerFired())
     }
 
@@ -268,6 +310,7 @@ public final class HotkeyGestureController {
         suppressedUntilReset = true
         holdOnlyState = .idle
         singleTapState = .idle
+        singleDoubleState = .idle
         stateMachine.reset()
     }
 
@@ -284,6 +327,10 @@ public final class HotkeyGestureController {
             singleTapState = .cancelWindow
             return
         }
+        if mode == .singleAndDoubleTapToggle {
+            singleDoubleState = .idle
+            return
+        }
         stateMachine.blockUntilReset()
     }
 
@@ -297,6 +344,10 @@ public final class HotkeyGestureController {
             singleTapState = mode == .persistent ? .active : .idle
             return
         }
+        if self.mode == .singleAndDoubleTapToggle {
+            singleDoubleState = .idle
+            return
+        }
         stateMachine.resumeRecording(mode: mode)
     }
 
@@ -304,6 +355,7 @@ public final class HotkeyGestureController {
         suppressedUntilReset = false
         holdOnlyState = .idle
         singleTapState = .idle
+        singleDoubleState = .idle
         stateMachine.reset()
     }
 

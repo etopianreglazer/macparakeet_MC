@@ -373,4 +373,57 @@ final class HotkeyGestureControllerTests: XCTestCase {
             ]
         )
     }
+
+    // MARK: - singleAndDoubleTapToggle (fork Fn recording: mic-only vs mic+system)
+
+    func testSingleAndDoubleTap_singleTapResolvesToMicOnly() {
+        let controller = HotkeyGestureController(mode: .singleAndDoubleTapToggle)
+
+        // The manager routes a completed bare tap through triggerPressed.
+        XCTAssertEqual(
+            controller.triggerPressed(timestampMs: 1_000),
+            [.scheduleHoldWindow(milliseconds: FnKeyStateMachine.defaultTapThresholdMs)]
+        )
+
+        // No second tap → window elapses → mic-only recording toggles.
+        XCTAssertEqual(
+            controller.holdWindowElapsed(),
+            [.toggleRecording(source: .microphoneOnly)]
+        )
+    }
+
+    func testSingleAndDoubleTap_doubleTapResolvesToMicAndSystem() {
+        let controller = HotkeyGestureController(mode: .singleAndDoubleTapToggle)
+        _ = controller.triggerPressed(timestampMs: 1_000)
+
+        // Second tap inside the window → mic+system, pending window cancelled.
+        XCTAssertEqual(
+            controller.triggerPressed(timestampMs: 1_150),
+            [.cancelHoldWindow, .toggleRecording(source: .microphoneAndSystem)]
+        )
+
+        // A stale window timer firing afterwards must do nothing.
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+    }
+
+    func testSingleAndDoubleTap_escapeDuringWindowCancelsPending() {
+        let controller = HotkeyGestureController(mode: .singleAndDoubleTapToggle)
+        _ = controller.triggerPressed(timestampMs: 1_000)
+
+        XCTAssertEqual(controller.escapePressed(), [.cancelHoldWindow])
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+    }
+
+    func testSingleAndDoubleTap_ignoresReleaseAndInterruptWhileWaiting() {
+        let controller = HotkeyGestureController(mode: .singleAndDoubleTapToggle)
+        _ = controller.triggerPressed(timestampMs: 1_000)
+
+        XCTAssertEqual(controller.triggerReleased(timestampMs: 1_010), [])
+        XCTAssertEqual(controller.interrupted(), [])
+        // Still resolves to mic-only on timeout — typing doesn't cancel a tap toggle.
+        XCTAssertEqual(
+            controller.holdWindowElapsed(),
+            [.toggleRecording(source: .microphoneOnly)]
+        )
+    }
 }

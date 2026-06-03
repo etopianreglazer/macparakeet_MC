@@ -287,6 +287,11 @@ final class DictationFlowCoordinator {
     // MARK: - Public Methods (translate to state machine events)
 
     func showIdlePill() {
+        // Fork island: Fn is the recording key, not a dictation key, so the old
+        // dictation idle pill (which prompts "tap fn to dictate" and click-to-
+        // dictate) is suppressed. The island's own idle/hover pill replaces it in
+        // a later slice. See docs/fork-product-model.md.
+        guard !AppFeatures.islandReplacesDictationPill else { return }
         guard settingsViewModel.showIdlePill else { return }
         guard idlePillController == nil else { return }
         guard overlayController == nil else { return }

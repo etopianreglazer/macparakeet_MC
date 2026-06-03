@@ -50,4 +50,11 @@ public enum AppFeatures {
     /// clean inline performance and Phase 4.5 made model prep universal. Keep
     /// `vad_model_prep` allowlisted and deployed before shipping flag-on builds.
     public static let meetingVadLiveChunkingEnabled: Bool = true
+
+    /// MacParakeet-MC fork (island redesign). When `true`, the global Fn key is a
+    /// single/double-tap recording key (single = mic only, double = mic + system),
+    /// paste-style dictation is no longer driven by Fn, and the old dictation idle
+    /// pill is suppressed (the island's own idle/hover pill replaces it). See
+    /// docs/fork-product-model.md and plans/active/fn-rework.md.
+    public static let islandReplacesDictationPill: Bool = true
 }

@@ -69,6 +69,9 @@ final class MeetingRecordingFlowCoordinator {
     private var currentMeetingOperationContext: ObservabilityOperationContext?
     private var currentMeetingTrigger: TelemetryMeetingRecordingTrigger?
     private var pendingAudioSourceMode: MeetingAudioSourceMode?
+    /// Per-gesture audio-source override (fork single/double-tap Fn). Consumed by
+    /// the `.checkPermissions` effect; nil falls back to the user's Settings default.
+    private var pendingAudioSourceModeOverride: MeetingAudioSourceMode?
 
     init(
         meetingRecordingService: MeetingRecordingServiceProtocol,
@@ -171,20 +174,25 @@ final class MeetingRecordingFlowCoordinator {
     @discardableResult
     func startRecording(
         title: String? = nil,
-        trigger: TelemetryMeetingRecordingTrigger = .manual
+        trigger: TelemetryMeetingRecordingTrigger = .manual,
+        sourceModeOverride: MeetingAudioSourceMode? = nil
     ) -> Int? {
         guard stateMachine.state == .idle else { return nil }
         pendingTrigger = pendingTrigger ?? trigger
         pendingTitle = title
+        pendingAudioSourceModeOverride = sourceModeOverride
         currentMeetingOperationContext = ObservabilityOperationContext()
         sendEvent(.startRequested)
         return stateMachine.generation
     }
 
-    func toggleRecording(trigger: TelemetryMeetingRecordingTrigger = .manual) {
+    func toggleRecording(
+        trigger: TelemetryMeetingRecordingTrigger = .manual,
+        sourceModeOverride: MeetingAudioSourceMode? = nil
+    ) {
         switch stateMachine.state {
         case .idle:
-            startRecording(trigger: trigger)
+            startRecording(trigger: trigger, sourceModeOverride: sourceModeOverride)
         case .recording, .starting, .stopping:
             sendEvent(.stopRequested)
         case .checkingPermissions, .transcribing, .finishing:
@@ -252,6 +260,7 @@ final class MeetingRecordingFlowCoordinator {
         pendingTrigger = nil
         pendingTitle = nil
         pendingAudioSourceMode = nil
+        pendingAudioSourceModeOverride = nil
         currentMeetingOperationContext = nil
         currentMeetingTrigger = nil
         if wasCalendarTriggered {
@@ -293,7 +302,8 @@ final class MeetingRecordingFlowCoordinator {
         case .checkPermissions:
             let gen = stateMachine.generation
             actionTask = Task { @MainActor in
-                let sourceMode = meetingAudioSourceModeProvider()
+                let sourceMode = self.pendingAudioSourceModeOverride ?? meetingAudioSourceModeProvider()
+                self.pendingAudioSourceModeOverride = nil
                 self.pendingAudioSourceMode = sourceMode
                 let microphoneGranted: Bool
                 let microphonePrompted: Bool
@@ -328,19 +338,23 @@ final class MeetingRecordingFlowCoordinator {
                     Telemetry.send(.permissionGranted(permission: .microphone))
                 }
 
-                let existingScreenGrant = permissionService.checkScreenRecordingPermission()
-                if !existingScreenGrant {
-                    Telemetry.send(.permissionPrompted(permission: .screenRecording))
-                }
-                let screenGranted = existingScreenGrant || permissionService.requestScreenRecordingPermission()
-                if !screenGranted {
-                    Telemetry.send(.permissionDenied(permission: .screenRecording))
-                    self.clearPendingStartContext(failureReason: "permission_denied")
-                    self.sendEvent(.permissionsDenied(generation: gen, reason: .screenRecording))
-                    return
-                }
-                if !existingScreenGrant {
-                    Telemetry.send(.permissionGranted(permission: .screenRecording))
+                // Mic-only recordings never touch ScreenCaptureKit, so skip the
+                // screen-recording permission entirely (single-tap Fn capture).
+                if sourceMode.capturesSystemAudio {
+                    let existingScreenGrant = permissionService.checkScreenRecordingPermission()
+                    if !existingScreenGrant {
+                        Telemetry.send(.permissionPrompted(permission: .screenRecording))
+                    }
+                    let screenGranted = existingScreenGrant || permissionService.requestScreenRecordingPermission()
+                    if !screenGranted {
+                        Telemetry.send(.permissionDenied(permission: .screenRecording))
+                        self.clearPendingStartContext(failureReason: "permission_denied")
+                        self.sendEvent(.permissionsDenied(generation: gen, reason: .screenRecording))
+                        return
+                    }
+                    if !existingScreenGrant {
+                        Telemetry.send(.permissionGranted(permission: .screenRecording))
+                    }
                 }
                 self.sendEvent(.permissionsGranted(generation: gen))
             }

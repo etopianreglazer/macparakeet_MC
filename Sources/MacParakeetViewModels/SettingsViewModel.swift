@@ -600,10 +600,10 @@ public final class SettingsViewModel {
         AutoSaveService.ensureFolderConfigured(scope: .transcription, defaults: defaults)
         AutoSaveService.ensureFolderConfigured(scope: .meeting, defaults: defaults)
 
-        autoSaveTranscripts = defaults.bool(forKey: AutoSaveService.enabledKey)
+        autoSaveTranscripts = (defaults.object(forKey: AutoSaveService.enabledKey) as? Bool) ?? true
         autoSaveFormat = AutoSaveFormat(rawValue: defaults.string(forKey: AutoSaveService.formatKey) ?? "md") ?? .md
         autoSaveFolderPath = Self.resolveAutoSaveFolderPath(defaults: defaults, scope: .transcription)
-        meetingAutoSave = defaults.bool(forKey: AutoSaveScope.meeting.enabledKey)
+        meetingAutoSave = (defaults.object(forKey: AutoSaveScope.meeting.enabledKey) as? Bool) ?? true
         meetingAutoSaveFormat = AutoSaveFormat(rawValue: defaults.string(forKey: AutoSaveScope.meeting.formatKey) ?? "md") ?? .md
         meetingAutoSaveFolderPath = Self.resolveAutoSaveFolderPath(defaults: defaults, scope: .meeting)
         calendarAutoStartMode = Self.resolveCalendarAutoStartMode(defaults: defaults)

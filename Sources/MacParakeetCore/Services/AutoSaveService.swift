@@ -75,7 +75,9 @@ public final class AutoSaveService {
     /// Save the transcription if auto-save is enabled for the given scope.
     /// Failures are logged but never surfaced to the user.
     public func saveIfEnabled(_ transcription: Transcription, scope: AutoSaveScope = .transcription) {
-        guard defaults.bool(forKey: scope.enabledKey) else { return }
+        // Fork: auto-export transcripts to the Finder folder by default ("it just
+        // works"). An explicit user toggle-off still wins. See docs/fork-product-model.md.
+        guard (defaults.object(forKey: scope.enabledKey) as? Bool) ?? true else { return }
         let format = AutoSaveFormat(rawValue: defaults.string(forKey: scope.formatKey) ?? "md") ?? .md
         let operationContext = Observability.childOperationContext()
         guard let folderURL = resolveFolder(scope: scope) else {
@@ -205,7 +207,7 @@ public final class AutoSaveService {
             .urls(for: .documentDirectory, in: .userDomainMask)
             .first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Documents")
-        let parent = docs.appendingPathComponent("MacParakeet", isDirectory: true)
+        let parent = docs.appendingPathComponent(AppPaths.appFolderName, isDirectory: true)
         switch scope {
         case .transcription: return parent.appendingPathComponent("Transcriptions", isDirectory: true)
         case .meeting: return parent.appendingPathComponent("Meetings", isDirectory: true)

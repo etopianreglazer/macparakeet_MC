@@ -66,9 +66,16 @@ public enum YouTubeAudioQuality: String, CaseIterable, Hashable, Sendable, Equat
 public enum MeetingAudioSourceMode: String, CaseIterable, Hashable, Sendable, Equatable {
     case microphoneAndSystem = "microphone_and_system"
     case systemOnly = "system_only"
+    /// Mic only — no system audio, so ScreenCaptureKit (and its screen-recording
+    /// permission) is never engaged. Used by single-tap Fn capture in the fork.
+    case microphoneOnly = "microphone_only"
 
     public var capturesMicrophone: Bool {
-        self == .microphoneAndSystem
+        self != .systemOnly
+    }
+
+    public var capturesSystemAudio: Bool {
+        self != .microphoneOnly
     }
 
     public var displayTitle: String {
@@ -77,6 +84,8 @@ public enum MeetingAudioSourceMode: String, CaseIterable, Hashable, Sendable, Eq
             return "Microphone + System Audio"
         case .systemOnly:
             return "System Audio Only"
+        case .microphoneOnly:
+            return "Microphone Only"
         }
     }
 
@@ -86,6 +95,8 @@ public enum MeetingAudioSourceMode: String, CaseIterable, Hashable, Sendable, Eq
             return "Capture your microphone and computer audio. Weak mic bleed is suppressed live."
         case .systemOnly:
             return "Capture computer audio for meetings. Your microphone is still used for dictation."
+        case .microphoneOnly:
+            return "Capture only your microphone. No screen-recording permission needed."
         }
     }
 

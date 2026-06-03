@@ -28,6 +28,7 @@ final class AppHotkeyCoordinatorTests: XCTestCase {
             onReadyForSecondTap: {},
             onEscapeWhileIdle: {},
             onToggleMeetingRecording: {},
+            onFnToggleRecording: { _ in },
             onTriggerFileTranscription: {},
             onTriggerYouTubeTranscription: {},
             onDictationHotkeyManagersChanged: { _ in },

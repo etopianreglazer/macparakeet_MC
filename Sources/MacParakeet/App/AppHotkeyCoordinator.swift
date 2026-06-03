@@ -12,6 +12,9 @@ final class AppHotkeyCoordinator {
     private let onReadyForSecondTap: () -> Void
     private let onEscapeWhileIdle: () -> Void
     private let onToggleMeetingRecording: () -> Void
+    /// Fork island: single/double-tap Fn toggles a recording with the given
+    /// audio source (single = mic only, double = mic + system).
+    private let onFnToggleRecording: (MeetingAudioSourceMode) -> Void
     private let onTriggerFileTranscription: () -> Void
     private let onTriggerYouTubeTranscription: () -> Void
     private let onDictationHotkeyManagersChanged: ([HotkeyManager]) -> Void
@@ -21,6 +24,7 @@ final class AppHotkeyCoordinator {
     private let dictationRecordingModeProvider: () -> FnKeyStateMachine.RecordingMode?
 
     private var dictationHotkeyManagers: [HotkeyManager] = []
+    private var fnRecordingHotkeyManager: HotkeyManager?
     private var meetingHotkeyManager: GlobalShortcutManager?
     private var fileTranscriptionHotkeyManager: GlobalShortcutManager?
     private var youtubeTranscriptionHotkeyManager: GlobalShortcutManager?
@@ -40,6 +44,7 @@ final class AppHotkeyCoordinator {
         onReadyForSecondTap: @escaping () -> Void,
         onEscapeWhileIdle: @escaping () -> Void,
         onToggleMeetingRecording: @escaping () -> Void,
+        onFnToggleRecording: @escaping (MeetingAudioSourceMode) -> Void,
         onTriggerFileTranscription: @escaping () -> Void,
         onTriggerYouTubeTranscription: @escaping () -> Void,
         onDictationHotkeyManagersChanged: @escaping ([HotkeyManager]) -> Void,
@@ -56,6 +61,7 @@ final class AppHotkeyCoordinator {
         self.onReadyForSecondTap = onReadyForSecondTap
         self.onEscapeWhileIdle = onEscapeWhileIdle
         self.onToggleMeetingRecording = onToggleMeetingRecording
+        self.onFnToggleRecording = onFnToggleRecording
         self.onTriggerFileTranscription = onTriggerFileTranscription
         self.onTriggerYouTubeTranscription = onTriggerYouTubeTranscription
         self.onDictationHotkeyManagersChanged = onDictationHotkeyManagersChanged
@@ -302,23 +308,41 @@ final class AppHotkeyCoordinator {
         dictationHotkeyManagers.forEach { $0.resetToIdle() }
     }
 
-    func setupMeetingHotkey() {
-        guard AppFeatures.meetingRecordingEnabled else {
-            meetingHotkeyManager = nil
+    /// Fork island: Fn is the recording key, not a dictation key. A single bare
+    /// tap toggles a mic-only recording; a double tap toggles a mic+system
+    /// recording. Both route through the meeting coordinator (which decides start
+    /// vs stop). No push-to-talk. See docs/fork-product-model.md.
+    func setupFnRecordingHotkey() {
+        // Dictation is no longer driven by Fn; clear any dictation managers.
+        onDictationHotkeyManagersChanged([])
+
+        let trigger = settingsViewModel.hotkeyTrigger
+        guard !trigger.isDisabled else {
+            fnRecordingHotkeyManager = nil
             return
         }
-        meetingHotkeyManager = startAuxiliaryHotkey(
-            trigger: settingsViewModel.meetingHotkeyTrigger,
-            conflicts: [
-                .init(settingsViewModel.hotkeyTrigger, mode: .bareModifierDictation),
-                .init(settingsViewModel.pushToTalkHotkeyTrigger, mode: .bareModifierDictation),
-                .init(settingsViewModel.fileTranscriptionHotkeyTrigger),
-                .init(settingsViewModel.youtubeTranscriptionHotkeyTrigger),
-            ],
-            onTrigger: { [weak self] in
-                self?.onToggleMeetingRecording()
-            }
-        )
+
+        let manager = HotkeyManager(trigger: trigger, gestureMode: .singleAndDoubleTapToggle)
+        manager.onToggleRecording = { [weak self] source in
+            self?.onFnToggleRecording(source)
+        }
+        manager.onEscapeWhileIdle = { [weak self] in
+            self?.onEscapeWhileIdle()
+        }
+
+        if manager.start() {
+            fnRecordingHotkeyManager = manager
+            onAnyHotkeyEnabled()
+        } else {
+            fnRecordingHotkeyManager = nil
+            onHotkeyUnavailable()
+        }
+    }
+
+    func setupMeetingHotkey() {
+        // Retired in the island redesign: Fn (single/double-tap) is the recording
+        // key now, so the dedicated ⌘⇧M meeting hotkey is no longer registered.
+        meetingHotkeyManager = nil
     }
 
     func setupFileTranscriptionHotkey() {
@@ -476,8 +500,7 @@ final class AppHotkeyCoordinator {
 
     func setupAllHotkeys() {
         guard suspendCount == 0 else { return }
-        setupDictationHotkeys()
-        setupMeetingHotkey()
+        setupFnRecordingHotkey()
         setupFileTranscriptionHotkey()
         setupYouTubeTranscriptionHotkey()
     }
@@ -488,6 +511,8 @@ final class AppHotkeyCoordinator {
 
     func stopAll() {
         stopDictationHotkeys()
+        fnRecordingHotkeyManager?.stop()
+        fnRecordingHotkeyManager = nil
         meetingHotkeyManager?.stop()
         fileTranscriptionHotkeyManager?.stop()
         youtubeTranscriptionHotkeyManager?.stop()

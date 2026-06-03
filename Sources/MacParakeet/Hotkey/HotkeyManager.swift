@@ -17,6 +17,14 @@ public final class HotkeyManager {
     public var onDiscardRecording: ((Bool) -> Void)?
     public var onReadyForSecondTap: (() -> Void)?
     public var onEscapeWhileIdle: (() -> Void)?
+    /// Fork single/double-tap Fn: toggle a recording with the given audio source.
+    public var onToggleRecording: ((MeetingAudioSourceMode) -> Void)?
+
+    /// Gesture modes whose completed *tap* is delivered on modifier release
+    /// (routed through `triggerPressed`), rather than press/hold semantics.
+    private var actsOnReleaseTap: Bool {
+        gestureMode == .singleTapToggle || gestureMode == .singleAndDoubleTapToggle
+    }
 
     private let gestureController: HotkeyGestureController
     private let trigger: HotkeyTrigger
@@ -312,7 +320,7 @@ public final class HotkeyManager {
                 targetModifierGestureIsActive = true
                 // Modifier down — start bare-tap tracking
                 bareTap = true
-                if gestureMode == .singleTapToggle {
+                if actsOnReleaseTap {
                     return []
                 }
                 return gestureController.triggerPressed(timestampMs: timestampMs)
@@ -322,11 +330,11 @@ public final class HotkeyManager {
             targetModifierGestureIsActive = false
             let outputs: [HotkeyGestureController.Output]
             if bareTap {
-                outputs = gestureMode == .singleTapToggle
+                outputs = actsOnReleaseTap
                     ? gestureController.triggerPressed(timestampMs: timestampMs)
                     : gestureController.triggerReleased(timestampMs: timestampMs)
             } else {
-                outputs = gestureMode == .singleTapToggle ? [] : gestureController.nonBareTriggerReleased()
+                outputs = actsOnReleaseTap ? [] : gestureController.nonBareTriggerReleased()
             }
             bareTap = true
             return outputs
@@ -340,7 +348,7 @@ public final class HotkeyManager {
         guard !nonTargetTrackedModifiers.isEmpty else { return [] }
 
         bareTap = false
-        return gestureMode == .singleTapToggle ? [] : gestureController.interrupted()
+        return actsOnReleaseTap ? [] : gestureController.interrupted()
     }
 
     private func modifierKeyDownOutputs(
@@ -361,7 +369,7 @@ public final class HotkeyManager {
 
             // Gesture interruption: a regular key press means the user is typing,
             // not performing a bare hotkey gesture.
-            if gestureMode == .singleTapToggle {
+            if actsOnReleaseTap {
                 return []
             }
             return gestureController.interrupted()
@@ -756,7 +764,10 @@ public final class HotkeyManager {
             return activeMode
         case (.persistent, .holdOnly),
              (.holdToTalk, .singleTapToggle),
-             (.holdToTalk, .doubleTapOnly):
+             (.holdToTalk, .doubleTapOnly),
+             (_, .singleAndDoubleTapToggle):
+            // The fork's single/double-tap Fn mode drives meeting recording, not
+            // dictation, so there is no dictation RecordingMode to resume.
             return nil
         }
     }
@@ -1021,6 +1032,8 @@ public final class HotkeyManager {
                 onReadyForSecondTap?()
             case .escapeWhileIdle:
                 onEscapeWhileIdle?()
+            case .toggleRecording(let source):
+                onToggleRecording?(source)
             case .scheduleStartupDebounce(let milliseconds):
                 scheduleStartupTimer(after: milliseconds)
             case .scheduleHoldWindow(let milliseconds):
