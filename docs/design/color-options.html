@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacParakeet-MC — green accent options</title>
+<style>
+  :root { font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 32px; background: #6b6b6b; color: #fff; }
+  h1 { font-weight: 600; font-size: 22px; margin: 0 0 4px; }
+  .sub { opacity: .8; font-size: 13px; margin: 0 0 28px; }
+  .palette { margin-bottom: 40px; }
+  .palette > h2 { font-size: 16px; font-weight: 600; margin: 0 0 2px; display: flex; align-items: center; gap: 10px; }
+  .swatch { width: 18px; height: 18px; border-radius: 5px; display: inline-block; }
+  .hexrow { font-size: 12px; opacity: .75; margin: 0 0 14px; font-family: ui-monospace, monospace; }
+  .pair { display: flex; gap: 20px; flex-wrap: wrap; }
+  .panel { flex: 1 1 360px; border-radius: 16px; overflow: hidden; border: 1px solid rgba(0,0,0,.25); }
+  .mode-tag { font-size: 11px; letter-spacing: .04em; text-transform: uppercase; padding: 6px 12px; opacity: .7; }
+  .app { display: flex; min-height: 220px; }
+  .sidebar { width: 132px; padding: 12px 8px; border-right: 1px solid; }
+  .navitem { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 7px 10px; border-radius: 8px; margin-bottom: 2px; }
+  .navitem .dot { width: 14px; height: 14px; border-radius: 4px; opacity: .55; }
+  .content { flex: 1; padding: 16px 18px; }
+  .h { font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+  .body { font-size: 13px; line-height: 1.5; margin: 0 0 4px; }
+  .sec { font-size: 12px; margin: 0 0 14px; }
+  .link { font-weight: 600; }
+  .row { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; }
+  .btn { font-size: 12.5px; font-weight: 600; padding: 7px 14px; border-radius: 9px; border: 1px solid transparent; cursor: default; }
+  .btn-secondary { background: transparent; }
+  .card { border-radius: 12px; padding: 11px 13px; border: 1px solid; font-size: 12px; display: flex; align-items: center; gap: 9px; }
+  .rec { width: 9px; height: 9px; border-radius: 50%; }
+</style>
+</head>
+<body>
+  <h1>Green accent — pick one</h1>
+  <p class="sub">Each green shown against the app's actual neutral tokens, light + dark. Single coral &rarr; green swap in <code>DesignSystem.swift</code>.</p>
+
+  <div id="palettes"></div>
+
+<script>
+const PALETTES = [
+  { name: "Marker",      note: "Sharpie / felt-tip green — saturated, confident ink",
+    light: "#16B85C", lightTint: "#E0F5E9", dark: "#2ED673", darkTint: "rgba(46,214,115,.15)", ink: "#FFFFFF", inkDark: "#0E2A1A" },
+  { name: "Grass",       note: "punchy, vivid — brighter, leans toward lime but stays true green",
+    light: "#39C24A", lightTint: "#E4F7E5", dark: "#5BDB57", darkTint: "rgba(91,219,87,.15)", ink: "#FFFFFF", inkDark: "#0E2A12" },
+  { name: "Highlighter", note: "fluorescent Stabilo green — max pop; needs DARK text on it to stay legible",
+    light: "#8FD41F", lightTint: "#F0F8DC", dark: "#A8E83A", darkTint: "rgba(168,232,58,.16)", ink: "#1A2A05", inkDark: "#102004" },
+  { name: "Emerald",     note: "the lush anchor for comparison — deeper, more sober",
+    light: "#29996B", lightTint: "#E1F1EA", dark: "#3DBD85", darkTint: "rgba(61,189,133,.14)", ink: "#FFFFFF", inkDark: "#FFFFFF" },
+];
+
+// App neutral tokens (from DesignSystem.swift)
+const LIGHT = { bg:"#FAFAF7", surface:"#FFFFFF", elevated:"#F5F5F0", textPrimary:"#1A1A1A",
+                textSecondary:"#6B6B6B", border:"#E8E8E1", onAccent:"#FFFFFF" };
+const DARK  = { bg:"#1C1C1F", surface:"#2B2B2E", elevated:"#3A3A3D", textPrimary:"#FFFFFF",
+                textSecondary:"#A1A1A6", border:"#4D4D52", onAccent:"#FFFFFF" };
+
+function panel(mode, T, accent, tint, ink) {
+  return `
+  <div class="panel" style="background:${T.bg}">
+    <div class="mode-tag" style="color:${T.textSecondary}">${mode}</div>
+    <div class="app">
+      <div class="sidebar" style="background:${T.elevated}; border-color:${T.border}">
+        <div class="navitem" style="background:${tint}; color:${accent}">
+          <span class="dot" style="background:${accent}; opacity:1"></span> Capture</div>
+        <div class="navitem" style="color:${T.textSecondary}">
+          <span class="dot" style="background:${T.textSecondary}"></span> Library</div>
+        <div class="navitem" style="color:${T.textSecondary}">
+          <span class="dot" style="background:${T.textSecondary}"></span> Settings</div>
+      </div>
+      <div class="content" style="background:${T.bg}">
+        <div class="h" style="color:${T.textPrimary}">Today's recording</div>
+        <div class="body" style="color:${T.textPrimary}">Transcript saved to your library.
+          <span class="link" style="color:${accent}">Open transcript &rarr;</span></div>
+        <div class="sec" style="color:${T.textSecondary}">3 min · mic only · ready to export</div>
+        <div class="row">
+          <span class="btn" style="background:${accent}; color:${ink}">Record</span>
+          <span class="btn btn-secondary" style="color:${T.textPrimary}; border-color:${T.border}">Import file</span>
+        </div>
+        <div class="card" style="background:${T.surface}; border-color:${T.border}; color:${T.textSecondary}">
+          <span class="rec" style="background:${accent}"></span> Recording &middot; 00:42</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+document.getElementById("palettes").innerHTML = PALETTES.map(p => `
+  <div class="palette">
+    <h2><span class="swatch" style="background:${p.light}"></span>${p.name}
+        <span style="font-weight:400;font-size:12px;opacity:.7">— ${p.note}</span></h2>
+    <p class="hexrow">light ${p.light} · dark ${p.dark}</p>
+    <div class="pair">
+      ${panel("Light", LIGHT, p.light, p.lightTint, p.ink)}
+      ${panel("Dark",  DARK,  p.dark,  p.darkTint, p.inkDark)}
+    </div>
+  </div>`).join("");
+</script>
+</body>
+</html>

@@ -1,18 +1,19 @@
 import SwiftUI
 
 /// Centralized design tokens for consistent styling across the app.
-/// "Warm Magical" design system — coral-orange accent, generous spacing, rounded headlines.
+/// MacParakeet-MC design system — vivid grass-green accent, generous spacing, rounded headlines.
 enum DesignSystem {
     // MARK: - Colors
 
     enum Colors {
-        // Accent — warm coral-orange (parakeet plumage)
-        static let accent = Color(light: .init(red: 0.91, green: 0.42, blue: 0.23),
-                                  dark: .init(red: 1.0, green: 0.54, blue: 0.36))
-        static let accentLight = Color(light: .init(red: 1.0, green: 0.94, blue: 0.92),
-                                       dark: .init(red: 1.0, green: 0.54, blue: 0.36).opacity(0.12))
-        static let accentDark = Color(light: .init(red: 0.77, green: 0.33, blue: 0.16),
-                                      dark: .init(red: 0.91, green: 0.42, blue: 0.23))
+        // Accent — vivid "marker" grass green (MacParakeet-MC fork)
+        // Grass #39C24A (light) / #5BDB57 (dark). See docs/fork-product-model.md.
+        static let accent = Color(light: .init(red: 0.224, green: 0.761, blue: 0.290),
+                                  dark: .init(red: 0.357, green: 0.859, blue: 0.341))
+        static let accentLight = Color(light: .init(red: 0.894, green: 0.969, blue: 0.898),
+                                       dark: .init(red: 0.357, green: 0.859, blue: 0.341).opacity(0.14))
+        static let accentDark = Color(light: .init(red: 0.173, green: 0.596, blue: 0.224),
+                                      dark: .init(red: 0.224, green: 0.761, blue: 0.290))
 
         // Backgrounds — warm off-whites, not pure white
         static let background = Color(light: .init(red: 0.98, green: 0.98, blue: 0.97),

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacParakeet-MC — the Island</title>
+<style>
+  :root{
+    --accent:#39C24A; --accent-soft:#5BDB57;
+    font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:32px;background:#3a3a3c;color:#fff;}
+  h1{font-weight:600;font-size:22px;margin:0 0 4px;}
+  .sub{opacity:.82;font-size:13px;margin:0 0 24px;max-width:780px;}
+
+  /* faux desktop */
+  .desktop{position:relative;height:430px;border-radius:16px;overflow:hidden;
+           background:linear-gradient(160deg,#a8c8e8 0%,#cdb8e0 45%,#f0c8b0 100%);
+           border:1px solid rgba(0,0,0,.25);box-shadow:0 14px 44px rgba(0,0,0,.34);margin-bottom:32px;}
+  .menubar{height:26px;background:rgba(255,255,255,.28);backdrop-filter:blur(20px);
+           display:flex;align-items:center;gap:16px;padding:0 14px;font-size:11.5px;color:#222;}
+  .menubar .l{font-weight:600;}
+  .menubar .r{margin-left:auto;display:flex;gap:14px;opacity:.7;}
+  .deskhint{position:absolute;top:46%;left:50%;transform:translate(-50%,-50%);text-align:center;color:rgba(40,30,50,.5);font-size:13px;}
+
+  /* the island */
+  .island{background:rgba(24,24,26,.80);backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);
+          border:1px solid rgba(255,255,255,.10);border-radius:24px;box-shadow:0 10px 30px rgba(0,0,0,.40);
+          color:#fff;display:flex;align-items:center;gap:14px;padding:12px 16px;}
+  .dock{position:absolute;left:50%;bottom:22px;transform:translateX(-50%);}
+
+  /* expanded hero island */
+  .reccircle{width:46px;height:46px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;
+             box-shadow:0 4px 14px rgba(57,194,74,.5);flex:none;cursor:pointer;}
+  .reccircle svg{width:20px;height:20px;}
+  .col{display:flex;flex-direction:column;gap:7px;}
+  .seg{display:flex;background:rgba(255,255,255,.08);border-radius:8px;padding:2px;font-size:11.5px;}
+  .seg span{padding:4px 11px;border-radius:6px;color:rgba(255,255,255,.6);}
+  .seg span.on{background:rgba(255,255,255,.16);color:#fff;font-weight:600;}
+  .meta{font-size:11px;color:rgba(255,255,255,.45);}
+  .meta b{color:var(--accent-soft);}
+  .iconbtn{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;
+           font-size:15px;color:rgba(255,255,255,.85);cursor:pointer;flex:none;}
+  .divv{width:1px;height:32px;background:rgba(255,255,255,.12);}
+
+  /* states filmstrip */
+  .strip{display:flex;gap:18px;flex-wrap:wrap;}
+  .moment{flex:1 1 240px;}
+  .moment .cap{font-size:12px;font-weight:600;margin:0 0 8px;color:#fff;}
+  .moment .cap small{font-weight:400;opacity:.65;display:block;margin-top:2px;}
+  .stage{background:#4a4a4d;border-radius:14px;padding:26px 16px;display:flex;justify-content:center;}
+
+  .bars{display:flex;align-items:center;gap:2.5px;height:18px;}
+  .bars i{width:3px;border-radius:2px;background:var(--accent);}
+  .reddot{width:9px;height:9px;border-radius:50%;background:#ff5a52;box-shadow:0 0 0 0 rgba(255,90,82,.6);flex:none;}
+  .time{font-size:13px;font-variant-numeric:tabular-nums;color:#fff;}
+  .stop{width:22px;height:22px;border-radius:6px;background:rgba(255,255,255,.9);flex:none;}
+  .spinner{width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,.18);border-top-color:var(--accent);flex:none;}
+  .prog{height:4px;width:96px;background:rgba(255,255,255,.14);border-radius:2px;overflow:hidden;}
+  .prog i{display:block;height:100%;width:62%;background:var(--accent);}
+  .check{width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;flex:none;}
+  .pill-mini{font-size:11px;color:rgba(255,255,255,.85);background:rgba(255,255,255,.10);border-radius:7px;padding:4px 9px;cursor:pointer;}
+  .ttl{font-size:12.5px;color:#fff;font-weight:600;}
+  .lbl{font-size:11px;color:rgba(255,255,255,.5);margin-top:1px;}
+</style>
+</head>
+<body>
+  <h1>The Island — one surface, expands only when you act</h1>
+  <p class="sub">The app's front door is a frosted pill docked at the bottom of your screen. Idle, it's
+  almost nothing. Hover/click and it expands into the whole interface. Press once = record (the
+  Action-Button feeling). It morphs through the job — recording → transcribing → done — like a Live
+  Activity. The full window becomes the optional deep view, opened only to <b>search or browse</b>.</p>
+
+  <!-- DESKTOP with expanded island docked -->
+  <div class="desktop">
+    <div class="menubar"><span class="l">MacParakeet-MC</span><span>File</span><span>Capture</span><span>View</span>
+      <span class="r"><span>◰</span><span>🔋</span><span>9:41</span></span></div>
+    <div class="deskhint">your desktop · the island floats here, the big window stays closed</div>
+
+    <div class="dock">
+      <div class="island">
+        <div class="reccircle">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="11" rx="3" fill="#fff"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div class="col">
+          <div class="seg"><span class="on">Mic only</span><span>Mic + System</span></div>
+          <div class="meta"><b>Fn</b> to record · <b>double-tap</b> for calls · drop a file anytime</div>
+        </div>
+        <div class="divv"></div>
+        <div class="iconbtn" title="Search / open library">⌕</div>
+        <div class="iconbtn" title="Transcribe a file">⤓</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATES FILMSTRIP -->
+  <div class="strip">
+    <div class="moment">
+      <div class="cap">Idle<small>almost invisible — just a heartbeat</small></div>
+      <div class="stage">
+        <div class="island" style="border-radius:18px;padding:9px 14px;">
+          <div class="bars" style="height:14px;"><i style="height:5px"></i><i style="height:11px"></i><i style="height:7px"></i><i style="height:13px"></i><i style="height:6px"></i></div>
+          <span class="meta" style="color:rgba(255,255,255,.6)">Ready · press Fn</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="moment">
+      <div class="cap">Recording<small>ring fills, time ticks, stop on the right</small></div>
+      <div class="stage">
+        <div class="island" style="border-radius:18px;padding:9px 14px;">
+          <span class="reddot"></span>
+          <div class="bars"><i style="height:8px"></i><i style="height:16px"></i><i style="height:11px"></i><i style="height:18px"></i><i style="height:9px"></i><i style="height:14px"></i><i style="height:6px"></i></div>
+          <span class="time">00:14</span>
+          <span class="stop"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="moment">
+      <div class="cap">Transcribing<small>a Live-Activity progress, on-device</small></div>
+      <div class="stage">
+        <div class="island" style="border-radius:18px;padding:10px 14px;">
+          <span class="spinner"></span>
+          <div><div class="ttl" style="font-weight:500">Transcribing…</div><div class="prog"><i></i></div></div>
+          <span class="time" style="opacity:.7">62%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="moment">
+      <div class="cap">Done<small>collapses back after a beat</small></div>
+      <div class="stage">
+        <div class="island" style="border-radius:18px;padding:9px 14px;">
+          <span class="check">✓</span>
+          <div><div class="ttl">Standup with Priya</div><div class="lbl">saved · 12 min</div></div>
+          <span class="pill-mini">Open</span>
+          <span class="pill-mini">Export</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

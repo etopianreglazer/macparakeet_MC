@@ -16,6 +16,14 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// Display title in the sidebar (may differ from the persisted rawValue).
+    var title: String {
+        switch self {
+        case .transcribe: return "Capture"
+        default: return rawValue
+        }
+    }
+
     var icon: String {
         switch self {
         case .transcribe: return "waveform"
@@ -30,29 +38,27 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Primary features — the core things users do. Library remains the
-    /// universal archive; Meetings is the workflow space for live/upcoming
-    /// and saved meeting work.
+    /// Primary capture + archive surfaces (MacParakeet-MC fork: slimmed nav).
+    /// Meetings live inside Library's filter bar; Dictations are hidden for the
+    /// fork's record-and-export workflow. See docs/fork-product-model.md.
     static var primaryItems: [SidebarItem] {
-        var items: [SidebarItem] = [.transcribe, .library, .dictations]
-        if AppFeatures.meetingRecordingEnabled {
-            items.append(.meetings)
-        }
-        return items
+        [.transcribe, .library]
     }
 
-    /// Configuration and support items. Transforms (ADR-022) is inserted
-    /// here at runtime when `AppFeatures.transformsEnabled == true`.
+    /// Configuration items. Transforms (ADR-022) stays visible when enabled;
+    /// Vocabulary/Feedback fold into Settings (Phase 2) and are not surfaced here.
     static var configItems: [SidebarItem] {
-        var items: [SidebarItem] = [.vocabulary, .feedback, .settings]
+        var items: [SidebarItem] = [.settings]
         if AppFeatures.transformsEnabled {
             items.insert(.transforms, at: 0)
         }
         return items
     }
 
-    /// Note: `.discover` is intentionally excluded from the arrays above.
-    /// It renders as a pinned card below the sidebar list via `safeAreaInset`.
+    /// Note: `.discover`, `.meetings`, `.dictations`, `.vocabulary`, and
+    /// `.feedback` are intentionally excluded from the sidebar arrays above.
+    /// Their detail routes still exist (reachable via menu/deep-link) but they
+    /// no longer occupy permanent sidebar slots.
 }
 
 struct MainWindowView: View {
@@ -86,30 +92,27 @@ struct MainWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             NavigationSplitView {
-                List(selection: $state.selectedItem) {
-                    Section {
-                        ForEach(SidebarItem.primaryItems) { item in
-                            SidebarItemLabel(item: item)
-                                .tag(item)
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(SidebarItem.primaryItems) { item in
+                        SidebarRow(item: item,
+                                   isSelected: state.selectedItem == item) {
+                            state.selectedItem = item
                         }
                     }
 
-                    Section {
-                        ForEach(SidebarItem.configItems) { item in
-                            Label(item.rawValue, systemImage: item.icon)
-                                .tag(item)
+                    Spacer(minLength: DesignSystem.Spacing.lg)
+
+                    ForEach(SidebarItem.configItems) { item in
+                        SidebarRow(item: item,
+                                   isSelected: state.selectedItem == item) {
+                            state.selectedItem = item
                         }
                     }
                 }
-                .listStyle(.sidebar)
-                .tint(DesignSystem.Colors.accent)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    DiscoverSidebarCard(
-                        viewModel: discoverViewModel,
-                        isSelected: state.selectedItem == .discover,
-                        onTap: { state.selectedItem = .discover }
-                    )
-                }
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.top, DesignSystem.Spacing.sm)
+                .padding(.bottom, DesignSystem.Spacing.md)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .navigationSplitViewColumnWidth(min: 170, ideal: DesignSystem.Layout.sidebarMinWidth, max: 240)
             } detail: {
                 Group {
@@ -471,10 +474,32 @@ private struct TransformEditorSheetHost: View {
     }
 }
 
-private struct SidebarItemLabel: View {
+/// Custom sidebar row with a green selection fill. macOS draws native `List`
+/// sidebar selection with the System Settings accent color (ignoring SwiftUI's
+/// `.tint`), so the fork renders its own rows to keep selection on-brand.
+private struct SidebarRow: View {
     let item: SidebarItem
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var isHovering = false
 
     var body: some View {
-        Label(item.rawValue, systemImage: item.icon)
+        Button(action: action) {
+            Label(item.title, systemImage: item.icon)
+                .font(DesignSystem.Typography.body.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? DesignSystem.Colors.onAccent : DesignSystem.Colors.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, DesignSystem.Spacing.sm)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius, style: .continuous)
+                        .fill(isSelected
+                              ? AnyShapeStyle(DesignSystem.Colors.accent)
+                              : AnyShapeStyle(isHovering ? DesignSystem.Colors.rowHoverBackground : Color.clear))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }

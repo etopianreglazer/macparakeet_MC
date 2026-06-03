@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacParakeet-MC — final lookbook</title>
+<style>
+  :root{
+    --accent:#39C24A; --accent-bright:#5BDB57; --accent-tint:rgba(91,219,87,.16);
+    --rec:#FF5A52;
+    font-family:-apple-system,"SF Pro Text",system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;padding:36px 36px 60px;color:#fff;
+       background:linear-gradient(155deg,#16513b 0%,#2b835c 28%,#5a9b53 60%,#c3ad60 100%) fixed;}
+  h1{font-weight:600;font-size:24px;margin:0 0 4px;}
+  .sub{opacity:.9;font-size:13px;margin:0 0 8px;max-width:760px;}
+  .principle{font-size:12px;opacity:.8;margin:0 0 30px;max-width:760px;font-style:italic;}
+  .seclabel{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;opacity:.75;margin:34px 0 14px;}
+
+  .glass{background:rgba(24,26,24,.50);backdrop-filter:blur(28px) saturate(170%);
+         -webkit-backdrop-filter:blur(28px) saturate(170%);
+         border:1px solid rgba(255,255,255,.15);box-shadow:0 24px 64px rgba(0,0,0,.42);}
+  .mono{font-variant-numeric:tabular-nums;}
+  .g{color:var(--accent-bright);}
+
+  /* ---------------- HERO ---------------- */
+  .hero{position:relative;width:100%;max-width:1040px;height:600px;border-radius:18px;overflow:hidden;
+        box-shadow:0 26px 70px rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.12);
+        background:linear-gradient(150deg,#1f6f4a,#2f8f63 35%,#6fae54 70%,#c7b765);}
+  .menubar{position:absolute;top:0;left:0;right:0;height:26px;background:rgba(0,0,0,.2);backdrop-filter:blur(20px);
+           display:flex;align-items:center;gap:18px;padding:0 14px;font-size:12px;color:rgba(255,255,255,.92);}
+  .menubar .right{margin-left:auto;display:flex;gap:14px;}
+  .menubar .pk{display:flex;align-items:center;gap:5px;} .menubar .pk .d{width:7px;height:7px;border-radius:50%;background:var(--accent-bright);}
+  .finder{position:absolute;top:60px;left:60px;width:440px;border-radius:11px;overflow:hidden;background:#fbfbf9;
+          box-shadow:0 18px 44px rgba(0,0,0,.32);border:1px solid rgba(0,0,0,.12);}
+  .finder .bar{height:36px;background:#ececec;display:flex;align-items:center;gap:7px;padding:0 12px;border-bottom:1px solid #dcdcdc;}
+  .finder .tl{width:11px;height:11px;border-radius:50%;}
+  .finder .title{margin-left:8px;font-size:12.5px;color:#444;font-weight:600;}
+  .finder .body{display:flex;}
+  .finder .fside{width:120px;background:#f3f3f1;border-right:1px solid #e4e4e2;padding:10px 8px;font-size:12px;color:#555;}
+  .finder .fside .it{padding:5px 8px;border-radius:6px;}
+  .finder .fside .it.on{background:var(--accent-tint);color:#1f6f4a;font-weight:600;}
+  .finder .files{flex:1;padding:8px 6px;}
+  .finder .file{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:6px;font-size:12.5px;color:#222;}
+  .finder .file .doc{width:15px;height:18px;border-radius:2px;background:#cfe6cf;border:1px solid #aacaaa;}
+  .finder .file .nm{flex:1;} .finder .file .dt{color:#999;font-size:11px;}
+  .island-x{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);width:452px;border-radius:24px;padding:12px;}
+  .ixf{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:15px;padding:11px 14px;}
+  .ixf svg{width:17px;height:17px;opacity:.6;} .ixf .ph{font-size:14px;color:rgba(255,255,255,.55);} .ixf .cur{width:2px;height:16px;background:var(--accent-bright);margin-left:-5px;}
+  .ixa{display:flex;align-items:center;gap:9px;margin-top:10px;}
+  .ixrec{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;background:var(--accent);color:#fff;font-size:13.5px;font-weight:600;padding:11px;border-radius:14px;box-shadow:0 6px 16px rgba(57,194,74,.4);}
+  .ixrec .rd{width:9px;height:9px;border-radius:50%;background:#fff;}
+  .seg{display:flex;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:3px;font-size:11.5px;}
+  .seg span{padding:7px 11px;border-radius:10px;color:rgba(255,255,255,.6);white-space:nowrap;}
+  .seg span.on{background:rgba(255,255,255,.16);color:#fff;font-weight:600;}
+  .ixr{margin-top:11px;border-top:1px solid rgba(255,255,255,.1);padding-top:9px;}
+  .ixrow{display:flex;align-items:center;gap:9px;padding:6px;border-radius:9px;font-size:12.5px;color:rgba(255,255,255,.9);}
+  .ixrow .dot{width:7px;height:7px;border-radius:50%;} .ixrow .t{flex:1;} .ixrow .m{font-size:11px;color:rgba(255,255,255,.45);}
+  .ixfoot{display:flex;gap:8px;margin-top:9px;}
+  .ixchip{flex:1;text-align:center;font-size:11.5px;color:rgba(255,255,255,.7);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:7px;}
+
+  /* ---------------- GALLERY GRID ---------------- */
+  .grid{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start;}
+  .surface{display:flex;flex-direction:column;gap:9px;}
+  .surface .cap{font-size:11.5px;opacity:.78;font-weight:600;}
+  .card{border-radius:20px;padding:14px;}
+
+  /* shared waveform + keyframes */
+  .wave{display:flex;gap:2.5px;align-items:center;height:15px;}
+  .wave i{width:2.5px;background:var(--accent-bright);border-radius:2px;animation:bob 1.1s ease-in-out infinite;}
+  .wave i:nth-child(2){animation-delay:.15s} .wave i:nth-child(3){animation-delay:.3s} .wave i:nth-child(4){animation-delay:.45s} .wave i:nth-child(5){animation-delay:.6s}
+  @keyframes bob{0%,100%{transform:scaleY(.5)}50%{transform:scaleY(1)}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* idle — flat, empty pill (exactly the current app's idle island) */
+  .flatpill{border-radius:18px;width:104px;height:30px;}
+
+  /* hover — two lines: action first, fine print beneath */
+  .hover{display:flex;align-items:center;gap:11px;border-radius:19px;padding:10px 18px;width:max-content;}
+  .hover .rdy{width:9px;height:9px;border-radius:50%;background:var(--accent-bright);flex:none;}
+  .hover .lines{display:flex;flex-direction:column;gap:2px;}
+  .hover .lines .l1{font-size:13.5px;font-weight:600;color:#fff;} .hover .lines .l1 b{color:var(--accent-bright);}
+  .hover .lines .l2{font-size:10.5px;color:rgba(255,255,255,.5);}
+
+  /* shared keycap badge */
+  .kb{font-size:10.5px;font-weight:700;background:rgba(255,255,255,.16);border-radius:5px;padding:1px 6px;color:#fff;}
+
+  /* stacked hotkeys popover */
+  .stack{width:238px;}
+  .stack .lead{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:9px;}
+  .stack .lead .nm{font-weight:600;color:#fff;} .stack .lead .ar{color:rgba(255,255,255,.4);}
+  .stack .opt{display:flex;align-items:center;gap:10px;padding:7px 6px;border-radius:8px;font-size:12.5px;color:rgba(255,255,255,.85);}
+  .stack .opt .n{width:20px;height:20px;border-radius:5px;background:rgba(255,255,255,.12);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none;}
+  .stack .opt.on{background:rgba(91,219,87,.12);} .stack .opt.on .n{background:var(--accent);color:#fff;}
+  .stack .note{font-size:10.5px;color:rgba(255,255,255,.45);margin-top:8px;line-height:1.5;}
+
+  /* recording — ONE-LINE pill (idle form factor + red dot + timer) */
+  .recpill{display:flex;align-items:center;gap:11px;border-radius:19px;padding:8px 10px 8px 16px;width:max-content;}
+  .recpill .rdot{width:10px;height:10px;border-radius:50%;background:var(--rec);animation:pulse 1.3s infinite;flex:none;}
+  .recpill .el{font-size:15px;font-weight:500;color:#fff;}
+  .recpill .slim{display:flex;gap:2px;align-items:center;height:16px;}
+  .recpill .slim i{width:2.5px;background:var(--accent-bright);border-radius:2px;animation:bob .9s ease-in-out infinite;}
+  .recpill .slim i:nth-child(2){animation-delay:.12s} .recpill .slim i:nth-child(3){animation-delay:.24s} .recpill .slim i:nth-child(4){animation-delay:.36s} .recpill .slim i:nth-child(5){animation-delay:.48s} .recpill .slim i:nth-child(6){animation-delay:.6s} .recpill .slim i:nth-child(7){animation-delay:.72s}
+  .recpill .src{font-size:10.5px;color:rgba(255,255,255,.5);}
+  .recpill .stop{width:26px;height:26px;border-radius:7px;background:#fff;flex:none;cursor:pointer;}
+
+  /* transcribing — Live-Activity progress, on-device */
+  .transcribing{display:flex;align-items:center;gap:13px;border-radius:19px;padding:11px 18px;width:max-content;}
+  .spinner{width:18px;height:18px;border-radius:50%;border:2.5px solid rgba(255,255,255,.18);border-top-color:var(--accent-bright);animation:spin .9s linear infinite;flex:none;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .transcribing .lbl{display:flex;flex-direction:column;gap:5px;}
+  .transcribing .lbl .t{font-size:13px;font-weight:600;color:#fff;}
+  .transcribing .bar{width:148px;height:4px;border-radius:2px;background:rgba(255,255,255,.14);overflow:hidden;}
+  .transcribing .bar i{display:block;height:100%;width:62%;background:var(--accent-bright);}
+  .transcribing .pct{font-size:13px;color:rgba(255,255,255,.7);}
+
+  /* done — saved, then collapses back to idle after a beat */
+  .done{display:flex;align-items:center;gap:11px;border-radius:19px;padding:9px 11px 9px 13px;width:max-content;}
+  .done .chk{width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;flex:none;}
+  .done .lbl{display:flex;flex-direction:column;}
+  .done .lbl .t{font-size:13px;font-weight:600;color:#fff;} .done .lbl .s{font-size:11px;color:rgba(255,255,255,.5);}
+  .done .btns{display:flex;gap:7px;margin-left:8px;}
+  .done .b{font-size:12px;font-weight:600;color:rgba(255,255,255,.9);background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.12);border-radius:9px;padding:6px 12px;cursor:pointer;}
+
+  /* transcript */
+  .transcript{width:380px;}
+  .tr-h{display:flex;align-items:center;gap:8px;margin-bottom:4px;} .tr-h .ttl{font-size:15px;font-weight:600;} .tr-h .verb{margin-left:auto;font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--accent-bright);border:1px solid rgba(91,219,87,.4);border-radius:5px;padding:2px 6px;}
+  .tr-meta{font-size:11.5px;color:rgba(255,255,255,.5);margin-bottom:12px;}
+  .tr-line{font-size:12.5px;line-height:1.6;margin-bottom:8px;}
+  .tr-line .spk{color:var(--accent-bright);font-weight:600;}
+  .tr-line .txt{color:rgba(255,255,255,.88);}
+  .flag{background:rgba(255,176,32,.16);border-bottom:1px dashed rgba(255,176,32,.7);color:rgba(255,210,120,.95);padding:0 2px;border-radius:3px;}
+  .tr-actions{display:flex;gap:8px;margin-top:14px;border-top:1px solid rgba(255,255,255,.1);padding-top:12px;}
+  .act{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:8px 12px;border-radius:11px;}
+  .act .kb{background:rgba(255,255,255,.22);}
+  .act.primary{background:var(--accent);color:#fff;} .act.ghost{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.85);}
+  .act.fin{margin-left:auto;background:transparent;color:rgba(255,255,255,.6);}
+
+  /* library */
+  .library{width:300px;}
+  .libf{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.13);border-radius:12px;padding:9px 12px;margin-bottom:12px;}
+  .libf svg{width:15px;height:15px;opacity:.55;} .libf .ph{font-size:13px;color:rgba(255,255,255,.5);}
+  .libgrp{font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:rgba(255,255,255,.4);margin:10px 0 5px;font-weight:600;}
+  .librow{display:flex;align-items:center;gap:9px;padding:7px 6px;border-radius:9px;font-size:12.5px;color:rgba(255,255,255,.9);}
+  .librow:hover{background:rgba(255,255,255,.06);} .librow .dot{width:7px;height:7px;border-radius:50%;} .librow .t{flex:1;} .librow .m{font-size:11px;color:rgba(255,255,255,.45);}
+  .libfoot{margin-top:12px;font-size:11.5px;color:rgba(255,255,255,.6);background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px;text-align:center;}
+
+  /* settings */
+  .settings{width:300px;}
+  .ps-h{font-size:13px;font-weight:600;margin-bottom:10px;}
+  .ps-row{display:flex;align-items:center;justify-content:space-between;padding:9px 4px;font-size:12.5px;color:rgba(255,255,255,.85);}
+  .ps-row + .ps-row{border-top:1px solid rgba(255,255,255,.08);}
+  .toggle{width:34px;height:19px;border-radius:10px;background:var(--accent);position:relative;flex:none;}
+  .toggle::after{content:"";position:absolute;top:2px;right:2px;width:15px;height:15px;border-radius:50%;background:#fff;}
+  .toggle.off{background:rgba(255,255,255,.18);} .toggle.off::after{left:2px;right:auto;}
+
+  /* transforms */
+  .transforms{width:330px;}
+  .xf-ctx{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:10px;font-size:11.5px;color:rgba(255,255,255,.55);line-height:1.5;margin-bottom:10px;}
+  .xf-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;} .xf-head .k{font-size:11px;background:rgba(255,255,255,.12);border-radius:5px;padding:2px 7px;font-weight:600;} .xf-head .nm{font-size:13px;font-weight:600;} .xf-head .ok{margin-left:auto;color:var(--accent-bright);font-size:12px;}
+  .xf-out{font-size:12.5px;line-height:1.55;color:rgba(255,255,255,.9);}
+  .xf-out ul{margin:6px 0 0;padding-left:18px;} .xf-out li{margin-bottom:3px;}
+  .xf-btns{display:flex;gap:8px;margin-top:12px;}
+  .xf-btns .b{flex:1;text-align:center;font-size:12px;font-weight:600;padding:8px;border-radius:10px;}
+  .xf-btns .b.p{background:var(--accent);color:#fff;} .xf-btns .b.s{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.85);}
+</style>
+</head>
+<body>
+  <h1>MacParakeet-MC — the whole app, in its new skin</h1>
+  <p class="sub">An ambient island at bottom-center; everything else is summoned glass. Dark vibrancy,
+  Grass accent, SF type. Capture is invisible (Fn); the window is gone. Idle is a flat pill —
+  the ambient waveform only appears on hover. Finished transcripts auto-export to a Finder folder.</p>
+  <p class="principle">Principle: a transcript is never polished — only flagged where it's unsure. A summary (Distill / Decide) is where shaping happens.</p>
+
+  <div class="seclabel">The click state — over your real desktop</div>
+  <div class="hero">
+    <div class="menubar"><span style="font-weight:600;">Finder</span><span style="opacity:.8;">File</span><span style="opacity:.8;">View</span>
+      <span class="right"><span class="pk"><span class="d"></span>Parakeet</span><span class="mono">Sat 14:42</span></span></div>
+    <div class="finder">
+      <div class="bar"><span class="tl" style="background:#ff5f57"></span><span class="tl" style="background:#febc2e"></span><span class="tl" style="background:#28c840"></span><span class="title">Transcripts</span></div>
+      <div class="body">
+        <div class="fside"><div class="it">★ Favorites</div><div class="it on">📁 Transcripts</div><div class="it">📁 Meetings</div><div class="it">📁 Imports</div></div>
+        <div class="files">
+          <div class="file"><span class="doc"></span><span class="nm">Standup with Priya.md</span><span class="dt">Today</span></div>
+          <div class="file"><span class="doc"></span><span class="nm">Coffee — product ideas.txt</span><span class="dt">Today</span></div>
+          <div class="file"><span class="doc"></span><span class="nm">Lex Fridman · interview.md</span><span class="dt">Yest.</span></div>
+          <div class="file"><span class="doc"></span><span class="nm">1:1 with Sam.md</span><span class="dt">Thu</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="island-x glass">
+      <div class="ixf"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#fff" stroke-width="2"/><path d="M16 16l4 4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg><span class="ph">Search transcripts, or just hit record…</span><span class="cur"></span></div>
+      <div class="ixa"><div class="ixrec"><span class="rd"></span>Record</div><div class="seg"><span class="on">Mic</span><span>Mic + System</span></div></div>
+      <div class="ixr"><div class="ixrow"><span class="dot" style="background:var(--accent-bright)"></span><span class="t">Standup with Priya</span><span class="m mono">12 min</span></div><div class="ixrow"><span class="dot" style="background:#6fb6e0"></span><span class="t">Coffee — product ideas</span><span class="m mono">8 min</span></div></div>
+      <div class="ixfoot"><div class="ixchip">⚙ Settings</div><div class="ixchip">▦ Library</div><div class="ixchip">📂 Reveal in Finder</div></div>
+    </div>
+  </div>
+
+  <div class="seclabel">Every surface — one language</div>
+  <div class="grid">
+
+    <div class="surface">
+      <div class="cap">Idle · flat empty pill (current app)</div>
+      <div class="flatpill glass"></div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Hover · two lines, action-forward</div>
+      <div class="hover glass">
+        <span class="rdy"></span>
+        <div class="lines"><span class="l1">Press <b>fn</b> to record</span><span class="l2">Double-tap for calls · Click to open</span></div>
+      </div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Recording · waveform, time ticks, stop right</div>
+      <div class="recpill glass">
+        <span class="rdot"></span>
+        <span class="slim"><i style="height:40%"></i><i style="height:80%"></i><i style="height:35%"></i><i style="height:90%"></i><i style="height:55%"></i><i style="height:70%"></i><i style="height:45%"></i></span>
+        <span class="el mono">00:14</span>
+        <span class="stop"></span>
+      </div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Transcribing · on-device progress</div>
+      <div class="transcribing glass">
+        <span class="spinner"></span>
+        <div class="lbl"><span class="t">Transcribing…</span><span class="bar"><i></i></span></div>
+        <span class="pct mono">62%</span>
+      </div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Done · saved, then collapses back</div>
+      <div class="done glass">
+        <span class="chk">✓</span>
+        <div class="lbl"><span class="t">Standup with Priya</span><span class="s">saved · 12 min</span></div>
+        <div class="btns"><span class="b">Open</span><span class="b">Export</span></div>
+      </div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Transcript · verbatim + flags</div>
+      <div class="transcript card glass">
+        <div class="tr-h"><span class="ttl">Standup with Priya</span><span class="verb">verbatim</span></div>
+        <div class="tr-meta mono">Today 09:14 · 12 min · mic + system</div>
+        <div class="tr-line"><span class="spk">Priya:</span> <span class="txt">So the migration lands Thursday, and the rollback plan is to <span class="flag">[inaudible]</span> the old table for a week.</span></div>
+        <div class="tr-line"><span class="spk">You:</span> <span class="txt">Got it. And we hold the feature flag until <span class="flag">[unclear ~2s]</span> confirms the metrics look clean.</span></div>
+        <div class="tr-actions"><span class="act primary"><span class="kb">⌥1</span>Distill</span><span class="act ghost"><span class="kb">⌥2</span>Decide</span><span class="act ghost"><span class="kb">⌥3</span>Export</span><span class="act fin">📂 Finder</span></div>
+      </div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Stacked hotkeys · ⌥1 Distill → pick a style with 1·2·3</div>
+      <div class="stack card glass">
+        <div class="lead"><span class="kb">⌥1</span><span class="nm">Distill</span><span class="ar">→ choose style</span></div>
+        <div class="opt on"><span class="n">1</span>Tight — one clean line</div>
+        <div class="opt"><span class="n">2</span>Bullets — key points</div>
+        <div class="opt"><span class="n">3</span>Exec summary — TL;DR</div>
+        <div class="note">Same positional keys at every level — like game hotkeys. ⌥1/2/3 pick the action; 1/2/3 pick the variant inside it.</div>
+      </div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Transforms · ⌥2 Distill on a selection</div>
+      <div class="transforms card glass">
+        <div class="xf-ctx">Selected in any app: “Okay so I think what we should probably maybe do is, you know, hold off on the launch until the metrics from the beta cohort come back, because honestly the risk is…”</div>
+        <div class="xf-head"><span class="k">⌥2</span><span class="nm">Distilled</span><span class="ok">✓</span></div>
+        <div class="xf-out">Hold the launch until beta-cohort metrics return — the risk isn't worth it yet.</div>
+        <div class="xf-btns"><span class="b p">Replace</span><span class="b s">Copy</span></div>
+      </div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Library · thin glass search</div>
+      <div class="library card glass">
+        <div class="libf"><svg viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#fff" stroke-width="2"/><path d="M16 16l4 4" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg><span class="ph">Find a transcript…</span></div>
+        <div class="libgrp">Today</div>
+        <div class="librow"><span class="dot" style="background:var(--accent-bright)"></span><span class="t">Standup with Priya</span><span class="m mono">12 min</span></div>
+        <div class="librow"><span class="dot" style="background:#6fb6e0"></span><span class="t">Coffee — product ideas</span><span class="m mono">8 min</span></div>
+        <div class="libgrp">Yesterday</div>
+        <div class="librow"><span class="dot" style="background:#c79be0"></span><span class="t">Lex Fridman · interview</span><span class="m mono">1h 04</span></div>
+        <div class="libfoot">📂 Open Transcripts folder in Finder</div>
+      </div>
+    </div>
+
+    <div class="surface">
+      <div class="cap">Settings · summoned glass</div>
+      <div class="settings card glass">
+        <div class="ps-h">Settings</div>
+        <div class="ps-row"><span>Auto-export to Finder<br><small style="color:rgba(255,255,255,.45);font-size:10.5px">~/Documents/MacParakeet-MC · it just works</small></span><span class="toggle"></span></div>
+        <div class="ps-row"><span>Auto-transcribe on stop</span><span class="toggle"></span></div>
+        <div class="ps-row"><span>Default source</span><span style="color:rgba(255,255,255,.4)">Mic only ›</span></div>
+        <div class="ps-row"><span>Custom vocabulary</span><span style="color:rgba(255,255,255,.4)">3 words ›</span></div>
+        <div class="ps-row"><span>Telemetry</span><span class="toggle off"></span></div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

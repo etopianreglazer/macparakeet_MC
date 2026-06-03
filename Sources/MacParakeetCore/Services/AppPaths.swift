@@ -2,6 +2,12 @@ import Foundation
 
 /// Centralized path management for MacParakeet runtime files.
 public enum AppPaths {
+    /// Fork data namespace. Isolates MacParakeet-MC's database, recordings, models,
+    /// and helper binaries from any upstream MacParakeet install so the two can run
+    /// side by side without sharing (or corrupting) one another's library.
+    /// See docs/fork-product-model.md.
+    public static let appFolderName = "MacParakeet-MC"
+
     /// Application Support directory
     public static var appSupportDir: String {
         let path = FileManager.default
@@ -9,7 +15,7 @@ public enum AppPaths {
             .first?
             .path
             ?? (NSHomeDirectory() + "/Library/Application Support")
-        return path + "/MacParakeet"
+        return path + "/\(appFolderName)"
     }
 
     /// Database file path

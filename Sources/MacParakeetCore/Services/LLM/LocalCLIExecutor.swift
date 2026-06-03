@@ -293,7 +293,7 @@ public final class LocalCLIExecutor: Sendable {
             create: true
         )
         let workingDirectory = appSupportDirectory
-            .appendingPathComponent("MacParakeet", isDirectory: true)
+            .appendingPathComponent(AppPaths.appFolderName, isDirectory: true)
             .appendingPathComponent("LocalCLI", isDirectory: true)
         try fileManager.createDirectory(at: workingDirectory, withIntermediateDirectories: true)
         return workingDirectory
