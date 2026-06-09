@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dictationFlowCoordinator: DictationFlowCoordinator?
     private var meetingRecordingFlowCoordinator: MeetingRecordingFlowCoordinator?
     private var meetingAutoStartCoordinator: MeetingAutoStartCoordinator?
+    /// Ambient island panel (fork: `islandReplacesDictationPill`). Long-lived
+    /// for the app's lifetime; morphs through the capture lifecycle and the
+    /// expanded "Spotlight card" state.
+    private var islandController: IslandController?
     /// Productized Transforms coordinator (ADR-022). Owns the process-wide
     /// `TransformsHotkeyRegistry` + dispatch from registered hotkeys to the
     /// `TransformExecutor` pipeline. Gated on `AppFeatures.transformsEnabled`.
@@ -343,6 +347,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // would send duplicate appQuit events and double the termination delay.
         dictationFlowCoordinator?.releaseMediaPauseForTermination()
         dictationFlowCoordinator?.hideIdlePill()
+        islandController?.hide()
         hotkeyCoordinator?.stopAll()
         meetingAutoStartCoordinator?.stop()
         transformsCoordinator?.stop()
@@ -462,6 +467,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         meetingRecordingFlowCoordinator = runtime.meetingRecordingFlowCoordinator
         hotkeyCoordinator = runtime.hotkeyCoordinator
         meetingAutoStartCoordinator = runtime.meetingAutoStartCoordinator
+        islandController = runtime.islandController
 
         // Shared resolver for the user's LLM provider — returns the live
         // service when a provider is configured, nil otherwise. Consumed by
@@ -666,6 +672,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } else {
             dictationFlowCoordinator?.hideIdlePill()
         }
+        // Fork island: the toggle governs only the idle nub/hover; recording-flow
+        // states still surface regardless.
+        islandController?.setIdleVisible(settingsViewModel.showIdlePill)
     }
 
     private var hotkeyMenuTitle: String {

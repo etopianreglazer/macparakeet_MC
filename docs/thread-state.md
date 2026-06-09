@@ -1,100 +1,120 @@
 # Thread State — MacParakeet-MC
 
 > **What this is:** a handover of *where we left things*, written for the next session to
-> resume cold. It is **not** a briefing (the detailed "what's planned" lives in
-> `docs/fork-product-model.md`) and **not** a build plan (the executable step-by-step lives in
-> `plans/active/fn-rework.md`). This is the "you are here" pin.
+> resume cold. It is **not** a briefing (the "what's planned" lives in
+> `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
+> the "you are here" pin.
 >
-> **Last updated:** 2026-06-03, end of the session that did: green reskin → nav slim → fork
-> docs/mockups → Fn rework foundation → **island Slice 1** → git/version-control setup.
+> **Last updated:** end of the session that built the **ambient island UI** — Chunk A (idle ·
+> hover · recording · transcribing · done lifecycle pill) and Chunk B (the expanded "Spotlight
+> card" as a true morph of the same pill).
 
 ---
 
 ## TL;DR — where we are right now
 
-Personal fork **MacParakeet-MC**: slimmer, grass-green, moving toward an **ambient "island"**
-interface. It's installed side-by-side with upstream and **working**. We just shipped and
-live-tested **island Slice 1**: the global **Fn key is now a recording key** (single-tap = mic
-only, double-tap = mic + system), and finished transcripts **auto-export as `.md` to Finder**.
-The user confirmed it works (single + double tap + md auto-creation).
+Personal fork **MacParakeet-MC**: slimmer, grass-green, **ambient "island"** interface, installed
+side-by-side with upstream and **working**. The island is live and the user has live-confirmed it:
 
-## ⚠️ Immediate live state (check this first next session)
+- **Idle** = tiny flat grey nub (bottom-center). **Hover** = grows to a 2-line hint
+  ("Press **fn** to record" / "Double-tap for calls · Click to open").
+- **Recording → Transcribing → Done** lifecycle pill morphs in place (red dot + waveform + timer +
+  stop → spinner + bar → ✓ "Saved · N min"), driven by the shared `MeetingRecordingPillViewModel`.
+- **Click the nub → expanded "Spotlight card"** grows smoothly *out of the hover pill* (same
+  `.smooth` morph, same centered panel): search field (typable) + Record + Mic/Mic+System toggle +
+  recents + Settings / Library / Reveal-in-Finder chips. Esc / click-away collapses it back down.
+- **Fn** still records (single = mic, double = mic+system); **clicking** the nub opens the card.
 
-- **Two local commits on `main` are committed but may be UNPUSHED.** The user was pushing them
-  via **GitHub Desktop** (this machine has no working git CLI credentials; `gh` is now installed
-  but `gh auth login` may or may not have been completed).
-  - Commits: `b383af1b` (Rebrand fork…) + `a2ae009b` (Fn rework + island Slice 1…) — and possibly
-    a 3rd adding this file.
-  - **Verify at session start:** `git -C /Users/mathewcleveland/macparakeet_MC log --oneline origin/main..main` — if empty, the push succeeded. `origin` = `github.com/etopianreglazer/macparakeet_MC`, `upstream` = `moona3k/macparakeet`.
-  - If still unpushed and CLI auth now works (`gh auth status`), offer to `git push origin main`.
-- App is installed at `/Applications/MacParakeet-MC.app` and was last running.
+## ⚠️ Immediate live state (check first next session)
+
+- The island work is **committed on `main`** (this session). Verify pushed:
+  `git -C /Users/mathewcleveland/macparakeet_MC log --oneline origin/main..main` — if empty it's
+  pushed. `gh auth` now works (SSH, account `etopianreglazer`), so `git push origin main` works
+  directly; the user has also pushed via GitHub Desktop before.
+- App installed at `/Applications/MacParakeet-MC.app`, last build = unified-morph island.
+- **4 pre-existing test failures** remain (fork rebrand debt, NOT island-related): `AppPathsTests`,
+  `MainWindowStateTests.testPrimarySidebarOrderRespectsMeetingFeatureFlag`,
+  `AppHotkeyCoordinatorTests.testRefreshAllHotkeysIsSkippedWhileSuspended`, 3×`SettingsViewModelTests`
+  default-folder asserts. They fail identically on a clean baseline. A background task was spawned to
+  realign them; the island work added **zero** new failures.
 
 ## Done & verified this fork so far
 
-- ✅ **Green reskin** — `DesignSystem` accent = grass green (`#39C24A`/`#5BDB57`); custom green
-  sidebar rows (macOS ignores `.tint` on native sidebar selection).
-- ✅ **Nav slim 8 → 4** — `Capture · Library · Transforms · Settings`.
-- ✅ **Data namespaced** — `AppPaths.appFolderName = "MacParakeet-MC"`; side-by-side, no shared DB.
-- ✅ **Local install workflow** — `scripts/dev/install_local.sh`.
-- ✅ **Fn rework foundation + Slice 1** — new gesture mode, mic-only capture, per-gesture source
-  override, Fn→meeting wiring, ⌘⇧M + push-to-talk retired, dictation idle pill suppressed,
-  auto-export to Finder default-on. Full test suite green; 4 new gesture unit tests pass.
+- ✅ **Green reskin · nav slim (8→4) · data namespaced (`MacParakeet-MC`) · local install workflow**
+  (earlier sessions).
+- ✅ **Fn rework** — single-tap = mic-only, double-tap = mic+system; both route through the meeting
+  pipeline → saved transcript → auto-export `.md` to `~/Documents/MacParakeet-MC/Meetings/`. ⌘⇧M +
+  push-to-talk retired.
+- ✅ **Island Chunk A** — `IslandController` + `IslandView` (`Sources/MacParakeet/Views/Island/`):
+  one long-lived bottom-center non-activating panel; a single morphing rounded shape (capsule→card)
+  with cross-fading content, `.smooth` animation; flat dark fill (NOT frosted glass — user prefers
+  understated); old right-center sacred-geometry meeting pill suppressed under
+  `islandReplacesDictationPill`.
+- ✅ **Island Chunk B** — expanded "Spotlight card" is the `.expanded` morph **state of the same
+  pill** (not a separate window). `ExpandedIslandView` is its foreground; the panel becomes key on
+  expand so the search field types; Esc/click-away collapses. Chips currently open the **windowed**
+  Settings/Library (glass overlays are still TODO — slice 4).
 
-## What's NEXT — remaining island slices
+## What's NEXT — remaining island work
 
-Target visuals: `docs/design/final-lookbook.html`. Direction spec: `docs/fork-product-model.md`
-§"Interface direction: the island". Suggested order:
+Target visuals: `docs/design/final-lookbook.html`. Direction: `docs/fork-product-model.md`.
 
-1. **Island idle + hover pill** (most visible gap). Right now the old dictation pill is suppressed
-   (`AppFeatures.islandReplacesDictationPill = true`) and **nothing floats when idle** — only the
-   menu-bar icon. Build the flat empty idle pill + 2-line hover ("Press **fn** to record" /
-   small "Double-tap for calls · Click to open"). Reuse `KeylessPanel`/floating-panel tech.
-2. **Recording lifecycle pill restyle** — currently reuses the existing meeting "sacred-geometry"
-   pill (works, gives recording UI free). Lookbook wants: recording (one-line: red dot + waveform
-   + timer + stop) → transcribing (spinner + progress) → done (✓ + Open/Export) → collapse to idle.
-3. **Expanded island (click state)** — Spotlight-style search + Record + Mic/Mic+System toggle +
-   recents + Settings/Library/Reveal-in-Finder chips. The fiddly bit: `KeylessPanel` must stay
-   non-key when idle but become key on click so the search field accepts typing (focus handoff).
-4. **Glass Settings + Library overlays** — summoned dark-vibrancy (`NSVisualEffectView`) panels
-   reusing existing Settings/Library views.
-5. **Settings cleanup** — drop the now-inert **push-to-talk** + **meeting-hotkey (⌘⇧M)** rows from
-   the Settings UI (they still render but do nothing). See `plans/active/fn-rework.md` increment 5.
-6. **Retire the main window** (the slim sidebar is interim).
-7. **Transcript/summary layering** (separate track) — verbatim transcript + **Flag** pass (mark
-   uncertainty, don't smooth); **Distill**/**Decide** as summary ops; **drop Polish**; stacked
-   hotkeys (⌥1/2/3 for actions, nested 1/2/3 for variants).
+1. **Glassiness (deferred polish)** — the user said the card "isn't glassy enough for my taste, but
+   that might be for later." Current fill is flat dark (`Color(white:0.13)`). Real `NSVisualEffectView`
+   vibrancy bled past rounded corners (can't be clipped from SwiftUI) — if revisited, round it via
+   `maskImage`, not SwiftUI `.clipShape`.
+2. **Glass Settings + Library overlays (slice 4)** — make the card's Settings/Library chips summon
+   dark-vibrancy overlays (reusing `SettingsView` / `TranscriptionLibraryView`) instead of opening the
+   main window.
+3. **Settings cleanup (slice 5)** — drop the now-inert push-to-talk + ⌘⇧M rows.
+4. **Retire the main window (slice 6)** — once overlays stand alone.
+5. **Transcript/summary layering (slice 7, separate track)** — verbatim + **Flag** pass, Distill/Decide
+   as summary ops, **drop Polish**, stacked positional hotkeys.
 
-## Tribal knowledge / gotchas (not obvious from code)
+## Tribal knowledge / gotchas (hard-won this session)
 
-- **xcodebuild is BROKEN on this machine** (stale `DVTDownloads.framework`). NEVER use
-  `scripts/dev/run_app.sh` or `BUILD_SYSTEM=xcodebuild`. Use `swift build` + `install_local.sh`
-  (which uses `BUILD_SYSTEM=swiftpm`). Optional fix the user can run: `sudo xcodebuild -runFirstLaunch`.
-- **Install/test loop:** edit → `scripts/dev/install_local.sh` (release build ~5–10 min, signs
-  with the user's Apple Development cert, installs to `/Applications/MacParakeet-MC.app`) → relaunch
-  `open "/Applications/MacParakeet-MC.app"`. Permissions persist across rebuilds (stable cert).
-  Only the **user can live-test Fn timing** — build, install, hand off.
-- **Quick compile check:** `swift build --target MacParakeet`. **Full suite:** `swift test`
-  (~1–2 min). Note: `swift test … | tail` buffers — wait for the task-completion notification, don't
-  poll the file.
-- **Fn behavior now:** single tap = mic-only (no screen-recording prompt), double tap = mic+system;
-  ~400 ms threshold wait on a single tap is intentional (disambiguating double-tap). Both route
-  through the meeting pipeline → saved transcript → `.md` to `~/Documents/MacParakeet-MC/Meetings/`.
-- **Gesture FSM is heavily edge-cased + unit-tested.** New mode = `singleAndDoubleTapToggle`
-  (`HotkeyGestureController`) + `actsOnReleaseTap` (`HotkeyManager`) + `onToggleRecording`.
-- **Guardrails (from upstream CLAUDE.md):** don't delete user data / meeting recovery artifacts;
-  don't strip licensing plumbing as dead code; CLI external commands are a public contract.
+- **★ COPY WORKING ELEMENTS BEFORE REINVENTING.** AppKit floating-panel click/render/animation is a
+  minefield; every island fix came from copying an existing *working* element and adjusting its
+  properties — not hand-rolling. When something UI-ish doesn't work, find the element in this app that
+  already does it and copy that first.
+- **Island click delivery (the big one):** a non-key, non-activating `NSPanel` **never receives the
+  idle click** — macOS routes it elsewhere. Hover works (tracking areas bypass this); clicks don't.
+  Fix = catch the click with an **`NSEvent` global/local monitor** (see `IslandController.installClickMonitors`)
+  + `canBecomeKey`/`acceptsFirstMouse`. Also: a `hitTest` that returns the **contentView itself** is
+  treated as a window-background click and drops `mouseDown` — the hit target must be a **subview**
+  (mirrors the meeting pill's `PillContentView`).
+- **Clean rounded card = a titled window.** The expanded card reads clean because chrome (rounded
+  corners + shadow) is **OS-drawn** — borderless + hand-drawn shadow/`compositingGroup` cast a visible
+  rectangle. But for the **morph** we render the card in the **same ambient panel** as a SwiftUI
+  `.expanded` state (not a window), so it grows with the identical `.smooth` curve as hover. (The
+  earlier separate-window approach `flew in` / mis-centered — superseded.)
+- **The morph trick:** one `RoundedRectangle(cornerRadius: min(height/2, 20))` = capsule at small
+  heights, 20pt card when large → morphs capsule↔card as the frame animates. `IslandLayout` is the
+  single source of truth for sizes; the AppKit tracker derives hit-rects from it.
+- **`.expanded` wins in `IslandLayout.visual(...)`**; `IslandChromeModel.isExpanded` drives it; the
+  tracker steps aside (`hitTest → nil`) when expanded so SwiftUI controls get clicks.
+- **Decorative waveform** in the recording pill is self-animating (TimelineView), NOT metered audio —
+  matches the lookbook.
+- **`os_log` `.info` is not persisted** — use `.notice`+ for `log show` to retrieve it. (All island
+  diagnostic logging was stripped before commit.)
+- **xcodebuild is BROKEN here.** Use `swift build` + `scripts/dev/install_local.sh` (release build
+  ~5–10 min, signs, installs to `/Applications/MacParakeet-MC.app`) → `open` it. Only the **user can
+  live-test** the panel behavior — build, install, hand off.
 
-## Authoritative references (read these to resume)
+## Authoritative references (read to resume)
 
-- `docs/fork-product-model.md` — **north star** (product model + island direction + all decisions).
-- `plans/active/fn-rework.md` — Fn rework plan with per-increment status.
-- `docs/design/final-lookbook.html` (+ `island-interface-mockup.html`, `color-options.html`) — the
-  approved visual target.
-- Auto-memory: `~/.claude/projects/-Users-mathewcleveland-macparakeet-MC/memory/` —
-  `macparakeet-mc-fork.md`, `xcodebuild-broken-use-swiftpm.md`, `work-style-open-conversation.md`.
+- `Sources/MacParakeet/Views/Island/` — `IslandView.swift` (states + morph + layout),
+  `IslandController.swift` (panel, tracking, click monitors, expand/collapse, key handoff),
+  `ExpandedIslandView.swift` (card foreground).
+- `Sources/MacParakeet/App/AppEnvironmentConfigurer.swift` — where the island is created + wired
+  (record/select/settings/library/reveal callbacks). `AppDelegate.swift` retains it.
+- `docs/fork-product-model.md` — north star. `docs/design/final-lookbook.html` — visual target.
+- Auto-memory: `~/.claude/projects/-Users-mathewcleveland-macparakeet-MC/memory/`.
 
 ## Working style (user preferences)
 
-- Prefers **open, exploratory conversation** over pure multiple-choice; thinks out loud.
-- Holds a firm principle: **a transcript is never polished; only a summary can be.**
-- Likes building in **installable slices** and testing the final flow personally.
+- **Copy working UI/effects elements before reinventing the wheel** (stated explicitly, and proven out
+  this session).
+- Prefers **understated/flat** over heavy frosted glass for the ambient surfaces.
+- Open, exploratory conversation; builds in installable slices and live-tests each personally.
+- Firm principle: **a transcript is never polished; only a summary can be.**

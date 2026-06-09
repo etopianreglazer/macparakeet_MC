@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MacParakeetCore
 import MacParakeetViewModels
@@ -7,6 +8,7 @@ final class AppEnvironmentConfigurer {
     private final class CoordinatorRefs {
         weak var dictation: DictationFlowCoordinator?
         weak var meeting: MeetingRecordingFlowCoordinator?
+        weak var island: IslandController?
     }
 
     struct Runtime {
@@ -14,6 +16,10 @@ final class AppEnvironmentConfigurer {
         let meetingRecordingFlowCoordinator: MeetingRecordingFlowCoordinator
         let hotkeyCoordinator: AppHotkeyCoordinator
         let meetingAutoStartCoordinator: MeetingAutoStartCoordinator?
+        /// The ambient island panel (fork: `islandReplacesDictationPill`). Nil
+        /// when the flag is off. Long-lived; retained by `AppDelegate`. Owns the
+        /// expanded "Spotlight card" as a morph state of itself.
+        let islandController: IslandController?
     }
 
     struct Callbacks {
@@ -300,6 +306,7 @@ final class AppEnvironmentConfigurer {
             },
             onRecordingBegan: {
                 coordinatorRefs.dictation?.hideIdlePill()
+                coordinatorRefs.island?.resetHover()
             },
             onFlowReturnedToIdle: {
                 callbacks.onMenuBarIconUpdate()
@@ -351,7 +358,59 @@ final class AppEnvironmentConfigurer {
             hotkeyCoordinator.suspend()
         }
         hotkeyCoordinator.setupAllHotkeys()
+        // No-op while `islandReplacesDictationPill` is on; the island owns the
+        // idle surface in the fork.
         dictationCoordinator.showIdlePill()
+
+        // The ambient island. One long-lived bottom-center panel that morphs
+        // through the capture lifecycle (observing `meetingPillViewModel`) AND
+        // into the expanded "Spotlight card" — clicking the nub grows it into the
+        // card with the same animation as the hover. See docs/fork-product-model.md.
+        let island: IslandController?
+        if AppFeatures.islandReplacesDictationPill {
+            let controller = IslandController(
+                pillViewModel: meetingPillViewModel,
+                library: libraryViewModel,
+                idleVisible: settingsViewModel.showIdlePill
+            )
+            controller.onStop = {
+                coordinatorRefs.meeting?.toggleRecording(trigger: .manual)
+            }
+            controller.onOpen = {
+                NSApp.activate(ignoringOtherApps: true)
+                callbacks.onOpenMainWindow()
+            }
+            // Expanded card actions.
+            controller.onRecord = { mode in
+                guard !callbacks.isOnboardingVisible() else { return }
+                coordinatorRefs.meeting?.toggleRecording(trigger: .manual, sourceModeOverride: mode)
+            }
+            controller.onSelect = { [weak self] transcription in
+                guard let self else { return }
+                self.transcriptionViewModel.presentCompletedTranscription(transcription)
+                self.mainWindowState.navigateToTranscription(from: .library)
+                callbacks.onOpenMainWindow()
+            }
+            controller.onOpenSettings = { [weak self] in
+                self?.mainWindowState.navigateToSettings()
+                callbacks.onOpenMainWindow()
+            }
+            controller.onOpenLibrary = { [weak self] in
+                self?.mainWindowState.navigate(to: .library)
+                callbacks.onOpenMainWindow()
+            }
+            controller.onRevealInFinder = {
+                let folder = AutoSaveService.resolveFolder(scope: .meeting)
+                    ?? AutoSaveService.resolveFolder(scope: .transcription)
+                    ?? AutoSaveService.defaultFolder(for: .meeting)
+                NSWorkspace.shared.activateFileViewerSelecting([folder])
+            }
+            controller.show()
+            coordinatorRefs.island = controller
+            island = controller
+        } else {
+            island = nil
+        }
 
         // Calendar auto-start (ADR-017 Phases 1 + 2 — reminders +
         // pre-meeting countdown toast). The coordinator is a no-op when
@@ -381,7 +440,8 @@ final class AppEnvironmentConfigurer {
             dictationFlowCoordinator: dictationCoordinator,
             meetingRecordingFlowCoordinator: meetingCoordinator,
             hotkeyCoordinator: hotkeyCoordinator,
-            meetingAutoStartCoordinator: calendarCoordinator
+            meetingAutoStartCoordinator: calendarCoordinator,
+            islandController: island
         )
     }
 

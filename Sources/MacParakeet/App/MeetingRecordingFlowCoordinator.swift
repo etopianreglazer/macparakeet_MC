@@ -403,24 +403,31 @@ final class MeetingRecordingFlowCoordinator {
             }
             panelViewModel = panelVM
 
-            if pillController == nil {
-                pillController = MeetingRecordingPillController(viewModel: vm)
-            }
-            pillController?.onClick = { [weak self] in
-                self?.showMeetingPanel()
-            }
-            pillController?.onStopRecording = { [weak self] in
-                self?.sendEvent(.stopRequested)
-            }
-            pillController?.onOpenApp = { [weak self] in
-                NSApp.activate(ignoringOtherApps: true)
-                self?.showMeetingPanel()
-            }
-            pillController?.onCancelRecording = { [weak self] in
-                self?.confirmAndCancelRecording()
-            }
-            pillController?.onPauseToggle = { [weak self] in
-                self?.togglePause()
+            // Fork: when the ambient island is active it owns the floating
+            // recording UI (driven off this same `vm`), so the right-center
+            // sacred-geometry meeting pill is suppressed to avoid two pills.
+            // The shared `vm` and all polling below are unchanged — the island
+            // reads state/elapsed from it.
+            if !AppFeatures.islandReplacesDictationPill {
+                if pillController == nil {
+                    pillController = MeetingRecordingPillController(viewModel: vm)
+                }
+                pillController?.onClick = { [weak self] in
+                    self?.showMeetingPanel()
+                }
+                pillController?.onStopRecording = { [weak self] in
+                    self?.sendEvent(.stopRequested)
+                }
+                pillController?.onOpenApp = { [weak self] in
+                    NSApp.activate(ignoringOtherApps: true)
+                    self?.showMeetingPanel()
+                }
+                pillController?.onCancelRecording = { [weak self] in
+                    self?.confirmAndCancelRecording()
+                }
+                pillController?.onPauseToggle = { [weak self] in
+                    self?.togglePause()
+                }
             }
             if panelController == nil {
                 let controller = MeetingRecordingPanelController(viewModel: panelVM)
@@ -516,6 +523,18 @@ final class MeetingRecordingFlowCoordinator {
                     self.pillViewModel.state = .transcribing
                 }
                 self.pillController?.refreshState()
+            }
+            // Fork: the sacred-geometry pill is what normally drives the collapse
+            // animation's completion callback (advancing .completing → spinner /
+            // checkmark). With the island active that pill is suppressed, so
+            // nothing would fire it and the island would stick on "Wrapping up…".
+            // Advance it on a short timer that stands in for the collapse beat.
+            if AppFeatures.islandReplacesDictationPill {
+                let advance = pillViewModel.onCompletionAnimationFinished
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(360))
+                    advance?()
+                }
             }
             panelViewModel?.state = .transcribing
             panelViewModel?.micLevel = 0
