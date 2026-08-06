@@ -429,6 +429,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onOpenMainWindow: { [weak self] in
                     self?.windowCoordinator.openMainWindow()
                 },
+                onOpenSettingsOverlay: { [weak self] in
+                    self?.windowCoordinator.openSettingsOverlay()
+                },
+                onOpenLibraryOverlay: { [weak self] in
+                    self?.windowCoordinator.openLibraryOverlay()
+                },
                 onToggleMeetingRecordingFromHotkey: { [weak self] in
                     guard let self, !self.onboardingWindowController.isVisible else { return }
                     self.toggleMeetingRecording(originatesFromWindow: false, trigger: .hotkey)

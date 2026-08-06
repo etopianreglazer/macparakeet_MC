@@ -197,14 +197,8 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         applyChordShortcut(fileTranscriptionHotkeyTriggerProvider(), to: fileTranscriptionItem)
         transcribeFileMenuItems.append(fileTranscriptionItem)
         captureMenu.addItem(fileTranscriptionItem)
-        let youtubeItem = makeMenuItem(
-            title: "Transcribe from YouTube...",
-            action: #selector(transcribeFromYouTubeMenu),
-            key: ""
-        )
-        applyChordShortcut(youtubeTranscriptionHotkeyTriggerProvider(), to: youtubeItem)
-        transcribeYouTubeMenuItems.append(youtubeItem)
-        captureMenu.addItem(youtubeItem)
+        // Lean island direction: YouTube remains supported for existing data,
+        // but is no longer a user-facing capture entry point.
         if AppFeatures.meetingRecordingEnabled {
             let recordMeetingItem = makeMenuItem(
                 title: "Start Recording",
@@ -379,15 +373,8 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         menu.addItem(transcribeFileItem)
         transcribeFileMenuItems.append(transcribeFileItem)
 
-        let transcribeYouTubeItem = NSMenuItem(
-            title: "Transcribe from YouTube...",
-            action: #selector(transcribeFromYouTubeMenu),
-            keyEquivalent: ""
-        )
-        transcribeYouTubeItem.target = self
-        applyChordShortcut(youtubeTranscriptionHotkeyTriggerProvider(), to: transcribeYouTubeItem)
-        menu.addItem(transcribeYouTubeItem)
-        transcribeYouTubeMenuItems.append(transcribeYouTubeItem)
+        // YouTube entry point intentionally hidden; retain flow for existing
+        // records and future migration/recovery work.
 
         if AppFeatures.meetingRecordingEnabled {
             let recordMeetingItem = NSMenuItem(

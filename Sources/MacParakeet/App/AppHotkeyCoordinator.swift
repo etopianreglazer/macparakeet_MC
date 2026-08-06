@@ -361,18 +361,10 @@ final class AppHotkeyCoordinator {
     }
 
     func setupYouTubeTranscriptionHotkey() {
-        youtubeTranscriptionHotkeyManager = startAuxiliaryHotkey(
-            trigger: settingsViewModel.youtubeTranscriptionHotkeyTrigger,
-            conflicts: [
-                .init(settingsViewModel.hotkeyTrigger, mode: .bareModifierDictation),
-                .init(settingsViewModel.pushToTalkHotkeyTrigger, mode: .bareModifierDictation),
-                .init(settingsViewModel.meetingHotkeyTrigger),
-                .init(settingsViewModel.fileTranscriptionHotkeyTrigger),
-            ],
-            onTrigger: { [weak self] in
-                self?.onTriggerYouTubeTranscription()
-            }
-        )
+        // Lean island direction: retire the exposed YouTube trigger without
+        // deleting its service, records, or migration path.
+        youtubeTranscriptionHotkeyManager?.stop()
+        youtubeTranscriptionHotkeyManager = nil
     }
 
     /// Shared setup for auxiliary (non-dictation) hotkeys: disabled-check,

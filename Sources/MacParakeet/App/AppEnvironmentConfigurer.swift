@@ -26,6 +26,11 @@ final class AppEnvironmentConfigurer {
         let onMenuBarIconUpdate: () -> Void
         let onPresentEntitlementsAlert: (Error) -> Void
         let onOpenMainWindow: () -> Void
+        /// Island Slice 4: summon the dark, island-matched Settings overlay
+        /// instead of popping the full main window.
+        let onOpenSettingsOverlay: () -> Void
+        /// Island Slice 4: summon the dark, island-matched Library overlay.
+        let onOpenLibraryOverlay: () -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
         let onTriggerYouTubeTranscriptionFromHotkey: () -> Void
@@ -391,13 +396,14 @@ final class AppEnvironmentConfigurer {
                 self.mainWindowState.navigateToTranscription(from: .library)
                 callbacks.onOpenMainWindow()
             }
-            controller.onOpenSettings = { [weak self] in
-                self?.mainWindowState.navigateToSettings()
-                callbacks.onOpenMainWindow()
+            // Slice 4: chips summon dark, island-matched overlays (reusing
+            // SettingsView / TranscriptionLibraryView) rather than popping the
+            // main window — the island's self-sufficient path toward Slice 6.
+            controller.onOpenSettings = {
+                callbacks.onOpenSettingsOverlay()
             }
-            controller.onOpenLibrary = { [weak self] in
-                self?.mainWindowState.navigate(to: .library)
-                callbacks.onOpenMainWindow()
+            controller.onOpenLibrary = {
+                callbacks.onOpenLibraryOverlay()
             }
             controller.onRevealInFinder = {
                 let folder = AutoSaveService.resolveFolder(scope: .meeting)

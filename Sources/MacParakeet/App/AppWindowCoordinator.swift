@@ -33,6 +33,12 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
 
     private var mainWindow: NSWindow?
 
+    /// Island Slice 4: dark, island-matched floating overlays for Settings /
+    /// Library, summoned from the expanded island card instead of the main
+    /// window. One overlay at a time; reuses `SettingsView` /
+    /// `TranscriptionLibraryView` with the same view models the main window uses.
+    private let islandOverlay = IslandOverlayController()
+
     init(
         mainWindowState: MainWindowState,
         transcriptionViewModel: TranscriptionViewModel,
@@ -100,6 +106,39 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     func openMainWindowToSettings(tab: SettingsTab? = nil) {
         mainWindowState.navigateToSettings(tab: tab)
         openMainWindow()
+    }
+
+    /// Slice 4: present Settings in the island-matched overlay (reuses the same
+    /// `SettingsView` + view models the main window builds).
+    func openSettingsOverlay() {
+        islandOverlay.show {
+            SettingsView(
+                viewModel: settingsViewModel,
+                llmSettingsViewModel: llmSettingsViewModel,
+                updater: updaterController.updater,
+                transformHotkeys: transformsViewModel.transforms,
+                onHotkeyRecordingStateChanged: onHotkeyRecordingStateChanged
+            )
+        }
+    }
+
+    /// Slice 4: present the Library in the island-matched overlay. Selecting a
+    /// transcript still routes to the main window (transcript-as-overlay is
+    /// Slice 7); the overlay dismisses first so focus lands on the window.
+    func openLibraryOverlay() {
+        _ = libraryViewModel.loadTranscriptions()
+        islandOverlay.show {
+            TranscriptionLibraryView(
+                viewModel: libraryViewModel,
+                onSelect: { [weak self] transcription in
+                    guard let self else { return }
+                    self.islandOverlay.hide()
+                    self.transcriptionViewModel.presentCompletedTranscription(transcription)
+                    self.mainWindowState.navigateToTranscription(from: .library)
+                    self.openMainWindow()
+                }
+            )
+        }
     }
 
     func handleAppReopen() -> Bool {

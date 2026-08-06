@@ -15,6 +15,11 @@ struct TranscriptionLibraryView: View {
     @State private var pendingDelete: Transcription?
     @State private var audioSaveErrorMessage: String?
 
+    /// Shared namespace so the selected filter renders as one pill that *slides*
+    /// between chips (matching `SettingsTabBar`) instead of each chip fading its
+    /// own background — the latter reads as a "jump."
+    @Namespace private var filterPillNamespace
+
     private var visibleLibraryFilters: [LibraryFilter] {
         LibraryFilter.allCases.filter { filter in
             AppFeatures.meetingRecordingEnabled || filter != .meeting
@@ -46,7 +51,12 @@ struct TranscriptionLibraryView: View {
                         LibraryFilterChip(
                             filter: filter,
                             isSelected: viewModel.filter == filter,
-                            onTap: { viewModel.filter = filter }
+                            pillNamespace: filterPillNamespace,
+                            onTap: {
+                                withAnimation(DesignSystem.Animation.contentSwap) {
+                                    viewModel.filter = filter
+                                }
+                            }
                         )
                     }
                     Spacer()
@@ -329,6 +339,8 @@ struct TranscriptionLibraryView: View {
 private struct LibraryFilterChip: View {
     let filter: LibraryFilter
     let isSelected: Bool
+    /// Shared with the sibling chips so the selected pill slides between them.
+    let pillNamespace: Namespace.ID
     let onTap: () -> Void
 
     @State private var isHovered = false
@@ -336,11 +348,6 @@ private struct LibraryFilterChip: View {
     private var foreground: Color {
         if isSelected { return DesignSystem.Colors.accent }
         return isHovered ? DesignSystem.Colors.textPrimary : DesignSystem.Colors.textSecondary
-    }
-
-    private var fill: Color {
-        if isSelected { return DesignSystem.Colors.accent.opacity(0.12) }
-        return isHovered ? DesignSystem.Colors.textPrimary.opacity(0.06) : .clear
     }
 
     var body: some View {
@@ -352,9 +359,18 @@ private struct LibraryFilterChip: View {
             .foregroundStyle(foreground)
             .padding(.horizontal, DesignSystem.Spacing.md)
             .padding(.vertical, 8)
-            .background(Capsule().fill(fill))
+            // The selected fill is ONE matched pill (slides between chips); the
+            // hover fill is per-chip and never participates in the slide.
+            .background {
+                if isSelected {
+                    Capsule()
+                        .fill(DesignSystem.Colors.accent.opacity(0.12))
+                        .matchedGeometryEffect(id: "libraryFilterPill", in: pillNamespace)
+                } else if isHovered {
+                    Capsule().fill(DesignSystem.Colors.textPrimary.opacity(0.06))
+                }
+            }
             .animation(DesignSystem.Animation.hoverTransition, value: isHovered)
-            .animation(DesignSystem.Animation.hoverTransition, value: isSelected)
         }
         .buttonStyle(.plain)
         .onHover { hovering in

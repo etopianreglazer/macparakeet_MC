@@ -26,14 +26,17 @@ enum IslandVisual: Equatable {
 
 enum IslandLayout {
     /// The panel is a fixed, generous stage; the pill morphs *within* it,
-    /// horizontally centered and anchored a fixed distance above the bottom.
-    /// Nothing resizes the panel, so the morph stays smooth and the Dock gap
-    /// is constant.
+    /// horizontally centered and anchored just below the menu bar. Nothing
+    /// resizes the panel, so the morph stays smooth and its hit geometry never
+    /// changes with the lifecycle state.
     // The stage must be tall/wide enough to contain the expanded card, which
-    // grows upward from the bottom-center. The pill morphs *within* it.
+    // now grows downward from top-center so it stays clear of menu-bar items.
     static let panelWidth: CGFloat = 520
     static let panelHeight: CGFloat = 460
-    static let bottomInset: CGFloat = 16
+    /// Space between the menu-bar-safe stage edge and the visible island. Small
+    /// enough to read as attached to the MacBook sensor area, while retaining a
+    /// clean separation from the menu bar itself.
+    static let topInset: CGFloat = 8
 
     static let expandedSize = CGSize(width: 452, height: 412)
 
@@ -61,7 +64,13 @@ enum IslandLayout {
         guard visual == .idleCollapsed else { return pillRect(for: visual) }
         let w: CGFloat = 88
         let h: CGFloat = 30
-        return CGRect(x: (panelWidth - w) / 2, y: bottomInset - 2, width: w, height: h)
+        let pill = pillRect(for: .idleCollapsed)
+        return CGRect(
+            x: (panelWidth - w) / 2,
+            y: pill.midY - h / 2,
+            width: w,
+            height: h
+        )
     }
 
     /// Map recording-flow state (+ idle chrome) onto a visual form. The expanded
@@ -87,11 +96,13 @@ enum IslandLayout {
     }
 
     /// The pill's frame in panel (AppKit, bottom-left origin) coordinates.
+    /// The view is top-anchored, while AppKit coordinates grow upward, so the
+    /// shared tracker uses the corresponding top-derived y value.
     static func pillRect(for visual: IslandVisual) -> CGRect {
         let size = pillSize(for: visual)
         return CGRect(
             x: (panelWidth - size.width) / 2,
-            y: bottomInset,
+            y: panelHeight - topInset - size.height,
             width: size.width,
             height: size.height
         )
@@ -138,6 +149,7 @@ struct IslandView: View {
     var onCollapse: () -> Void
 
     @FocusState private var searchFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     private var visual: IslandVisual {
         IslandLayout.visual(
@@ -153,7 +165,7 @@ struct IslandView: View {
         // Capsule for small states, ~20pt rounded rect when large — one shape
         // whose radius morphs as the height grows.
         let radius = min(size.height / 2, 20)
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .top) {
             Color.clear
             if visual != .hidden {
                 ZStack {
@@ -169,17 +181,16 @@ struct IslandView: View {
                     radius: visual == .idleCollapsed ? 4 : (visual == .expanded ? 26 : 11),
                     y: visual == .idleCollapsed ? 2 : (visual == .expanded ? 16 : 6)
                 )
-                .padding(.bottom, IslandLayout.bottomInset)
-                .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .bottom)))
+                .padding(.top, IslandLayout.topInset)
+                .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         // A single smooth (no-bounce) curve drives the morph + cross-fade.
         .animation(.smooth(duration: 0.36), value: visual)
         // Interactive only when expanded (search field + buttons); otherwise
         // display-only, with the AppKit tracker owning hover/click.
         .allowsHitTesting(visual == .expanded)
-        .environment(\.colorScheme, .dark)
         .onChange(of: chrome.isExpanded) { _, expanded in
             if expanded {
                 DispatchQueue.main.async { searchFocused = true }
@@ -334,22 +345,23 @@ struct IslandView: View {
 
     // MARK: Background
 
-    /// Flat, dark, understated — matching the original app's pill rather than
-    /// the lookbook's frosted glass. Idle nub is a soft grey so it barely
-    /// registers; active states + the expanded card deepen to near-black.
+    /// Near-black, understated chrome that belongs near the physical sensor /
+    /// notch area. It stays black in both appearances (rather than a flat grey
+    /// that turns muddy in light mode); active states retain their semantic
+    /// red/green foregrounds for clear status contrast.
     private func roundedBackground(radius: CGFloat) -> some View {
         let fill: Color = {
             switch visual {
-            case .idleCollapsed: return Color(white: 0.24, opacity: 0.85)
-            case .expanded:      return Color(white: 0.13, opacity: 0.98)
-            default:             return Color.black.opacity(0.74)
+            case .idleCollapsed: return .black.opacity(colorScheme == .dark ? 0.94 : 0.88)
+            case .expanded:      return .black.opacity(colorScheme == .dark ? 0.90 : 0.86)
+            default:             return .black.opacity(colorScheme == .dark ? 0.84 : 0.80)
             }
         }()
         return RoundedRectangle(cornerRadius: radius, style: .continuous)
             .fill(fill)
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(.white.opacity(visual == .idleCollapsed ? 0.08 : 0.12), lineWidth: 0.5)
+                    .strokeBorder(.white.opacity(visual == .idleCollapsed ? 0.14 : 0.16), lineWidth: 0.5)
             )
     }
 }

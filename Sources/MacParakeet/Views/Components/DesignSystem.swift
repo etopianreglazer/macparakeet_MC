@@ -15,13 +15,15 @@ enum DesignSystem {
         static let accentDark = Color(light: .init(red: 0.173, green: 0.596, blue: 0.224),
                                       dark: .init(red: 0.224, green: 0.761, blue: 0.290))
 
-        // Backgrounds — warm off-whites, not pure white
+        // Backgrounds — warm off-whites in light mode; near-black layers in
+        // dark mode so Settings/Library summoned from the island feel like the
+        // same surface rather than a legacy grey window.
         static let background = Color(light: .init(red: 0.98, green: 0.98, blue: 0.97),
-                                      dark: .init(red: 0.11, green: 0.11, blue: 0.12))
+                                      dark: .init(red: 0.055, green: 0.055, blue: 0.060))
         static let surface = Color(light: .white,
-                                   dark: .init(red: 0.17, green: 0.17, blue: 0.18))
+                                   dark: .init(red: 0.085, green: 0.085, blue: 0.092))
         static let surfaceElevated = Color(light: .init(red: 0.96, green: 0.96, blue: 0.94),
-                                           dark: .init(red: 0.23, green: 0.23, blue: 0.24))
+                                           dark: .init(red: 0.125, green: 0.125, blue: 0.135))
 
         // Text — high contrast primaries
         static let textPrimary = Color(light: .init(red: 0.10, green: 0.10, blue: 0.10),
@@ -55,7 +57,7 @@ enum DesignSystem {
         static let rowHoverBackground = Color(light: .init(red: 0.96, green: 0.96, blue: 0.94),
                                               dark: .primary.opacity(0.06))
         static let cardBackground = Color(light: .white,
-                                          dark: .init(red: 0.17, green: 0.17, blue: 0.18))
+                                          dark: .init(red: 0.085, green: 0.085, blue: 0.092))
 
         // Playback
         static let playbackTrack = Color.primary.opacity(0.08)

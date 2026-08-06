@@ -134,7 +134,7 @@ private final class IslandContainerView: NSView {
 
 // MARK: - Island controller
 
-/// Owns the single, long-lived bottom-center island panel. The SwiftUI
+/// Owns the single, long-lived top-center island panel. The SwiftUI
 /// `IslandView` morphs through the capture lifecycle *and* the expanded
 /// ("Spotlight card") state — all in one panel, so clicking the nub grows it into
 /// the card with the same `.smooth` curve as the hover expansion.
@@ -231,14 +231,32 @@ final class IslandController: NSObject {
         panel.delegate = self
 
         if let screen = NSScreen.main {
-            let frame = screen.visibleFrame
-            panel.setFrameOrigin(NSPoint(x: frame.midX - bounds.width / 2, y: frame.origin.y + 12))
+            panel.setFrameOrigin(topCenterOrigin(for: screen, panelSize: bounds.size))
         }
 
         panel.orderFront(nil)
         self.panel = panel
         self.hostingView = hosting
         installClickMonitors()
+    }
+
+    /// Keeps the ambient surface directly below the menu-bar safe region rather
+    /// than over its controls. Use the *physical* screen frame for horizontal
+    /// centering: `visibleFrame` may exclude a left/right Dock and therefore
+    /// has a midpoint that is not the display/notch/webcam axis. Its maxY still
+    /// supplies the safe vertical boundary below the menu bar.
+    private func topCenterOrigin(for screen: NSScreen, panelSize: CGSize) -> NSPoint {
+        let visible = screen.visibleFrame
+        let hasTopSafeArea = screen.safeAreaInsets.top > 0
+        // A notched screen's menu-bar-safe area already protects its controls;
+        // begin exactly at that edge so the 8pt SwiftUI inset can nestle the
+        // idle nub beneath the sensor. Keep a modest gap on external/notchless
+        // displays where there is no physical center feature to align with.
+        let inset: CGFloat = hasTopSafeArea ? 0 : 10
+        return NSPoint(
+            x: screen.frame.midX - panelSize.width / 2,
+            y: visible.maxY - inset - panelSize.height
+        )
     }
 
     // MARK: Expand / collapse

@@ -5,9 +5,9 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** end of the session that built the **ambient island UI** — Chunk A (idle ·
-> hover · recording · transcribing · done lifecycle pill) and Chunk B (the expanded "Spotlight
-> card" as a true morph of the same pill).
+> **Last updated:** Slice 4 remains uncommitted and awaiting user interaction acceptance. A
+> top-center island layout/color slice is also implemented locally and installed for review. See
+> `plans/active/island-slice-4-overlays.md` and `plans/active/island-slice-5-top-center.md`.
 
 ---
 
@@ -27,11 +27,21 @@ side-by-side with upstream and **working**. The island is live and the user has 
 
 ## ⚠️ Immediate live state (check first next session)
 
-- The island work is **committed on `main`** (this session). Verify pushed:
-  `git -C /Users/mathewcleveland/macparakeet_MC log --oneline origin/main..main` — if empty it's
-  pushed. `gh auth` now works (SSH, account `etopianreglazer`), so `git push origin main` works
-  directly; the user has also pushed via GitHub Desktop before.
-- App installed at `/Applications/MacParakeet-MC.app`, last build = unified-morph island.
+- `main` has the committed island work at `3cb2d62b` (**Island UI: lifecycle pill + expanded card
+  as one morphing surface**). It is currently **one commit ahead of `origin/main`**; do not push
+  without the user's instruction.
+- **Slice 4 is implemented but uncommitted.** Its exact state and acceptance criteria live in
+  `plans/active/island-slice-4-overlays.md`.
+- `swift build --skip-update -q` and `git diff --check` passed on 2026-08-05. This verifies the
+  active changes compile and contain no whitespace errors; it does not replace live UI testing.
+- App installed at `/Applications/MacParakeet-MC.app` includes Slice 4 plus the uncommitted
+  top-center placement/color work. The release bundle was built, signed, and signature-verified on
+  2026-08-05. The remaining acceptance test is user interaction; synthetic pointer automation
+  cannot reliably operate the non-activating island on this machine.
+- **Finder path checkpoint passed:** all 7 local meeting records resolve to an existing stored
+  `meeting.m4a`; Library, transcript detail, and Meetings share the same guarded reveal action.
+  `MeetingAudioFileTests` passed 20/20. A disabled Show in Finder action indicates a missing/stale
+  source file, not a routing defect.
 - **4 pre-existing test failures** remain (fork rebrand debt, NOT island-related): `AppPathsTests`,
   `MainWindowStateTests.testPrimarySidebarOrderRespectsMeetingFeatureFlag`,
   `AppHotkeyCoordinatorTests.testRefreshAllHotkeysIsSkippedWhileSuspended`, 3×`SettingsViewModelTests`
@@ -53,23 +63,51 @@ side-by-side with upstream and **working**. The island is live and the user has 
 - ✅ **Island Chunk B** — expanded "Spotlight card" is the `.expanded` morph **state of the same
   pill** (not a separate window). `ExpandedIslandView` is its foreground; the panel becomes key on
   expand so the search field types; Esc/click-away collapses. Chips currently open the **windowed**
-  Settings/Library (glass overlays are still TODO — slice 4).
+  Settings/Library in the committed build.
+- ✅ **Island Slice 4 (uncommitted; build-verified)** — Settings and Library chips now summon a
+  shared dark floating overlay through `IslandOverlayController`, reusing the same `SettingsView`,
+  `TranscriptionLibraryView`, and view models as the main app. Library transcript selection still
+  dismisses the overlay and opens the transcript in the main window by design (Slice 7 owns that
+  transition). The current overlay is intentionally flat-dark, titled/closable, and explicitly
+  dismissed with close/Esc; it stays visible when the user switches apps.
+- ✅ **Top-center island layout/color (uncommitted; build + visual verified)** — the shared
+  `IslandLayout` now top-anchors the complete lifecycle surface. `IslandController` places the
+  fixed stage on the physical display center (`screen.frame.midX`) and below
+  `NSScreen.visibleFrame`'s menu-bar boundary. This avoids the 25pt right-shift caused when a
+  left-side Dock narrows `visibleFrame`. Idle is near-black in both appearances; active semantic
+  red/green states are unchanged. The installed build sits at the MacBook sensor/notch area
+  without covering menu-bar controls.
 
 ## What's NEXT — remaining island work
 
 Target visuals: `docs/design/final-lookbook.html`. Direction: `docs/fork-product-model.md`.
 
-1. **Glassiness (deferred polish)** — the user said the card "isn't glassy enough for my taste, but
-   that might be for later." Current fill is flat dark (`Color(white:0.13)`). Real `NSVisualEffectView`
-   vibrancy bled past rounded corners (can't be clipped from SwiftUI) — if revisited, round it via
-   `maskImage`, not SwiftUI `.clipShape`.
-2. **Glass Settings + Library overlays (slice 4)** — make the card's Settings/Library chips summon
-   dark-vibrancy overlays (reusing `SettingsView` / `TranscriptionLibraryView`) instead of opening the
-   main window.
-3. **Settings cleanup (slice 5)** — drop the now-inert push-to-talk + ⌘⇧M rows.
-4. **Retire the main window (slice 6)** — once overlays stand alone.
-5. **Transcript/summary layering (slice 7, separate track)** — verbatim + **Flag** pass, Distill/Decide
+**Product direction reset (2026-08-05):** use `plans/active/island-only-lean-roadmap.md` as the
+active roadmap. The island becomes the primary/sole workflow in phases; do not conflate its basic
+meeting recorder with the separate dictation pipeline. First safe implementation slice is hiding
+YouTube entry points only, retaining underlying code/data until replacement verification. That
+slice is now implemented locally and build-verified; it still needs live review alongside the
+uninstalled dark-overlay palette change.
+
+**Surface invariant (user-locked):** the small top-center pill is the idle/resting state of the
+same single morphing `IslandPanel` as the authoritative expanded black panel. It must never open
+a separate overlay/window. Library, Settings, detail, export, recording, transcribing, done, and
+optional live preview are router substates inside this one adaptive surface; Back/Close returns
+within it, normally to the idle pill.
+
+1. **Finish combined Slice 4 + top-center review** — have the user live-test the installed build:
+   confirm the top position is comfortable and does not block the menu bar, then open the island, Settings,
+   Library, search/type in both, repeatedly close/reopen and switch between them, close with Esc and
+   close control, switch apps and return, select a transcript (which must open the main-window
+   detail), and invoke every available Show in Finder action from Library/transcript contexts. If
+   accepted, commit the six active files and update the plan to COMPLETE.
+2. **Settings cleanup (slice 5)** — drop the now-inert push-to-talk + ⌘⇧M rows.
+3. **Retire the main window (slice 6)** — once overlays stand alone.
+4. **Transcript/summary layering (slice 7, separate track)** — verbatim + **Flag** pass, Distill/Decide
    as summary ops, **drop Polish**, stacked positional hotkeys.
+5. **Glassiness (deferred polish)** — current fill is intentionally flat dark (`Color(white:0.13)`).
+   Real `NSVisualEffectView` vibrancy bled past rounded corners; if revisited, round it via
+   `maskImage`, not SwiftUI `.clipShape`.
 
 ## Tribal knowledge / gotchas (hard-won this session)
 
@@ -108,6 +146,11 @@ Target visuals: `docs/design/final-lookbook.html`. Direction: `docs/fork-product
   `ExpandedIslandView.swift` (card foreground).
 - `Sources/MacParakeet/App/AppEnvironmentConfigurer.swift` — where the island is created + wired
   (record/select/settings/library/reveal callbacks). `AppDelegate.swift` retains it.
+- `plans/active/island-slice-4-overlays.md` — **current execution state and acceptance boundary**.
+  `Sources/MacParakeet/Views/Island/IslandOverlayController.swift` — Slice 4 panel host;
+  `AppWindowCoordinator.swift` — overlay construction and Library → main-window transition.
+- `plans/active/island-slice-5-top-center.md` — placement/color work layered on top of Slice 4;
+  `IslandView.swift` / `IslandController.swift` own its geometry and screen placement.
 - `docs/fork-product-model.md` — north star. `docs/design/final-lookbook.html` — visual target.
 - Auto-memory: `~/.claude/projects/-Users-mathewcleveland-macparakeet-MC/memory/`.
 
