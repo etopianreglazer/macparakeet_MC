@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build, sign, and install MacParakeet-MC.app into /Applications for personal use.
+# Build, sign, and install Splay.app into /Applications for personal use.
 #
 # This is the "apply a fix and get it into /Applications" loop for the fork. It:
 #   - builds a real .app bundle via SwiftPM (BUILD_SYSTEM=swiftpm) — no xcodebuild,
 #     so it works even when the machine's xcodebuild toolchain is broken
 #   - signs inside-out with your Apple Development certificate (stable identity →
 #     mic/accessibility/screen-recording permissions persist across rebuilds)
-#   - installs side-by-side as MacParakeet-MC (distinct bundle id + data folder),
-#     leaving any upstream MacParakeet install untouched
+#   - installs Splay while deliberately retaining the existing fork bundle id
+#     and data folder, so local transcripts and macOS permissions persist
 #
 # It deliberately does NOT notarize or use the hardened runtime — neither is needed
 # to run an app locally, and skipping the hardened runtime avoids library-validation
 # friction with the bundled yt-dlp/node helpers.
 #
 # Env overrides:
-#   APP_NAME       (default: MacParakeet-MC)
+#   APP_NAME       (default: Splay)
 #   BUNDLE_ID      (default: com.macparakeet.mc)
 #   VERSION        (default: 0.6.0)
 #   INSTALL_DIR    (default: /Applications)
 #   SIGN_IDENTITY  (default: first "Apple Development: …" cert in your keychain)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-APP_NAME="${APP_NAME:-MacParakeet-MC}"
+APP_NAME="${APP_NAME:-Splay}"
 BUNDLE_ID="${BUNDLE_ID:-com.macparakeet.mc}"
 VERSION="${VERSION:-0.6.0}"
 INSTALL_DIR="${INSTALL_DIR:-/Applications}"
@@ -46,7 +46,7 @@ echo "[1/4] Building ${APP_NAME}.app (SwiftPM release, no xcodebuild)…"
 APP_NAME="$APP_NAME" BUNDLE_ID="$BUNDLE_ID" VERSION="$VERSION" BUILD_SYSTEM=swiftpm \
   "$ROOT_DIR/scripts/dist/build_app_bundle.sh"
 
-echo "[2/4] Signing inside-out with $SIGN_IDENTITY…"
+echo "[2/4] Signing inside-out with ${SIGN_IDENTITY}…"
 sign() { codesign --force --sign "$SIGN_IDENTITY" "$@"; }
 
 # Sparkle.framework (inside-out: XPC services, nested apps, standalone execs, then framework)

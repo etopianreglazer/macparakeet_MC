@@ -90,18 +90,18 @@ final class MeetingRecordingFlowStateMachineTests: XCTestCase {
         )
     }
 
-    func testCaptureFailureWhileRecordingBeginsTranscription() {
+    func testCaptureFailureWhileRecordingIsExplicitErrorNotCompletion() {
         var machine = MeetingRecordingFlowStateMachine()
         _ = machine.handle(.startRequested)
         _ = machine.handle(.permissionsGranted(generation: 1))
         _ = machine.handle(.recordingStarted(generation: 1))
 
-        let effects = machine.handle(.captureFailed(generation: 1))
+        let effects = machine.handle(.captureFailed(generation: 1, message: "input lost"))
 
-        XCTAssertEqual(machine.state, .transcribing)
+        XCTAssertEqual(machine.state, .finishing(outcome: .error("input lost")))
         XCTAssertEqual(
             effects,
-            [.showTranscribingState, .updateMenuBar(.processing), .stopRecordingAndTranscribe]
+            [.showError("input lost"), .updateMenuBar(.idle), .finalizeFailedCapture, .startAutoDismissTimer(seconds: 8)]
         )
     }
 
@@ -110,7 +110,7 @@ final class MeetingRecordingFlowStateMachineTests: XCTestCase {
         _ = machine.handle(.startRequested)
         _ = machine.handle(.permissionsGranted(generation: 1))
 
-        let effects = machine.handle(.captureFailed(generation: 1))
+        let effects = machine.handle(.captureFailed(generation: 1, message: "input lost"))
 
         XCTAssertEqual(machine.state, .starting)
         XCTAssertTrue(effects.isEmpty)
@@ -122,7 +122,7 @@ final class MeetingRecordingFlowStateMachineTests: XCTestCase {
         _ = machine.handle(.permissionsGranted(generation: 1))
         _ = machine.handle(.recordingStarted(generation: 1))
 
-        let effects = machine.handle(.captureFailed(generation: 0))
+        let effects = machine.handle(.captureFailed(generation: 0, message: "input lost"))
 
         XCTAssertEqual(machine.state, .recording)
         XCTAssertTrue(effects.isEmpty)

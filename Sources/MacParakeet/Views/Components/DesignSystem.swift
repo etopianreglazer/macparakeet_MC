@@ -1,19 +1,20 @@
 import SwiftUI
 
 /// Centralized design tokens for consistent styling across the app.
-/// MacParakeet-MC design system — vivid grass-green accent, generous spacing, rounded headlines.
+/// Splay design system — near-black surfaces with a restrained violet accent.
 enum DesignSystem {
     // MARK: - Colors
 
     enum Colors {
-        // Accent — vivid "marker" grass green (MacParakeet-MC fork)
-        // Grass #39C24A (light) / #5BDB57 (dark). See docs/fork-product-model.md.
-        static let accent = Color(light: .init(red: 0.224, green: 0.761, blue: 0.290),
-                                  dark: .init(red: 0.357, green: 0.859, blue: 0.341))
-        static let accentLight = Color(light: .init(red: 0.894, green: 0.969, blue: 0.898),
-                                       dark: .init(red: 0.357, green: 0.859, blue: 0.341).opacity(0.14))
-        static let accentDark = Color(light: .init(red: 0.173, green: 0.596, blue: 0.224),
-                                      dark: .init(red: 0.224, green: 0.761, blue: 0.290))
+        // Splay violet, sampled from the supplied mark (#4A38A6). Light mode
+        // keeps enough depth for text and controls; dark mode lifts just enough
+        // to read on the island's near-black surface.
+        static let accent = Color(light: .init(red: 0.290, green: 0.220, blue: 0.651),
+                                  dark: .init(red: 0.620, green: 0.550, blue: 0.980))
+        static let accentLight = Color(light: .init(red: 0.925, green: 0.910, blue: 0.985),
+                                       dark: .init(red: 0.620, green: 0.550, blue: 0.980).opacity(0.16))
+        static let accentDark = Color(light: .init(red: 0.220, green: 0.160, blue: 0.520),
+                                      dark: .init(red: 0.490, green: 0.400, blue: 0.850))
 
         // Backgrounds — warm off-whites in light mode; near-black layers in
         // dark mode so Settings/Library summoned from the island feel like the

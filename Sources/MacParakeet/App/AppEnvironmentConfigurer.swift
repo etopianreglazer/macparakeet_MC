@@ -17,8 +17,8 @@ final class AppEnvironmentConfigurer {
         let hotkeyCoordinator: AppHotkeyCoordinator
         let meetingAutoStartCoordinator: MeetingAutoStartCoordinator?
         /// The ambient island panel (fork: `islandReplacesDictationPill`). Nil
-        /// when the flag is off. Long-lived; retained by `AppDelegate`. Owns the
-        /// expanded "Spotlight card" as a morph state of itself.
+        /// when the flag is off. Long-lived; retained by `AppDelegate`. Pure
+        /// indicator — anything it needs to say is a card (`SplayCardController`).
         let islandController: IslandController?
     }
 
@@ -26,11 +26,9 @@ final class AppEnvironmentConfigurer {
         let onMenuBarIconUpdate: () -> Void
         let onPresentEntitlementsAlert: (Error) -> Void
         let onOpenMainWindow: () -> Void
-        /// Island Slice 4: summon the dark, island-matched Settings overlay
-        /// instead of popping the full main window.
-        let onOpenSettingsOverlay: () -> Void
-        /// Island Slice 4: summon the dark, island-matched Library overlay.
-        let onOpenLibraryOverlay: () -> Void
+        /// The island idle/done click and the menu-bar "Open Splay" item present
+        /// the recents card (the second surface).
+        let onOpenRecentCard: () -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
         let onTriggerYouTubeTranscriptionFromHotkey: () -> Void
@@ -62,6 +60,8 @@ final class AppEnvironmentConfigurer {
     private let mainWindowState: MainWindowState
     private let meetingPillViewModel: MeetingRecordingPillViewModel
     private weak var liveMeetingCoordinator: MeetingRecordingFlowCoordinator?
+    /// Created by AppDelegate before slow bootstrap so the idle cue is immediate.
+    var earlyIslandController: IslandController?
 
     init(
         transcriptionViewModel: TranscriptionViewModel,
@@ -373,43 +373,21 @@ final class AppEnvironmentConfigurer {
         // card with the same animation as the hover. See docs/fork-product-model.md.
         let island: IslandController?
         if AppFeatures.islandReplacesDictationPill {
-            let controller = IslandController(
+            let controller = earlyIslandController ?? IslandController(
                 pillViewModel: meetingPillViewModel,
-                library: libraryViewModel,
                 idleVisible: settingsViewModel.showIdlePill
             )
             controller.onStop = {
                 coordinatorRefs.meeting?.toggleRecording(trigger: .manual)
             }
-            controller.onOpen = {
-                NSApp.activate(ignoringOtherApps: true)
-                callbacks.onOpenMainWindow()
-            }
-            // Expanded card actions.
+            // The on-screen record dot mirrors fn (mic-only by default).
             controller.onRecord = { mode in
                 guard !callbacks.isOnboardingVisible() else { return }
                 coordinatorRefs.meeting?.toggleRecording(trigger: .manual, sourceModeOverride: mode)
             }
-            controller.onSelect = { [weak self] transcription in
-                guard let self else { return }
-                self.transcriptionViewModel.presentCompletedTranscription(transcription)
-                self.mainWindowState.navigateToTranscription(from: .library)
-                callbacks.onOpenMainWindow()
-            }
-            // Slice 4: chips summon dark, island-matched overlays (reusing
-            // SettingsView / TranscriptionLibraryView) rather than popping the
-            // main window — the island's self-sufficient path toward Slice 6.
-            controller.onOpenSettings = {
-                callbacks.onOpenSettingsOverlay()
-            }
-            controller.onOpenLibrary = {
-                callbacks.onOpenLibraryOverlay()
-            }
-            controller.onRevealInFinder = {
-                let folder = AutoSaveService.resolveFolder(scope: .meeting)
-                    ?? AutoSaveService.resolveFolder(scope: .transcription)
-                    ?? AutoSaveService.defaultFolder(for: .meeting)
-                NSWorkspace.shared.activateFileViewerSelecting([folder])
+            // Any other pill click opens the recents card (the second surface).
+            controller.onOpenCard = {
+                callbacks.onOpenRecentCard()
             }
             controller.show()
             coordinatorRefs.island = controller

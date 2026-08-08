@@ -32,6 +32,31 @@ public struct MeetingMicrophoneMuteState: Sendable, Equatable {
     }
 }
 
+/// A small, polling-safe snapshot of the recording pipeline.  The UI uses
+/// this to distinguish a deliberate pause from a capture pipeline that is
+/// still nominally running but is no longer writing audio.
+public struct MeetingCaptureHealth: Sendable, Equatable {
+    public let mode: CaptureMode
+    public let startedAt: Date?
+    public let lastSuccessfulWriteAt: Date?
+    public let writtenFrameCount: Int64
+    public let persistedByteCount: Int64
+
+    public init(
+        mode: CaptureMode,
+        startedAt: Date? = nil,
+        lastSuccessfulWriteAt: Date? = nil,
+        writtenFrameCount: Int64 = 0,
+        persistedByteCount: Int64 = 0
+    ) {
+        self.mode = mode
+        self.startedAt = startedAt
+        self.lastSuccessfulWriteAt = lastSuccessfulWriteAt
+        self.writtenFrameCount = writtenFrameCount
+        self.persistedByteCount = persistedByteCount
+    }
+}
+
 public protocol MeetingRecordingServiceProtocol: Sendable {
     /// `title` lets callers (e.g., the calendar auto-start path) pre-name
     /// the recording. `nil` or whitespace-only falls back to the default
@@ -73,6 +98,7 @@ public protocol MeetingRecordingServiceProtocol: Sendable {
     var isMicrophoneMuted: Bool { get async }
     var canMuteMicrophone: Bool { get async }
     var microphoneMuteState: MeetingMicrophoneMuteState { get async }
+    var captureHealth: MeetingCaptureHealth { get async }
     var transcriptUpdates: AsyncStream<MeetingTranscriptUpdate> { get async }
 }
 
@@ -86,6 +112,10 @@ public extension MeetingRecordingServiceProtocol {
     func startRecording() async throws {
         try await startRecording(title: nil, sourceMode: nil)
     }
+
+    /// Keeps lightweight test doubles source-compatible. Production supplies
+    /// a real snapshot below.
+    var captureHealth: MeetingCaptureHealth { .init(mode: .stopped) }
 }
 
 public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
@@ -215,6 +245,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     private var transcriptAssembler = MeetingTranscriptAssembler()
     private var isTranscriptionLagging = false
     private var captureFailed = false
+    private var lastSuccessfulWriteAt: Date?
     private var interruptedSources: Set<AudioSource> = []
     private var sourceCaptureMetrics: [AudioSource: SourceCaptureMetrics] = [:]
     private var captureHealthMetrics = CaptureHealthMetrics()
@@ -399,6 +430,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         )
         self.writer = writer
         self.currentSession = session
+        self.lastSuccessfulWriteAt = nil
 
         do {
             let initialLock = MeetingRecordingLockFile(
@@ -663,6 +695,27 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         return output
     }
 
+    public var captureHealth: MeetingCaptureHealth {
+        let microphoneFrames = writer?.metrics(for: .microphone).writtenFrameCount ?? 0
+        let systemFrames = writer?.metrics(for: .system).writtenFrameCount ?? 0
+        let byteCount: Int64
+        if let session = currentSession {
+            byteCount = [session.microphoneAudioURL, session.systemAudioURL]
+                .reduce(0) { partial, url in
+                    partial + Int64((try? fileManager.attributesOfItem(atPath: url.path)[.size] as? NSNumber)?.int64Value ?? 0)
+                }
+        } else {
+            byteCount = 0
+        }
+        return MeetingCaptureHealth(
+            mode: captureMode,
+            startedAt: currentSession?.startedAt,
+            lastSuccessfulWriteAt: lastSuccessfulWriteAt,
+            writtenFrameCount: microphoneFrames + systemFrames,
+            persistedByteCount: byteCount
+        )
+    }
+
     public func completeTranscription(for recording: MeetingRecordingOutput) async {
         do {
             try lockFileStore.delete(folderURL: recording.folderURL)
@@ -873,6 +926,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
                 }
                 recordCaptureMetrics(for: .microphone, time: time)
                 try writer?.write(recordingBuffer, source: .microphone)
+                lastSuccessfulWriteAt = Date()
                 if handling == .recordAndProcess {
                     latestLevels.microphone = muted ? 0 : recordingBuffer.rmsLevel
                     if let samples = AudioChunker.extractAndResample(from: recordingBuffer) {
@@ -893,6 +947,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             do {
                 recordCaptureMetrics(for: .system, time: time)
                 try writer?.write(buffer, source: .system)
+                lastSuccessfulWriteAt = Date()
                 if handling == .recordAndProcess {
                     latestLevels.system = buffer.rmsLevel
                     updateSystemRms(with: latestLevels.system)
@@ -1449,6 +1504,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
 
     private func cleanupState() {
         currentSession = nil
+        lastSuccessfulWriteAt = nil
         currentNotes = nil
         currentLockFile = nil
         paused = false

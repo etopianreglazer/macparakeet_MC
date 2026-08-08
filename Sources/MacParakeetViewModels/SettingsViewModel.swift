@@ -507,6 +507,10 @@ public final class SettingsViewModel {
     // model lifetime; unsafe access lets deinit cancel/unregister.
     @ObservationIgnored nonisolated(unsafe) private var permissionPollingTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var microphoneTestTask: Task<Void, Never>?
+    /// Retained so the island's lightweight setup surface can offer a real
+    /// cancellation affordance while the existing safe runtime warm-up owns
+    /// download, cache validation, and retry behavior.
+    @ObservationIgnored nonisolated(unsafe) private var parakeetSetupTask: Task<Void, Never>?
     @ObservationIgnored nonisolated(unsafe) private var calendarSettingsObserver: NSObjectProtocol?
     /// Re-entrancy guard so `observeCalendarSettings()` doesn't fire `didSet`
     /// → notification → re-resolve → `didSet` → … on every user toggle.
@@ -1579,10 +1583,12 @@ public final class SettingsViewModel {
         parakeetStatusDetail = "Preparing speech model..."
         let operationContext = Observability.childOperationContext()
 
-        Task {
+        parakeetSetupTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.parakeetSetupTask = nil }
             do {
                 try await Observability.withOperationContext(operationContext) {
-                    try await runWithRetry(maxAttempts: 3, onRetry: { [weak self] attempt in
+                    try await self.runWithRetry(maxAttempts: 3, onRetry: { [weak self] attempt in
                         guard let self else { return }
                         self.parakeetStatusDetail = "Retrying speech model setup (attempt \(attempt)/3)..."
                     }) {
@@ -1646,6 +1652,21 @@ public final class SettingsViewModel {
                 }
             }
         }
+    }
+
+    /// Starts the default local-model setup from the island. Selecting
+    /// Parakeet is persisted through the existing engine preference; the
+    /// runtime then performs its own verified download/warm-up path.
+    public func beginIslandModelSetup() {
+        if speechEnginePreference != .parakeet {
+            speechEnginePreference = .parakeet
+        } else {
+            repairParakeetModel()
+        }
+    }
+
+    public func cancelIslandModelSetup() {
+        parakeetSetupTask?.cancel()
     }
 
     /// Removes a downloaded Parakeet build, freeing ~465 MB. The selected

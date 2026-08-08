@@ -28,13 +28,11 @@ public enum MeetingRecordingFlowEvent: Equatable, Sendable {
     case startFailed(generation: Int, message: String)
     case stopRequested
     case cancelRequested
-    /// Emitted by the pill polling task when it detects that audio capture
-    /// has stopped unexpectedly while the state machine still believes a
-    /// recording is in progress (e.g., a USB mic was unplugged mid-meeting,
-    /// `MeetingRecordingService.failCapture` ran). Routes through the same
-    /// stop+transcribe path as `.stopRequested` so whatever audio was
-    /// captured before the failure still becomes a saved Transcription.
-    case captureFailed(generation: Int)
+    /// Emitted by the recording health loop when capture stops or stalls.
+    /// This is deliberately distinct from a user-requested stop: incomplete
+    /// audio is retained for recovery, but must never appear as a normal,
+    /// completed transcription.
+    case captureFailed(generation: Int, message: String)
     case transcriptionCompleted(generation: Int, transcriptionID: UUID)
     case transcriptionFailed(generation: Int, message: String)
     case dismissRequested
@@ -47,6 +45,7 @@ public enum MeetingRecordingFlowEffect: Equatable, Sendable {
     case startRecording
     case showTranscribingState
     case stopRecordingAndTranscribe
+    case finalizeFailedCapture
     case showCompleted
     case showError(String)
     case cancelRecording
@@ -121,10 +120,10 @@ public struct MeetingRecordingFlowStateMachine: Equatable, Sendable {
             state = .transcribing
             return [.showTranscribingState, .updateMenuBar(.processing), .stopRecordingAndTranscribe]
 
-        case (.recording, .captureFailed(let gen)):
+        case (.recording, .captureFailed(let gen, let message)):
             guard gen == generation else { return [] }
-            state = .transcribing
-            return [.showTranscribingState, .updateMenuBar(.processing), .stopRecordingAndTranscribe]
+            state = .finishing(outcome: .error(message))
+            return [.showError(message), .updateMenuBar(.idle), .finalizeFailedCapture, .startAutoDismissTimer(seconds: 8)]
 
         case (.transcribing, .transcriptionCompleted(let gen, let transcriptionID)):
             guard gen == generation else { return [] }

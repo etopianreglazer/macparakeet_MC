@@ -5,21 +5,24 @@ import MacParakeetViewModels
 
 // MARK: - Tracking layer
 
-/// Routes hover + clicks for the non-expanded pill states. The SwiftUI content
-/// is display-only in those states and this AppKit view owns interaction
-/// (hover/click on a non-key floating panel can't go through SwiftUI). When the
-/// island is *expanded*, this view steps aside (hitTest → nil) so the real
-/// SwiftUI controls (search field, buttons) receive events directly.
+/// Routes hover + clicks for the pill. The SwiftUI content is display-only, so
+/// this AppKit view owns interaction (hover/click on a non-key floating panel
+/// can't go through SwiftUI). The island is an indicator only — a click opens a
+/// card (the second surface); it never expands the pill into a control surface.
 private final class IslandTrackingView: NSView {
     var stateProvider: () -> MeetingRecordingPillViewModel.PillState = { .idle }
     var idleVisibleProvider: () -> Bool = { true }
-    var expandedProvider: () -> Bool = { false }
+    var heldOpenProvider: () -> Bool = { false }
+    var notchProvider: () -> Bool = { false }
 
     var onHoverEnter: (() -> Void)?
     var onHoverExit: (() -> Void)?
-    var onIdleClick: (() -> Void)?
+    /// A click anywhere on the pill (other than the record dot / stop zone) opens
+    /// the recents card.
+    var onOpenCard: (() -> Void)?
+    /// The record dot inside the ready pill was clicked — start a recording.
+    var onRecordClick: (() -> Void)?
     var onStopClick: (() -> Void)?
-    var onBodyClick: (() -> Void)?
 
     /// Cursor is over the idle nub's hover zone (grows the pill to the hint).
     private var hovering = false
@@ -41,11 +44,13 @@ private final class IslandTrackingView: NSView {
             for: stateProvider(),
             hovered: hovering,
             idleVisible: idleVisibleProvider(),
-            expanded: expandedProvider()
+            heldOpen: heldOpenProvider()
         )
     }
 
-    func currentActiveRect() -> CGRect { IslandLayout.hitRect(for: currentVisual()) }
+    func currentActiveRect() -> CGRect {
+        IslandLayout.hitRect(for: currentVisual(), notchAttached: notchProvider())
+    }
 
     override func mouseExited(with event: NSEvent) {
         if hovering { hovering = false; onHoverExit?() }
@@ -53,12 +58,20 @@ private final class IslandTrackingView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         // Hover only matters in the idle form.
-        guard !expandedProvider(), stateProvider() == .idle else {
+        guard stateProvider() == .idle else {
             if hovering { hovering = false; onHoverExit?() }
             return
         }
         let point = convert(event.locationInWindow, from: nil)
-        if currentActiveRect().contains(point) {
+        // Hysteresis: a "reach the notch/back" zone activates the ready pill; a
+        // larger "stay while on the tile" zone keeps it active so crossing onto
+        // the pill no longer snaps it back to idle.
+        let enterRect = notchProvider()
+            ? IslandLayout.notchRevealRect()
+            : IslandLayout.hitRect(for: .idleCollapsed, notchAttached: false)
+        let stayRect = IslandLayout.hoverStayRect(notchAttached: notchProvider())
+        let active = hovering ? stayRect : enterRect
+        if active.contains(point) {
             if !hovering { hovering = true; onHoverEnter?() }
         } else {
             if hovering { hovering = false; onHoverExit?() }
@@ -70,19 +83,24 @@ private final class IslandTrackingView: NSView {
     }
 
     /// Dispatch a click at `point` (this view's coordinates). Shared by the
-    /// AppKit `mouseDown` path and the controller's event monitors. No-op when
-    /// expanded (SwiftUI owns interaction then).
+    /// AppKit `mouseDown` path and the controller's event monitors.
     func dispatchClick(at point: CGPoint) {
-        guard !expandedProvider() else { return }
         let visual = currentVisual()
-        guard IslandLayout.hitRect(for: visual).contains(point) else { return }
+        guard IslandLayout.hitRect(for: visual, notchAttached: notchProvider()).contains(point) else { return }
 
         switch visual {
-        case .idleCollapsed, .idleHover:
+        case .idleCollapsed:
             hovering = false
-            onIdleClick?()
+            onOpenCard?()
+        case .idleHover:
+            hovering = false
+            if IslandLayout.recordButtonRect(notchAttached: notchProvider()).contains(point) {
+                onRecordClick?()          // the record dot → record
+            } else {
+                onOpenCard?()             // elsewhere on the pill → recents card
+            }
         case .recording:
-            let pill = IslandLayout.pillRect(for: visual)
+            let pill = IslandLayout.pillRect(for: visual, notchAttached: notchProvider())
             let stopRect = CGRect(
                 x: pill.maxX - IslandLayout.stopHitWidth,
                 y: pill.minY,
@@ -91,28 +109,38 @@ private final class IslandTrackingView: NSView {
             )
             if stopRect.contains(point) { onStopClick?() }
         case .done:
-            onBodyClick?()
-        case .transcribing, .hidden, .expanded:
+            onOpenCard?()
+        case .transcribing, .hidden:
             break
         }
     }
 
-    // When expanded, step aside so the SwiftUI controls below receive clicks;
-    // otherwise behave as a subview hit target (the container gates the rect).
+    // Behave as a subview hit target (the container gates the active rect).
     override func hitTest(_ point: NSPoint) -> NSView? {
-        if expandedProvider() { return nil }
-        return super.hitTest(point)
+        super.hitTest(point)
     }
 }
 
 // MARK: - Panel
 
-/// Non-activating, but able to become key on demand so the expanded card's
-/// search field can type. Showing/hovering never calls `makeKey`, so the ambient
-/// pill doesn't steal focus until the card is opened.
+/// A borderless floating panel. It stays non-key (ambient) — the island never
+/// takes focus, since it holds no controls the keyboard drives.
 private final class IslandPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+}
+
+/// A lightweight AppKit cue for the otherwise hidden camera-housing anchor.
+/// Retired in the two-surface design (the bloom + fiber stripe are the light
+/// now); kept inert/hidden so its layer work never runs.
+private final class IslandNotchCueView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        isHidden = true
+    }
+    required init?(coder: NSCoder) { nil }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 // MARK: - Container (the panel's contentView)
@@ -135,40 +163,51 @@ private final class IslandContainerView: NSView {
 // MARK: - Island controller
 
 /// Owns the single, long-lived top-center island panel. The SwiftUI
-/// `IslandView` morphs through the capture lifecycle *and* the expanded
-/// ("Spotlight card") state — all in one panel, so clicking the nub grows it into
-/// the card with the same `.smooth` curve as the hover expansion.
+/// `IslandView` morphs through the capture lifecycle (dormant → recording →
+/// transcribing → done) as a pure indicator. Interaction is minimal: hover grows
+/// the nub, the record dot records, the stop zone stops, and any other click
+/// opens a card (`onOpenCard`) — the island never becomes a control surface.
 @MainActor
 final class IslandController: NSObject {
+    private var anchorPanel: NSPanel?
     private var panel: IslandPanel?
     private var hostingView: NSHostingView<IslandView>?
     private var trackingView: IslandTrackingView?
+    private var notchCue: IslandNotchCueView?
+    /// The ambient bloom rendered on its own panel *below* app windows, so the
+    /// light sprays onto the wallpaper instead of hovering over the user's work.
+    private var glowPanel: NSPanel?
+    private var glowHosting: NSHostingView<SplayGlowView>?
     private var localClickMonitor: Any?
     private var globalClickMonitor: Any?
+    private var defaultsObserver: NSObjectProtocol?
+    private var appResignActiveObserver: NSObjectProtocol?
+    private var ambientVisibilityTimer: Timer?
+    private var isExplicitlyHiding = false
 
     private let pillViewModel: MeetingRecordingPillViewModel
-    private let library: TranscriptionLibraryViewModel
     private let chrome = IslandChromeModel()
-    private let expandedModel = ExpandedIslandModel()
-    /// Guards click-away dismissal so the makeKey during expand can't instantly
-    /// collapse the card.
-    private var dismissArmed = false
+
+    private var placementPreference: IslandPlacementPreference {
+        IslandPlacementPreference(rawValue: UserDefaults.standard.string(forKey: IslandPlacementPreference.defaultsKey) ?? "") ?? .automatic
+    }
+
+    private func resolvesNotch(for screen: NSScreen) -> Bool {
+        let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        let builtIn = number.map { CGDisplayIsBuiltin(CGDirectDisplayID($0.uint32Value)) != 0 } ?? false
+        let auxiliary = !(screen.auxiliaryTopLeftArea ?? .zero).isEmpty || !(screen.auxiliaryTopRightArea ?? .zero).isEmpty
+        return IslandPlacementPreference.resolved(placementPreference, safeAreaTop: screen.safeAreaInsets.top, hasAuxiliaryTopArea: auxiliary, isBuiltIn: builtIn) == .notch
+    }
 
     /// Stop square clicked while recording.
     var onStop: (() -> Void)?
-    /// Done "Open" clicked.
-    var onOpen: (() -> Void)?
-    /// Expanded card: start a recording with the chosen source mode.
+    /// Start a recording with the chosen source mode (the on-screen record dot).
     var onRecord: ((MeetingAudioSourceMode) -> Void)?
-    /// Expanded card: open a chosen recent transcription.
-    var onSelect: ((Transcription) -> Void)?
-    var onOpenSettings: (() -> Void)?
-    var onOpenLibrary: (() -> Void)?
-    var onRevealInFinder: (() -> Void)?
+    /// A pill click (idle / done) opens the recents card — the second surface.
+    var onOpenCard: (() -> Void)?
 
-    init(pillViewModel: MeetingRecordingPillViewModel, library: TranscriptionLibraryViewModel, idleVisible: Bool) {
+    init(pillViewModel: MeetingRecordingPillViewModel, idleVisible: Bool) {
         self.pillViewModel = pillViewModel
-        self.library = library
         self.chrome.idleVisible = idleVisible
         super.init()
     }
@@ -179,23 +218,7 @@ final class IslandController: NSObject {
         let bounds = NSRect(x: 0, y: 0, width: IslandLayout.panelWidth, height: IslandLayout.panelHeight)
         let container = IslandContainerView(frame: bounds)
 
-        let view = IslandView(
-            pill: pillViewModel,
-            chrome: chrome,
-            expandedModel: expandedModel,
-            library: library,
-            onRecord: { [weak self] in
-                guard let self else { return }
-                let mode = self.expandedModel.sourceMode
-                self.collapse()
-                self.onRecord?(mode)
-            },
-            onSelect: { [weak self] t in self?.collapse(); self?.onSelect?(t) },
-            onOpenSettings: { [weak self] in self?.collapse(); self?.onOpenSettings?() },
-            onOpenLibrary: { [weak self] in self?.collapse(); self?.onOpenLibrary?() },
-            onRevealInFinder: { [weak self] in self?.collapse(); self?.onRevealInFinder?() },
-            onCollapse: { [weak self] in self?.collapse() }
-        )
+        let view = IslandView(pill: pillViewModel, chrome: chrome)
         let hosting = NSHostingView(rootView: view)
         hosting.frame = bounds
         hosting.autoresizingMask = [.width, .height]
@@ -204,40 +227,122 @@ final class IslandController: NSObject {
         tracker.autoresizingMask = [.width, .height]
         tracker.stateProvider = { [weak self] in self?.pillViewModel.state ?? .idle }
         tracker.idleVisibleProvider = { [weak self] in self?.chrome.idleVisible ?? true }
-        tracker.expandedProvider = { [weak self] in self?.chrome.isExpanded ?? false }
+        tracker.heldOpenProvider = { [weak self] in self?.chrome.heldOpen ?? false }
+        tracker.notchProvider = { [weak self] in self?.chrome.isNotchResting ?? false }
         tracker.onHoverEnter = { [weak self] in self?.chrome.isHovered = true }
         tracker.onHoverExit = { [weak self] in self?.chrome.isHovered = false }
-        tracker.onIdleClick = { [weak self] in self?.chrome.isHovered = false; self?.expand() }
+        tracker.onOpenCard = { [weak self] in
+            self?.chrome.isHovered = false
+            self?.onOpenCard?()
+        }
+        tracker.onRecordClick = { [weak self] in
+            // The on-screen record dot mirrors pressing fn: start a mic recording
+            // (solo voice notes are the common case; hardware fn keeps its
+            // single=mic / double=mic+system behaviour).
+            self?.chrome.isHovered = false
+            self?.onRecord?(.microphoneOnly)
+        }
         tracker.onStopClick = { [weak self] in self?.onStop?() }
-        tracker.onBodyClick = { [weak self] in self?.onOpen?() }
         trackingView = tracker
 
         container.addSubview(hosting)   // display (below)
+        let cue = IslandNotchCueView(frame: bounds)
+        cue.autoresizingMask = [.width, .height]
+        container.addSubview(cue)       // decorative and always mouse-transparent
         container.addSubview(tracker)   // events (on top)
         container.activeRectProvider = { [weak tracker] in tracker?.currentActiveRect() ?? .zero }
 
         let panel = IslandPanel(
             contentRect: bounds,
-            styleMask: [.nonactivatingPanel, .borderless],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
+        // Hover-enter lives entirely in the tracker's `mouseMoved`. An NSPanel
+        // does NOT post mouseMoved to its views unless this is enabled, so without
+        // it the resting nub never grew when the cursor reached it. (mouseExited
+        // still comes via the tracking area regardless.)
+        panel.acceptsMouseMovedEvents = true
         panel.level = .floating
+        panel.hidesOnDeactivate = false
+        // Splay is an ambient global control, not a document window. Joining
+        // every Space keeps the physical-top companion visible when the user
+        // switches desktops or enters a browser/full-screen Space; its own
+        // transparent hit testing still prevents a broad interaction overlay.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = container
-        panel.delegate = self
 
         if let screen = NSScreen.main {
-            panel.setFrameOrigin(topCenterOrigin(for: screen, panelSize: bounds.size))
+            chrome.isNotchResting = resolvesNotch(for: screen)
+            chrome.notchCueInset = 0
+            if chrome.isNotchResting {
+                // Keep the hardware-sized anchor inert behind the camera
+                // housing, but render the visible companion at the *physical*
+                // top edge. `.floating` is menu-safe-clamped on this Mac; a
+                // pop-up-menu companion is the narrow, intentional exception.
+                panel.level = .popUpMenu
+                let anchor = NSPanel(contentRect: NSRect(x: screen.frame.midX - 90, y: screen.frame.maxY - screen.safeAreaInsets.top, width: 180, height: screen.safeAreaInsets.top), styleMask: [.borderless], backing: .buffered, defer: false)
+                anchor.isOpaque = false; anchor.backgroundColor = .clear; anchor.level = .statusBar; anchor.ignoresMouseEvents = true
+                anchor.orderFront(nil); anchorPanel = anchor
+                panel.setFrameOrigin(NSPoint(x: screen.frame.midX - bounds.width / 2, y: screen.frame.maxY - bounds.height))
+            } else { panel.setFrameOrigin(topCenterOrigin(for: screen, panelSize: bounds.size)) }
         }
 
-        panel.orderFront(nil)
+        panel.orderFrontRegardless()
+        AudioCaptureDiagnostics.append("splay_island ordered visible=\(panel.isVisible) frame=\(NSStringFromRect(panel.frame)) level=\(panel.level.rawValue) idle=\(chrome.idleVisible) notch=\(chrome.isNotchResting)")
         self.panel = panel
         self.hostingView = hosting
+        self.notchCue = cue
+        installGlowPanel()
+        defaultsObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.repositionPanel() }
+        }
+        // Switching an LSUIElement/accessory app away from the foreground can
+        // order its panels out despite `hidesOnDeactivate = false`. The island
+        // is intentionally ambient, so restore only its already-visible,
+        // non-key surface on the next turn of the run loop.
+        appResignActiveObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didResignActiveNotification,
+            object: NSApp,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.restoreAmbientVisibility() }
+        }
+        // Accessory apps can lose a floating/popup companion during a later
+        // Space transaction without emitting a public window-order-out event.
+        // Keep this one ambient (never-key) surface ordered while Splay lives.
+        ambientVisibilityTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isExplicitlyHiding else { return }
+                self.restoreAmbientVisibility()
+            }
+        }
         installClickMonitors()
+    }
+
+    /// Re-order the existing ambient panels after an activation-policy change
+    /// or resignation. This intentionally does not make Splay key or focus a
+    /// text field, and transparent regions remain pass-through.
+    func restoreAmbientVisibility() {
+        // `setActivationPolicy(.accessory)` hides windows asynchronously. A
+        // same-turn `orderFrontRegardless()` is therefore overwritten by the
+        // system's pending hide; reorder after that policy transaction drains.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let panel = self.panel else { return }
+            // Accessory-policy transitions can hide the whole app, in which
+            // case ordering a panel alone is ignored by WindowServer. Unhide
+            // without activating/focusing Splay, then restore the ambient card.
+            if NSApp.isHidden { NSApp.unhide(nil) }
+            if self.chrome.isNotchResting { self.anchorPanel?.orderFrontRegardless() }
+            panel.orderFrontRegardless()
+            // Re-assert the desktop glow; its level keeps it below normal windows.
+            self.glowPanel?.orderFrontRegardless()
+        }
     }
 
     /// Keeps the ambient surface directly below the menu-bar safe region rather
@@ -246,51 +351,84 @@ final class IslandController: NSObject {
     /// has a midpoint that is not the display/notch/webcam axis. Its maxY still
     /// supplies the safe vertical boundary below the menu bar.
     private func topCenterOrigin(for screen: NSScreen, panelSize: CGSize) -> NSPoint {
-        let visible = screen.visibleFrame
-        let hasTopSafeArea = screen.safeAreaInsets.top > 0
-        // A notched screen's menu-bar-safe area already protects its controls;
-        // begin exactly at that edge so the 8pt SwiftUI inset can nestle the
-        // idle nub beneath the sensor. Keep a modest gap on external/notchless
-        // displays where there is no physical center feature to align with.
-        let inset: CGFloat = hasTopSafeArea ? 0 : 10
-        return NSPoint(
-            x: screen.frame.midX - panelSize.width / 2,
-            y: visible.maxY - inset - panelSize.height
+        IslandPlacementPreference.panelOrigin(
+            screenFrame: screen.frame, visibleFrame: screen.visibleFrame,
+            safeAreaTop: screen.safeAreaInsets.top, panelSize: panelSize,
+            preference: placementPreference
         )
     }
 
-    // MARK: Expand / collapse
-
-    private func expand() {
-        guard !chrome.isExpanded, let panel else { return }
-        expandedModel.searchText = ""
-        expandedModel.sourceMode = .microphoneOnly
-        _ = library.loadTranscriptions()
-        chrome.isExpanded = true
-        dismissArmed = false
-        NSApp.activate(ignoringOtherApps: true)
-        panel.makeKey()
-        // Arm click-away dismissal only after the key handoff settles.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-            self?.dismissArmed = true
+    /// Re-resolve notch mode and re-anchor the (fixed-size) panel + glow. The
+    /// panel never resizes — it is a stage the pill morphs within — so this only
+    /// runs when the placement preference or screen geometry may have changed.
+    private func repositionPanel() {
+        guard let panel, let screen = panel.screen ?? NSScreen.main else { return }
+        chrome.isNotchResting = resolvesNotch(for: screen)
+        panel.level = chrome.isNotchResting ? .popUpMenu : .floating
+        chrome.notchCueInset = 0
+        positionGlowPanel()
+        let size = CGSize(width: IslandLayout.panelWidth, height: IslandLayout.panelHeight)
+        let origin: NSPoint
+        if chrome.isNotchResting {
+            origin = NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height)
+        } else {
+            origin = topCenterOrigin(for: screen, panelSize: size)
         }
+        panel.setFrame(NSRect(origin: origin, size: size), display: true)
     }
 
-    private func collapse() {
-        guard chrome.isExpanded else { return }
-        chrome.isExpanded = false
-        dismissArmed = false
+    // MARK: Desktop glow panel (the light spills onto the wallpaper, below windows)
+
+    /// Build the second panel that renders only the ambient bloom, at a level
+    /// *below* normal app windows. The pill panel stays on top and carries state;
+    /// this glow drops behind whatever window is open, so it never distracts as a
+    /// foreground overlay. It is inert (ignores all mouse events).
+    private func installGlowPanel() {
+        let size = CGSize(width: IslandLayout.glowPanelWidth, height: IslandLayout.glowPanelHeight)
+        let glow = NSPanel(contentRect: NSRect(origin: .zero, size: size),
+                           styleMask: [.borderless], backing: .buffered, defer: false)
+        glow.isOpaque = false
+        glow.backgroundColor = .clear
+        glow.hasShadow = false
+        glow.ignoresMouseEvents = true
+        // One below `.normal` → above the wallpaper/desktop icons, below every
+        // app window, so the glow reads as light on the desktop itself.
+        glow.level = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
+        glow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        let hosting = NSHostingView(rootView: SplayGlowView(pill: pillViewModel, chrome: chrome))
+        hosting.frame = NSRect(origin: .zero, size: size)
+        hosting.autoresizingMask = [.width, .height]
+        glow.contentView = hosting
+        self.glowPanel = glow
+        self.glowHosting = hosting
+        positionGlowPanel()
+        glow.orderFrontRegardless()   // visible, but stays below normal windows via its level
     }
 
-    // MARK: Click monitors (non-expanded states only)
+    /// Keep the glow panel aligned with the pill's idle frame.
+    private func positionGlowPanel() {
+        guard let glow = glowPanel, let screen = panel?.screen ?? NSScreen.main else { return }
+        let size = CGSize(width: IslandLayout.glowPanelWidth, height: IslandLayout.glowPanelHeight)
+        let origin: NSPoint
+        if chrome.isNotchResting {
+            origin = NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height)
+        } else {
+            origin = IslandPlacementPreference.panelOrigin(
+                screenFrame: screen.frame, visibleFrame: screen.visibleFrame,
+                safeAreaTop: screen.safeAreaInsets.top, panelSize: size,
+                preference: placementPreference
+            )
+        }
+        glow.setFrame(NSRect(origin: origin, size: size), display: true)
+    }
+
+    // MARK: Click monitors
 
     /// Catch the click at the event level rather than relying on the panel's view
-    /// hit-testing (unreliable for a non-key floating panel). Only active in the
-    /// non-expanded states; when expanded the panel is key and SwiftUI handles
-    /// clicks directly.
+    /// hit-testing (unreliable for a non-key floating panel).
     private func installClickMonitors() {
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
-            guard let self, !self.chrome.isExpanded,
+            guard let self,
                   let panel = self.panel, event.window === panel,
                   let tracker = self.trackingView else { return event }
             let local = tracker.convert(event.locationInWindow, from: nil)
@@ -302,7 +440,7 @@ final class IslandController: NSObject {
         }
 
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
-            guard let self, !self.chrome.isExpanded,
+            guard let self,
                   let panel = self.panel, let tracker = self.trackingView else { return }
             let screenPoint = event.locationInWindow   // screen coords for global events
             let local = CGPoint(x: screenPoint.x - panel.frame.minX, y: screenPoint.y - panel.frame.minY)
@@ -319,16 +457,28 @@ final class IslandController: NSObject {
     }
 
     func hide() {
+        isExplicitlyHiding = true
         removeClickMonitors()
-        panel?.delegate = nil
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
+        defaultsObserver = nil
+        if let appResignActiveObserver { NotificationCenter.default.removeObserver(appResignActiveObserver) }
+        appResignActiveObserver = nil
+        ambientVisibilityTimer?.invalidate()
+        ambientVisibilityTimer = nil
         panel?.orderOut(nil)
+        anchorPanel?.orderOut(nil)
+        glowPanel?.orderOut(nil)
+        anchorPanel = nil
         panel = nil
         hostingView = nil
         trackingView = nil
+        notchCue = nil
+        glowPanel = nil
+        glowHosting = nil
     }
 
-    /// Reflect the user's "show idle pill" preference. Recording-flow + expanded
-    /// states are shown regardless; this only governs the idle nub/hover.
+    /// Reflect the user's "show idle pill" preference. Recording-flow states are
+    /// shown regardless; this only governs the idle nub/hover.
     func setIdleVisible(_ visible: Bool) {
         chrome.idleVisible = visible
     }
@@ -337,15 +487,11 @@ final class IslandController: NSObject {
     func resetHover() {
         chrome.isHovered = false
     }
-}
 
-// MARK: - Dismiss the expanded card on click-away
-
-extension IslandController: NSWindowDelegate {
-    nonisolated func windowDidResignKey(_ notification: Notification) {
-        Task { @MainActor in
-            guard self.chrome.isExpanded, self.dismissArmed else { return }
-            self.collapse()
-        }
+    /// Hold the idle island in its ready ("open") form while a card is showing, so
+    /// the two surfaces open and close together. The `IslandView` animates the
+    /// morph on its `value: visual` transaction.
+    func setHeldOpen(_ open: Bool) {
+        chrome.heldOpen = open
     }
 }

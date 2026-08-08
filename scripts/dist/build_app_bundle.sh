@@ -583,12 +583,16 @@ cat >"$INFO_PLIST" <<EOF
   <string>${MIN_MACOS_VERSION}</string>
   <key>LSUIElement</key>
   <true/>
+  <!-- The island intentionally parks only its inert resting edge behind a
+       MacBook camera housing. Interactive reveal content remains below it. -->
+  <key>NSPrefersDisplaySafeAreaCompatibilityMode</key>
+  <false/>
   <key>NSMicrophoneUsageDescription</key>
-  <string>MacParakeet needs microphone access for dictation.</string>
+  <string>Splay needs microphone access to record.</string>
   <key>NSAudioCaptureUsageDescription</key>
-  <string>MacParakeet needs system audio recording access for meeting recording.</string>
+  <string>Splay needs system-audio recording access for meetings.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
-  <string>MacParakeet reads your calendar so it can remind you before a meeting starts and (optionally) begin recording for you. Events stay on your Mac.</string>
+  <string>Splay reads your calendar to remind you before a meeting and, if you choose, begin recording. Events stay on your Mac.</string>
   <key>SUFeedURL</key>
   <string>https://macparakeet.com/appcast.xml</string>
   <key>SUEnableAutomaticChecks</key>

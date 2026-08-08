@@ -64,6 +64,7 @@ final class MeetingRecordingFlowCoordinator {
     private var pillGlowPollingTask: Task<Void, Never>?
     private var transcriptObservationTask: Task<Void, Never>?
     private var speechWarmUpObservationTask: Task<Void, Never>?
+    private var lastCaptureHealthSample: (frames: Int64, bytes: Int64, at: Date)?
     private var activeFlowSettlementWaiters: [CheckedContinuation<Void, Never>] = []
     private var completedTranscription: Transcription?
     private var currentMeetingOperationContext: ObservabilityOperationContext?
@@ -602,6 +603,22 @@ final class MeetingRecordingFlowCoordinator {
                 }
             }
 
+        case .finalizeFailedCapture:
+            // `failCapture` has already stopped the OS streams. Finalize the
+            // writer so the partial audio and its recovery lock are usable,
+            // but intentionally do not invoke transcription or publish a
+            // normal completion. The visible error makes the interruption
+            // explicit and Library/recovery can handle the retained files.
+            actionTask = Task { @MainActor [meetingRecordingService] in
+                do {
+                    _ = try await meetingRecordingService.stopRecording()
+                } catch {
+                    // There may be no usable audio at all. The user-facing
+                    // error is already displayed; this simply prevents a
+                    // failed writer from keeping the next recording blocked.
+                }
+            }
+
         case .showCompleted:
             stopPillPolling()
             stopTranscriptObservation()
@@ -779,6 +796,7 @@ final class MeetingRecordingFlowCoordinator {
                 let systemLevel = Self.displayLevel(await meetingRecordingService.systemLevel)
                 let elapsedSeconds = await meetingRecordingService.elapsedSeconds
                 let captureMode = await meetingRecordingService.captureMode
+                let captureHealth = await meetingRecordingService.captureHealth
                 let microphoneMuteState = await meetingRecordingService.microphoneMuteState
 
                 guard !Task.isCancelled else { break }
@@ -832,27 +850,61 @@ final class MeetingRecordingFlowCoordinator {
                 if captureMode == .stopped,
                    stateMachine.state == .recording,
                    pillViewModel.state == .recording || pillViewModel.state == .paused {
-                    // Audio capture stopped while the state machine still
-                    // expects a live recording — typically because
-                    // `MeetingRecordingService.failCapture` ran (mic unplug,
-                    // writer error, OS audio routing change). Could also
-                    // fire while paused if a USB mic is unplugged mid-pause.
-                    // Without this signal the pill keeps showing the paused
-                    // glyph or "recording" with a ticking timer while no
-                    // audio is actually being captured. Surface it through
-                    // the state machine so the existing stop+transcribe
-                    // path saves whatever made it to disk.
-                    pillViewModel.micLevel = 0
-                    pillViewModel.systemLevel = 0
-                    panelViewModel?.micLevel = 0
-                    panelViewModel?.systemLevel = 0
-                    sendEvent(.captureFailed(generation: stateMachine.generation))
+                    failActiveCapture(message: "Meeting recording stopped unexpectedly. Captured audio was kept for recovery; it was not transcribed as a completed meeting.")
+                    break
+                }
+
+                // A capture engine can occasionally remain marked `.full`
+                // after an input/device route has stopped delivering buffers.
+                // Validate both writer progress and the on-disk byte snapshot
+                // every second. Asset writers may buffer file bytes, so only a
+                // stale successful append triggers failure; byte movement is
+                // recorded alongside it to avoid false positives.
+                if captureMode == .full,
+                   stateMachine.state == .recording,
+                   pillViewModel.state == .recording,
+                   isCaptureStalled(captureHealth) {
+                    failActiveCapture(message: "Meeting recording stalled: no audio was written for 10 seconds. Check the selected input and permissions; this recording was not marked complete.")
                     break
                 }
 
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+    }
+
+    private func isCaptureStalled(_ health: MeetingCaptureHealth, now: Date = Date()) -> Bool {
+        guard health.mode == .full, let startedAt = health.startedAt else {
+            lastCaptureHealthSample = nil
+            return false
+        }
+        let sample = (frames: health.writtenFrameCount, bytes: health.persistedByteCount, at: now)
+        defer { lastCaptureHealthSample = sample }
+
+        // Startup and an intentional resume need a little time for the first
+        // AVFoundation buffer. Ten seconds is long enough to avoid noisy
+        // device-route transitions, short enough to avoid a silent meeting.
+        guard now.timeIntervalSince(startedAt) >= 10 else { return false }
+        guard let lastWrite = health.lastSuccessfulWriteAt else { return true }
+        guard now.timeIntervalSince(lastWrite) >= 10 else { return false }
+
+        // File growth is useful evidence, but AVAssetWriter is permitted to
+        // buffer it. Writer-frame stagnation plus a stale successful append is
+        // the reliable failure signal.
+        if let previous = lastCaptureHealthSample,
+           previous.frames == sample.frames,
+           previous.bytes == sample.bytes {
+            return true
+        }
+        return true
+    }
+
+    private func failActiveCapture(message: String) {
+        pillViewModel.micLevel = 0
+        pillViewModel.systemLevel = 0
+        panelViewModel?.micLevel = 0
+        panelViewModel?.systemLevel = 0
+        sendEvent(.captureFailed(generation: stateMachine.generation, message: message))
     }
 
     private static func displayLevel(_ level: Float) -> Float {

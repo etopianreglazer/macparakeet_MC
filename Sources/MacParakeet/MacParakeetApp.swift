@@ -9,6 +9,7 @@ import MacParakeetCore
 @main
 struct MacParakeetApp {
     static func main() {
+        AudioCaptureDiagnostics.append("splay_start main bundle=\(Bundle.main.bundlePath) pid=\(getpid())")
         CrashReporter.install()
 
         let app = NSApplication.shared
@@ -29,10 +30,13 @@ struct MacParakeetApp {
         }
 
         let delegate = AppDelegate()
+        AudioCaptureDiagnostics.append("splay_start delegate_constructed")
         app.delegate = delegate
+        AudioCaptureDiagnostics.append("splay_start delegate_assigned")
 
         app.setActivationPolicy(AppPreferences.isMenuBarOnlyModeEnabled() ? .accessory : .regular)
 
+        AudioCaptureDiagnostics.append("splay_start entering_app_run")
         app.run()
     }
 }

@@ -1,6 +1,6 @@
 import AppKit
 
-/// Generates the MacParakeet "Cursive P" logo programmatically.
+/// Provides the compact Splay menu-bar mark and legacy inline logo fallback.
 ///
 /// Design: An enclosed circular bowl with a dot inside, and a cursive loop tail
 /// that descends, loops under, and trails off left. The loop echoes the bowl's
@@ -28,8 +28,7 @@ enum BreathWaveIcon {
         case processing
     }
 
-    /// Load the parakeet silhouette as a **template** NSImage for menu bar use.
-    /// The image is stored as a processed SwiftPM resource (menubar-icon.png / @2x).
+    /// Load the supplied Splay mark as a **template** NSImage for menu bar use.
     /// Template images adapt to light/dark mode automatically.
     static func menuBarIcon(pointSize: CGFloat = 18, state: MenuBarState = .idle) -> NSImage {
         let baseIcon = loadBaseMenuBarIcon(pointSize: pointSize)
@@ -45,8 +44,7 @@ enum BreathWaveIcon {
     }
 
     private static func loadBaseMenuBarIcon(pointSize: CGFloat) -> NSImage {
-        // Try loading from SwiftPM resource bundle first, then fall back to main bundle.
-        if let url = Bundle.module.url(forResource: "menubar-icon@2x", withExtension: "png"),
+        if let url = Bundle.module.url(forResource: "splay-three-mark", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             image.size = NSSize(width: pointSize, height: pointSize)
             image.isTemplate = true
@@ -62,7 +60,7 @@ enum BreathWaveIcon {
         }
 
         // Last resort: return a system symbol
-        let fallback = NSImage(systemSymbolName: "waveform", accessibilityDescription: "MacParakeet")
+        let fallback = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Splay")
             ?? NSImage()
         fallback.size = NSSize(width: pointSize, height: pointSize)
         fallback.isTemplate = true

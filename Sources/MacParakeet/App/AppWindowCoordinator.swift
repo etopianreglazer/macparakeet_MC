@@ -96,6 +96,9 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     }
 
     func openMainWindow() {
+        // Island-only mode has no ordinary user-visible main window. Keep this
+        // method as a technical fallback for feature-off builds only.
+        guard !AppFeatures.islandReplacesDictationPill else { return }
         if mainWindow == nil {
             createMainWindow()
         }
@@ -142,6 +145,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     }
 
     func handleAppReopen() -> Bool {
+        guard !AppFeatures.islandReplacesDictationPill else { return true }
         if hasVisiblePrimaryWindow {
             NSApp.activate(ignoringOtherApps: true)
         } else {
@@ -168,7 +172,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
         let menu = NSMenu()
 
         let openItem = NSMenuItem(
-            title: "Open MacParakeet",
+            title: "Open Splay",
             action: #selector(dockOpenMainWindow),
             keyEquivalent: ""
         )
@@ -186,7 +190,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
         menu.addItem(NSMenuItem.separator())
 
         let quitItem = NSMenuItem(
-            title: "Quit MacParakeet",
+            title: "Quit Splay",
             action: #selector(dockQuit),
             keyEquivalent: ""
         )
@@ -245,7 +249,7 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "MacParakeet"
+        window.title = "Splay"
         window.center()
         window.setFrameAutosaveName("MainWindow")
         window.minSize = NSSize(

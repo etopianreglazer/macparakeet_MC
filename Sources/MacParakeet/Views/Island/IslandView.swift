@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import MacParakeetCore
 import MacParakeetViewModels
@@ -10,6 +11,9 @@ import MacParakeetViewModels
 /// form; `.completing` reuses transcribing), and idle splits into collapsed vs.
 /// hover. The AppKit tracker and the SwiftUI view derive sizes from the same
 /// `IslandLayout`, so their hit-rects never drift from what's drawn.
+///
+/// The island is an **indicator only** (two-surface design): it never expands
+/// into a control surface. Everything else is a card (`SplayCardController`).
 enum IslandVisual: Equatable {
     case hidden
     case idleCollapsed
@@ -17,9 +21,6 @@ enum IslandVisual: Equatable {
     case recording
     case transcribing
     case done
-    /// The Spotlight-style card — the same pill, morphed large. Rendered in the
-    /// same panel so it grows out of the nub with the identical `.smooth` curve.
-    case expanded
 }
 
 // MARK: - Shared layout (single source of truth for view + tracker)
@@ -29,63 +30,85 @@ enum IslandLayout {
     /// horizontally centered and anchored just below the menu bar. Nothing
     /// resizes the panel, so the morph stays smooth and its hit geometry never
     /// changes with the lifecycle state.
-    // The stage must be tall/wide enough to contain the expanded card, which
-    // now grows downward from top-center so it stays clear of menu-bar items.
-    static let panelWidth: CGFloat = 520
+    // The stage must be wide/tall enough to contain the widest indicator bloom
+    // (the recording glow fans out well beyond the pill). The pill stays centred;
+    // the extra width is transparent and click-through.
+    static let panelWidth: CGFloat = 840
     static let panelHeight: CGFloat = 460
-    /// Space between the menu-bar-safe stage edge and the visible island. Small
-    /// enough to read as attached to the MacBook sensor area, while retaining a
-    /// clean separation from the menu bar itself.
-    static let topInset: CGFloat = 8
 
-    static let expandedSize = CGSize(width: 452, height: 412)
+    /// The desktop glow renders on its own, *much wider* panel below app windows
+    /// so the Ambilight wash can spread far and fade to nothing without clipping
+    /// at a panel edge. It is inert and click-through, so the extra width is free.
+    static let glowPanelWidth: CGFloat = 1400
+    static let glowPanelHeight: CGFloat = 460
 
+    // The panel stage itself starts at the menu-bar safe edge. On the internal
+    // notched display an 8pt inset places the idle nub *inside* the physical
+    // camera cut-out, which makes it look like the notch and steals its click
+    // target. Keep the island visually attached, but begin just beneath the
+    // cut-out so the resting pill is both visible and usable.
+    static let topInset: CGFloat = 32
+
+    // Sizes mirror the design handoff's per-state geometry so the AppKit tracker's
+    // hit-rects never drift from the drawn pill (`SplayGeometry.size` is the twin
+    // used by the SwiftUI indicator).
     static func pillSize(for visual: IslandVisual) -> CGSize {
         switch visual {
         case .hidden:        return .zero
-        // Idle is a deliberately tiny, understated nub (close to the original
-        // app's 48×10) — it should barely register until you reach for it.
-        case .idleCollapsed: return CGSize(width: 56, height: 11)
-        case .idleHover:     return CGSize(width: 252, height: 44)
-        case .recording:     return CGSize(width: 170, height: 34)
-        case .transcribing:  return CGSize(width: 206, height: 38)
-        case .done:          return CGSize(width: 196, height: 40)
-        case .expanded:      return expandedSize
+        case .idleCollapsed: return SplayGeometry.size(for: .dormant)
+        case .idleHover:     return SplayGeometry.size(for: .ready)
+        case .recording:     return SplayGeometry.size(for: .recording)
+        case .transcribing:  return SplayGeometry.size(for: .transcribing)
+        case .done:          return SplayGeometry.size(for: .done)
         }
     }
 
     /// Width of the right-edge stop-button hit zone inside the recording pill.
     static let stopHitWidth: CGFloat = 38
 
-    /// Interaction rect for the AppKit tracker — same as the drawn pill except
-    /// the tiny idle nub, which gets an enlarged invisible target so it stays
-    /// easy to hover/click despite barely showing.
-    static func hitRect(for visual: IslandVisual) -> CGRect {
-        guard visual == .idleCollapsed else { return pillRect(for: visual) }
-        let w: CGFloat = 88
-        let h: CGFloat = 30
-        let pill = pillRect(for: .idleCollapsed)
-        return CGRect(
-            x: (panelWidth - w) / 2,
-            y: pill.midY - h / 2,
-            width: w,
-            height: h
-        )
+    /// Interaction rect for the AppKit tracker — simply the drawn pill (notch-mode
+    /// hover is additionally served by `notchRevealRect`).
+    static func hitRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
+        pillRect(for: visual, notchAttached: notchAttached)
     }
 
-    /// Map recording-flow state (+ idle chrome) onto a visual form. The expanded
-    /// card wins over everything while it's open.
+    /// Hover-only central approach zone. In Notch mode it deliberately meets
+    /// the physical top edge alongside the narrow visible companion; clicks
+    /// remain restricted to `hitRect` so transparent panel pixels pass through.
+    static func notchRevealRect() -> CGRect {
+        CGRect(x: (panelWidth - 240) / 2, y: panelHeight - 56, width: 240, height: 56)
+    }
+
+    /// Hover *hysteresis*: once revealed, the ready pill stays active while the
+    /// cursor is anywhere on it (plus a forgiving margin below), so moving from
+    /// the notch onto the tile no longer collapses it back to idle.
+    static func hoverStayRect(notchAttached: Bool = false) -> CGRect {
+        let ready = pillRect(for: .idleHover, notchAttached: notchAttached)
+        let w = max(ready.width + 24, 272)
+        let extraBelow: CGFloat = 28
+        return CGRect(x: (panelWidth - w) / 2, y: ready.minY - extraBelow, width: w, height: ready.height + extraBelow)
+    }
+
+    /// The record dot's hit region — the right cluster of the ready pill. A click
+    /// here records; a click elsewhere on the pill opens the recents card.
+    static func recordButtonRect(notchAttached: Bool = false) -> CGRect {
+        let ready = pillRect(for: .idleHover, notchAttached: notchAttached)
+        let w: CGFloat = 52
+        return CGRect(x: ready.maxX - w - 4, y: ready.minY, width: w, height: ready.height)
+    }
+
+    /// Map recording-flow state (+ idle chrome) onto a visual form. `heldOpen`
+    /// keeps the idle island in its ready ("open") form while a card is showing.
     static func visual(
         for state: MeetingRecordingPillViewModel.PillState,
         hovered: Bool,
         idleVisible: Bool,
-        expanded: Bool = false
+        heldOpen: Bool = false
     ) -> IslandVisual {
-        if expanded { return .expanded }
         switch state {
         case .idle:
             guard idleVisible else { return .hidden }
-            return hovered ? .idleHover : .idleCollapsed
+            return (hovered || heldOpen) ? .idleHover : .idleCollapsed
         case .recording, .paused:
             return .recording
         case .completing, .transcribing:
@@ -98,11 +121,12 @@ enum IslandLayout {
     /// The pill's frame in panel (AppKit, bottom-left origin) coordinates.
     /// The view is top-anchored, while AppKit coordinates grow upward, so the
     /// shared tracker uses the corresponding top-derived y value.
-    static func pillRect(for visual: IslandVisual) -> CGRect {
+    static func pillRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
         let size = pillSize(for: visual)
+        let topBreathingRoom = notchAttached ? 0 : topInset
         return CGRect(
             x: (panelWidth - size.width) / 2,
-            y: panelHeight - topInset - size.height,
+            y: panelHeight - topBreathingRoom - size.height,
             width: size.width,
             height: size.height
         )
@@ -118,335 +142,79 @@ enum IslandLayout {
 final class IslandChromeModel {
     var isHovered = false
     var idleVisible = true
-    /// The expanded card is open. Wins over idle/recording in `visual`.
-    var isExpanded = false
+    var isNotchResting = false
+    /// A card (the second surface) is open — hold the idle island in its ready
+    /// ("open") form until the card closes, so the two surfaces move together.
+    var heldOpen = false
+    /// Distance from the panel's physically hidden top to the housing's lower edge.
+    var notchCueInset: CGFloat = 0
     init() {}
 }
 
 // MARK: - Island view
 
-/// The ambient island at bottom-center. One persistent glass capsule whose
-/// frame *morphs* between state sizes (Dynamic-Island style) while the foreground
-/// content cross-fades — never a hard view swap, which is what reads as "chunky".
-///
-/// Display-only: all interaction is routed through `IslandController`'s AppKit
+/// The ambient island hanging from the notch. Pure **indicator**: it renders the
+/// lifecycle light (bloom + fiber stripe + mark) and nothing else — no controls,
+/// no expansion. All interaction is routed through `IslandController`'s AppKit
 /// tracking layer (hover/click on a non-activating panel can't go through
-/// SwiftUI). Forced into dark vibrancy so the glass reads the same over any
-/// desktop.
+/// SwiftUI), and anything the app needs to *say* is a card.
 struct IslandView: View {
     @Bindable var pill: MeetingRecordingPillViewModel
     @Bindable var chrome: IslandChromeModel
-
-    // Expanded ("Spotlight card") dependencies. Rendered as a morphed state of
-    // this same pill so it grows out of the nub with the identical animation.
-    @Bindable var expandedModel: ExpandedIslandModel
-    @Bindable var library: TranscriptionLibraryViewModel
-    var onRecord: () -> Void
-    var onSelect: (Transcription) -> Void
-    var onOpenSettings: () -> Void
-    var onOpenLibrary: () -> Void
-    var onRevealInFinder: () -> Void
-    var onCollapse: () -> Void
-
-    @FocusState private var searchFocused: Bool
-    @Environment(\.colorScheme) private var colorScheme
 
     private var visual: IslandVisual {
         IslandLayout.visual(
             for: pill.state,
             hovered: chrome.isHovered,
             idleVisible: chrome.idleVisible,
-            expanded: chrome.isExpanded
+            heldOpen: chrome.heldOpen
         )
     }
 
+    private var motion: Animation? {
+        // A spring (not a slow fade) so the island *pops* and its elements feel
+        // spawned with it. A touch more response than the old 0.26 so the
+        // width/colour morph between states reads as a smooth glide, not a snap
+        // (paired with the indicator's now-stable single render path).
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82)
+    }
+
     var body: some View {
-        let size = IslandLayout.pillSize(for: visual)
-        // Capsule for small states, ~20pt rounded rect when large — one shape
-        // whose radius morphs as the height grows.
-        let radius = min(size.height / 2, 20)
         ZStack(alignment: .top) {
             Color.clear
-            if visual != .hidden {
-                ZStack {
-                    roundedBackground(radius: radius)
-                    foreground
-                        .id(visual)                       // identity flips → cross-fade
-                        .transition(.opacity)
-                }
-                .frame(width: size.width, height: size.height)
-                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-                .shadow(
-                    color: .black.opacity(visual == .idleCollapsed ? 0.18 : 0.3),
-                    radius: visual == .idleCollapsed ? 4 : (visual == .expanded ? 26 : 11),
-                    y: visual == .idleCollapsed ? 2 : (visual == .expanded ? 16 : 6)
+            if let splayState = mappedState {
+                SplayIslandIndicator(
+                    state: splayState,
+                    level: Double(max(pill.micLevel, pill.systemLevel)),
+                    notchAttached: chrome.isNotchResting
                 )
-                .padding(.top, IslandLayout.topInset)
-                .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .top)))
+                // Mirror the tracker's `pillRect` top offset exactly so the drawn
+                // pill and its hit-rect stay aligned: flush to the physical top in
+                // Notch mode, the menu-safe inset otherwise.
+                .padding(.top, chrome.isNotchResting ? 0 : IslandLayout.topInset)
+                // Pop the whole island in from slightly small, anchored at the
+                // notch, so it reads as spawning rather than fading.
+                .transition(.scale(scale: 0.85, anchor: .top).combined(with: .opacity))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        // A single smooth (no-bounce) curve drives the morph + cross-fade.
-        .animation(.smooth(duration: 0.36), value: visual)
-        // Interactive only when expanded (search field + buttons); otherwise
-        // display-only, with the AppKit tracker owning hover/click.
-        .allowsHitTesting(visual == .expanded)
-        .onChange(of: chrome.isExpanded) { _, expanded in
-            if expanded {
-                DispatchQueue.main.async { searchFocused = true }
-            } else {
-                searchFocused = false
-            }
-        }
+        .animation(motion, value: visual)
+        // Display-only: the AppKit tracker owns all hover/click.
+        .allowsHitTesting(false)
     }
 
-    // MARK: Foreground content (no background — the shared shape provides it)
-
-    @ViewBuilder private var foreground: some View {
+    /// Map the tracker's `IslandVisual` (+ recording-flow state) onto the design's
+    /// indicator forms.
+    private var mappedState: SplayIslandState? {
         switch visual {
-        case .hidden, .idleCollapsed:
-            Color.clear
-        case .idleHover:
-            hoverContent
-        case .recording:
-            recordingContent
-        case .transcribing:
-            transcribingContent
+        case .hidden:        return nil
+        case .idleCollapsed: return .dormant
+        case .idleHover:     return .ready
+        case .recording:     return .recording
+        case .transcribing:  return .transcribing
         case .done:
-            doneContent
-        case .expanded:
-            ExpandedIslandView(
-                model: expandedModel,
-                library: library,
-                searchFocused: $searchFocused,
-                onRecord: onRecord,
-                onSelect: onSelect,
-                onOpenSettings: onOpenSettings,
-                onOpenLibrary: onOpenLibrary,
-                onRevealInFinder: onRevealInFinder,
-                onEscape: onCollapse
-            )
+            if case .error = pill.state { return .failed }
+            return .done
         }
-    }
-
-    private var hoverContent: some View {
-        HStack(spacing: 9) {
-            Circle()
-                .fill(IslandPalette.ready)
-                .frame(width: 7, height: 7)
-            VStack(alignment: .leading, spacing: 1) {
-                (Text("Press ") + Text("fn").foregroundColor(IslandPalette.ready).fontWeight(.bold) + Text(" to record"))
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text("Double-tap for calls · Click to open")
-                    .font(.system(size: 9.5))
-                    .foregroundStyle(.white.opacity(0.45))
-            }
-        }
-        .padding(.horizontal, 15)
-        .fixedSize()
-    }
-
-    private var recordingContent: some View {
-        let paused = pill.isPaused
-        return HStack(spacing: 9) {
-            Circle()
-                .fill(IslandPalette.rec)
-                .frame(width: 8, height: 8)
-                .modifier(PulseModifier(active: !paused))
-
-            if paused {
-                Text("Paused")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.7))
-            } else {
-                IslandWaveform()
-                    .frame(width: 30, height: 14)
-            }
-
-            Text(pill.formattedElapsed)
-                .font(.system(size: 12.5, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white)
-                .frame(minWidth: 40, alignment: .leading)
-
-            stopGlyph
-        }
-        .padding(.leading, 14)
-        .padding(.trailing, 7)
-        .fixedSize()
-    }
-
-    private var stopGlyph: some View {
-        RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(.white)
-            .frame(width: 22, height: 22)
-            .overlay(
-                RoundedRectangle(cornerRadius: 2.5, style: .continuous)
-                    .fill(IslandPalette.rec)
-                    .frame(width: 8, height: 8)
-            )
-    }
-
-    private var transcribingContent: some View {
-        HStack(spacing: 11) {
-            IslandSpinner()
-                .frame(width: 16, height: 16)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(pill.state == .completing ? "Wrapping up…" : "Transcribing…")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                IslandProgressBar()
-                    .frame(width: 124, height: 3.5)
-            }
-        }
-        .padding(.horizontal, 15)
-        .fixedSize()
-    }
-
-    private var doneContent: some View {
-        let isError: Bool = { if case .error = pill.state { return true } else { return false } }()
-        return HStack(spacing: 9) {
-            ZStack {
-                Circle()
-                    .fill(isError ? IslandPalette.rec : IslandPalette.accent)
-                    .frame(width: 21, height: 21)
-                Image(systemName: isError ? "exclamationmark" : "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(isError ? "Couldn't save" : "Saved")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
-                Text(isError ? "tap fn to retry" : "· \(pill.formattedElapsed)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.white.opacity(0.5))
-            }
-            if !isError {
-                Text("Open")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(.white.opacity(0.1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
-                            )
-                    )
-            }
-        }
-        .padding(.leading, 11)
-        .padding(.trailing, isError ? 14 : 9)
-        .fixedSize()
-    }
-
-    // MARK: Background
-
-    /// Near-black, understated chrome that belongs near the physical sensor /
-    /// notch area. It stays black in both appearances (rather than a flat grey
-    /// that turns muddy in light mode); active states retain their semantic
-    /// red/green foregrounds for clear status contrast.
-    private func roundedBackground(radius: CGFloat) -> some View {
-        let fill: Color = {
-            switch visual {
-            case .idleCollapsed: return .black.opacity(colorScheme == .dark ? 0.94 : 0.88)
-            case .expanded:      return .black.opacity(colorScheme == .dark ? 0.90 : 0.86)
-            default:             return .black.opacity(colorScheme == .dark ? 0.84 : 0.80)
-            }
-        }()
-        return RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(fill)
-            .overlay(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(.white.opacity(visual == .idleCollapsed ? 0.14 : 0.16), lineWidth: 0.5)
-            )
-    }
-}
-
-// MARK: - Palette
-
-enum IslandPalette {
-    static let accent = DesignSystem.Colors.accent
-    static let ready = Color(red: 0.357, green: 0.859, blue: 0.341)   // #5BDB57
-    static let rec = Color(red: 1.0, green: 0.353, blue: 0.322)       // #FF5A52
-}
-
-// MARK: - Decorative waveform (self-animating, not real levels)
-
-/// The lookbook's recording waveform is decorative motion, not metered audio —
-/// so this animates on its own timeline and needs no level feed.
-private struct IslandWaveform: View {
-    private let bars = 7
-    var body: some View {
-        TimelineView(.animation) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 2.5) {
-                ForEach(0..<bars, id: \.self) { i in
-                    let phase = t * 6 + Double(i) * 0.7
-                    let h = 0.35 + 0.65 * (0.5 + 0.5 * sin(phase))
-                    Capsule()
-                        .fill(IslandPalette.ready)
-                        .frame(width: 2.5, height: 16 * h)
-                }
-            }
-            .frame(height: 16)
-        }
-    }
-}
-
-private struct IslandSpinner: View {
-    var body: some View {
-        TimelineView(.animation) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            Circle()
-                .trim(from: 0, to: 0.75)
-                .stroke(
-                    AngularGradient(
-                        gradient: Gradient(colors: [IslandPalette.ready.opacity(0), IslandPalette.ready]),
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
-                )
-                .rotationEffect(.degrees(t.truncatingRemainder(dividingBy: 1) * 360))
-        }
-    }
-}
-
-/// Indeterminate progress: we don't have a real % on the pill VM, so a sweeping
-/// highlight conveys "working" honestly rather than faking a number.
-private struct IslandProgressBar: View {
-    var body: some View {
-        GeometryReader { geo in
-            TimelineView(.animation) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
-                let w = geo.size.width
-                let segment = w * 0.4
-                let travel = (w + segment)
-                let x = (t.truncatingRemainder(dividingBy: 1.3) / 1.3) * travel - segment
-                Capsule()
-                    .fill(.white.opacity(0.14))
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(IslandPalette.ready)
-                            .frame(width: segment)
-                            .offset(x: x)
-                    }
-                    .clipShape(Capsule())
-            }
-        }
-    }
-}
-
-private struct PulseModifier: ViewModifier {
-    let active: Bool
-    @State private var on = false
-    func body(content: Content) -> some View {
-        content
-            .opacity(active ? (on ? 0.35 : 1.0) : 0.6)
-            .animation(active ? .easeInOut(duration: 0.65).repeatForever(autoreverses: true) : .default, value: on)
-            .onAppear { if active { on = true } }
     }
 }

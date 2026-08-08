@@ -1,7 +1,24 @@
 # Plan: Lean island-only product
 
-> Status: **ACTIVE — discovery complete; first safe slice queued.** This supersedes the broad
-> window-first roadmap, while preserving the uncommitted Slice 4/5 review work.
+> Status: **HISTORICAL — superseded 2026-08-07 by `splay-two-surface-rebuild.md`.**
+> This plan's central premise — that Library, Settings, detail, etc. are *expanded substates inside
+> the island* (an island-as-router model) — is **rejected** by the final design handoff
+> (`docs/design/splay-island-handoff/`). In the final design the island is an **indicator only** and
+> everything else is a **centred card**; there is no in-island router. Kept for context; do not build
+> from it. See `splay-two-surface-rebuild.md`.
+>
+> ---
+>
+> _(original status: ACTIVE — discovery complete; first safe slice queued. Preserved below.)_
+
+## Current identity
+
+The local product is now **Splay**: the installed review build is `/Applications/Splay.app` with
+the supplied full icon and compact three-splay mark. Near-black remains the surface foundation;
+lavender/deep-violet is the single island primary, selection, and readiness accent. The existing
+bundle identifier (`com.macparakeet.mc`) and application-support namespace remain intentionally
+stable for a safe local migration-free rebrand. Internal modules remain MacParakeet for build and
+data compatibility; GPL/license attribution remains intact. See `docs/BRANDING.md`.
 
 ## Non-negotiable surface invariant
 
@@ -37,11 +54,18 @@ YouTube is retired from user-facing entry points first, never deleted with its d
    Menu-bar Capture/quick-menu items and the registered YouTube hotkey are removed; services,
    stored records, and existing transcript rendering remain. `swift build --skip-update -q` and
    `git diff --check` pass. Live-check Meeting record and file history before commit.
-2. **Shared adaptive island host/router.** Replace separate `IslandOverlayController` presentation
-   with expanded states in the existing long-lived `IslandPanel`. Add an explicit router and
-   content-driven animated sizes; Library and Settings become in-panel pages with Back/Close.
-3. **Lean island card/detail.** Record row + source toggle, compact search/history rows, transcript
-   detail, explicit Markdown export, and Reveal in Finder all remain contextual island states.
+2. **Shared adaptive island host/router.** **Implemented locally; compact redesign installed for review.** The existing
+   long-lived `IslandPanel` now routes Home → Library → Settings internally. Library renders from
+   the existing library model; the full existing SettingsView is injected from AppWindowCoordinator
+   into the island host rather than presented as an overlay. Back returns to Home and Close to the
+   pill. Remove obsolete overlay callbacks after detail/export routes land.
+3. **Lean island card/detail.** **Implemented locally; acceptance pending.** Record row + source toggle,
+   compact search/history rows, transcript detail, explicit Markdown export, and Reveal in Finder
+   remain contextual island states. Recording failures are now a separate recovery/error path,
+   never a normal completion: the service health snapshot (mode, frames, byte growth, last append)
+   is checked every second and a 10-second active-capture stall surfaces explicitly.
+   Setup/readiness is also now in-island: model choice, safe runtime setup, permission remediation,
+   and ready-to-record state. It remains subject to user acceptance of the floating-panel interaction.
 4. **Retire window routes.** Remove main-window navigation only once those same-island states are
    equivalently available, including safe failure fallbacks.
 5. **Deletion review.** Only after replacement verification, decide whether to delete YouTube and

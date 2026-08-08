@@ -90,7 +90,7 @@ struct OnboardingFlowView: View {
                     MeditativeMerkabaView(size: 28, revolutionDuration: 6.0, tintColor: DesignSystem.Colors.accent)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("MacParakeet")
+                        Text("Splay")
                             .font(DesignSystem.Typography.sectionTitle)
                         Text("First-time setup")
                             .font(DesignSystem.Typography.caption)
@@ -302,7 +302,7 @@ struct OnboardingFlowView: View {
                 Spacer()
 
                 if viewModel.step == .done {
-                    accentButton("Open MacParakeet", icon: "arrow.right", large: true, disabled: false, isDefault: true) {
+                    accentButton("Open Splay", icon: "arrow.right", large: true, disabled: false, isDefault: true) {
                         _ = viewModel.markOnboardingCompleted()
                         onFinish()
                         onOpenMainApp()
@@ -453,7 +453,7 @@ struct OnboardingFlowView: View {
                         )
                 }
 
-                Text("Grant access to let MacParakeet record audio from meetings and calls.")
+                Text("Grant access to let Splay record audio from meetings and calls.")
                     .font(DesignSystem.Typography.bodySmall)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -484,7 +484,7 @@ struct OnboardingFlowView: View {
                 }
 
                 if viewModel.showRelaunchHint {
-                    Text("If the status doesn't update, quit and reopen MacParakeet. macOS sometimes requires a restart after granting this permission.")
+                    Text("If the status doesn't update, quit and reopen Splay. macOS sometimes requires a restart after granting this permission.")
                         .font(DesignSystem.Typography.caption)
                         .foregroundStyle(.secondary)
                         .padding(DesignSystem.Spacing.sm)
@@ -524,7 +524,7 @@ struct OnboardingFlowView: View {
                         )
                 }
 
-                Text("MacParakeet can read your macOS calendar to send a quiet notification before each scheduled meeting and, if you choose, start recording automatically.")
+                Text("Splay can read your macOS calendar to send a quiet notification before each scheduled meeting and, if you choose, start recording automatically.")
                     .font(DesignSystem.Typography.bodySmall)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -769,7 +769,7 @@ struct OnboardingFlowView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("\(recommendation.languageName) setup")
                                 .font(DesignSystem.Typography.sectionTitle)
-                            Text("Your Mac language suggests \(recommendation.languageName). MacParakeet will set up local Whisper instead of Parakeet so dictation works for this language from the first run.")
+                            Text("Your Mac language suggests \(recommendation.languageName). Splay will set up local Whisper instead of Parakeet so dictation works for this language from the first run.")
                                 .font(DesignSystem.Typography.bodySmall)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -894,7 +894,7 @@ struct OnboardingFlowView: View {
             VStack(spacing: DesignSystem.Spacing.sm) {
                 Text("You're all set.")
                     .font(DesignSystem.Typography.heroTitle)
-                Text("MacParakeet is ready to turn your voice into text.")
+                Text("Splay is ready to turn your voice into text.")
                     .font(DesignSystem.Typography.bodySmall)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -1050,7 +1050,7 @@ struct OnboardingFlowView: View {
 
     private func titleForStep(_ step: OnboardingViewModel.Step) -> String {
         switch step {
-        case .welcome: return "Welcome to MacParakeet"
+        case .welcome: return "Welcome to Splay"
         case .microphone: return "Enable Microphone Access"
         case .accessibility: return "Enable Accessibility"
         case .meetingRecording: return "Meeting Recording (Optional)"
@@ -1066,13 +1066,13 @@ struct OnboardingFlowView: View {
         case .welcome:
             return "A fast, private voice app for Mac. Completely free."
         case .microphone:
-            return "MacParakeet needs microphone permission to record your voice."
+            return "Splay needs microphone permission to record your voice."
         case .accessibility:
             return "Accessibility is required for the global hotkey and reliable paste automation."
         case .meetingRecording:
             return "Optional. This is only needed to capture system audio during meeting recording."
         case .calendar:
-            return "Optional. Lets MacParakeet remind you before scheduled meetings and enable opt-in auto-start."
+            return "Optional. Lets Splay remind you before scheduled meetings and enable opt-in auto-start."
         case .hotkey:
             return "Two ways to dictate — pick whichever feels natural."
         case .engine:
@@ -1170,14 +1170,14 @@ struct OnboardingFlowView: View {
         if lower.contains("permission denied") || lower.contains("operation not permitted") || lower.contains("read-only") {
             return [
                 "Confirm the app can write to your user Library folder.",
-                "Restart MacParakeet, then retry setup.",
+                "Restart Splay, then retry setup.",
                 "If needed, run Repair in Settings > Engine > Local Models."
             ]
         }
 
         if lower.contains("unsupported") || lower.contains("apple silicon") {
             return [
-                "MacParakeet requires an Apple Silicon Mac (M1 or newer).",
+                "Splay requires an Apple Silicon Mac (M1 or newer).",
                 "Unfortunately, Intel-based Macs aren't supported."
             ]
         }

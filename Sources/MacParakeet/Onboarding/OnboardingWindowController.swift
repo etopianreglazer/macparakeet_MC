@@ -58,7 +58,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
                          styleMask: [.titled, .closable, .miniaturizable],
                          backing: .buffered,
                          defer: false)
-        w.title = "Welcome to MacParakeet"
+        w.title = "Welcome to Splay"
         w.isReleasedWhenClosed = false
         w.center()
         w.contentView = hosting
@@ -73,7 +73,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Setup is not finished"
-            alert.informativeText = "MacParakeet needs permissions and speech model setup (Parakeet) before core features are reliable."
+            alert.informativeText = "Splay needs permissions and speech model setup before recording is ready."
             alert.addButton(withTitle: "Continue Setup")
             alert.addButton(withTitle: "Exit Setup")
 

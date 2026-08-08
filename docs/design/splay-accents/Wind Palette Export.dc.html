@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter+Tight:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FBFAF8}
+a{color:#8A3316}a:hover{color:#B0431E}
+</style>
+</helmet>
+
+<div style="min-height:100vh;padding:56px 60px 90px;background:#FBFAF8;font-family:'Inter Tight',sans-serif;color:#141414">
+
+<div style="max-width:1080px;display:flex;flex-direction:column;gap:10px;margin-bottom:12px">
+<span style="font:600 10.5px ui-monospace,Menlo,monospace;letter-spacing:.09em;text-transform:uppercase;color:rgba(0,0,0,.42)">macparakeet · theme tokens</span>
+<h1 style="margin:0;font:400 44px/1.08 'Instrument Serif',serif;letter-spacing:-.01em">Seven accent themes</h1>
+<p style="margin:0;max-width:660px;font:400 14px/1.68 'Inter Tight',sans-serif;color:rgba(0,0,0,.6);text-wrap:pretty">Derived from wind marks 2a–2f plus one added coral, packaged as user-selectable app colors in the spirit of the iMac color relaunch. Each theme is one accent family: an ink accent, a hover step, a bright dark-mode variant, and a two-stop tinted ground for cards and the island backlight. Only the accent family changes between themes — neutrals, type and geometry stay fixed.</p>
+</div>
+
+<p style="margin:0 0 34px;font:400 11px/1.5 ui-monospace,Menlo,monospace;color:rgba(0,0,0,.35)">semantic state colors (recording red, done green, warning yellow) are NOT themed — they stay constant across all six.</p>
+
+<div style="display:flex;flex-direction:column;gap:24px">
+
+<sc-for list="{{ themes }}" as="t" hint-placeholder-count="6">
+<div style="display:grid;grid-template-columns:250px 1fr;gap:32px;align-items:start;padding:24px;background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:24px;box-shadow:0 1px 3px rgba(0,0,0,.045)">
+
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="height:170px;border-radius:26px;background:{{ t.gradient }};box-shadow:0 3px 14px {{ t.shadow }};display:flex;flex-direction:column;justify-content:flex-end;gap:10px;padding:16px;box-sizing:border-box">
+<div style="height:34px;border-radius:999px;background:rgba(20,20,22,.92);display:flex;align-items:center;padding:0 12px;gap:8px;box-shadow:0 0 16px 2px {{ t.glow }}">
+<div style="width:8px;height:8px;border-radius:99px;background:{{ t.darkAccent }}"></div>
+<div style="height:5px;flex:1;border-radius:99px;background:{{ t.darkAccent }};opacity:.34"></div>
+</div>
+<div style="display:flex;gap:7px">
+<div style="height:26px;padding:0 12px;border-radius:9px;background:{{ t.accent }};color:#fff;font:500 11.5px/26px 'Inter Tight',sans-serif">Transcribe</div>
+<div style="height:26px;padding:0 12px;border-radius:9px;background:rgba(255,255,255,.72);color:{{ t.accent }};font:500 11.5px/26px 'Inter Tight',sans-serif">Cancel</div>
+</div>
+</div>
+<div style="display:flex;align-items:baseline;gap:8px">
+<span style="font:600 10.5px ui-monospace,Menlo,monospace;padding:3px 7px;background:rgba(0,0,0,.08);border-radius:5px">{{ t.id }}</span>
+<span style="font:500 17px 'Instrument Serif',serif">{{ t.name }}</span>
+<span style="font:400 11px 'Inter Tight',sans-serif;color:rgba(0,0,0,.45)">{{ t.origin }}</span>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:18px">
+
+<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
+<sc-for list="{{ t.stops }}" as="s" hint-placeholder-count="5">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="height:56px;border-radius:13px;background:{{ s.css }};border:1px solid rgba(0,0,0,.09)"></div>
+<div style="display:flex;flex-direction:column;gap:2px">
+<span style="font:500 10.5px 'Inter Tight',sans-serif;color:rgba(0,0,0,.5)">{{ s.role }}</span>
+<span style="font:500 11.5px ui-monospace,Menlo,monospace">{{ s.hex }}</span>
+<span style="font:400 10.5px ui-monospace,Menlo,monospace;color:rgba(0,0,0,.45)">{{ s.rgb }}</span>
+</div>
+</div>
+</sc-for>
+</div>
+
+<div style="padding:14px 16px;background:#F6F4F1;border-radius:14px;font:400 11.5px/1.8 ui-monospace,Menlo,monospace;color:rgba(0,0,0,.74);white-space:pre-wrap;overflow-x:auto">{{ t.code }}</div>
+
+</div>
+</div>
+</sc-for>
+
+</div>
+
+<h2 style="margin:60px 0 8px;font:400 30px/1.1 'Instrument Serif',serif">Gradients</h2>
+<p style="margin:0 0 22px;max-width:660px;font:400 13.5px/1.65 'Inter Tight',sans-serif;color:rgba(0,0,0,.6);text-wrap:pretty">Three gradient recipes per theme, all built from the same five tokens. Swap the accent family and every surface follows.</p>
+
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px">
+<sc-for list="{{ gradients }}" as="g" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:12px;padding:20px;background:#fff;border:1px solid rgba(0,0,0,.07);border-radius:20px">
+<div style="height:112px;border-radius:15px;background:{{ g.demo }};border:1px solid rgba(0,0,0,.07)"></div>
+<div style="display:flex;flex-direction:column;gap:5px">
+<span style="font:500 14px 'Instrument Serif',serif;font-size:15px">{{ g.name }}</span>
+<span style="font:400 12px/1.55 'Inter Tight',sans-serif;color:rgba(0,0,0,.55);text-wrap:pretty">{{ g.use }}</span>
+</div>
+<div style="padding:11px 13px;background:#F6F4F1;border-radius:11px;font:400 11px/1.7 ui-monospace,Menlo,monospace;color:rgba(0,0,0,.72);white-space:pre-wrap;overflow-x:auto">{{ g.code }}</div>
+</div>
+</sc-for>
+</div>
+
+<h2 style="margin:56px 0 8px;font:400 30px/1.1 'Instrument Serif',serif">Full token export</h2>
+<p style="margin:0 0 20px;max-width:660px;font:400 13.5px/1.65 'Inter Tight',sans-serif;color:rgba(0,0,0,.6)">Paste-ready. Set <code style="font:500 12px ui-monospace,Menlo,monospace;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:4px">data-theme</code> on the root element to switch.</p>
+
+<div style="padding:22px 24px;background:#15181D;border-radius:20px;font:400 11.5px/1.85 ui-monospace,Menlo,monospace;color:#D7DEE6;white-space:pre;overflow-x:auto">{{ cssExport }}</div>
+
+<div style="margin-top:22px;padding:22px 24px;background:#15181D;border-radius:20px;font:400 11.5px/1.85 ui-monospace,Menlo,monospace;color:#D7DEE6;white-space:pre;overflow-x:auto">{{ jsonExport }}</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1240,&quot;height&quot;:1400}}">
+const RAW = [
+  { id:"2a", key:"ember",  name:"Ember",   origin:"plosive /p/", accent:"#8A3316", hover:"#A8411E", dark:"#F0906A", g1:"#FFEDE3", g2:"#FFD6C4", shadow:"rgba(90,40,20,.13)" },
+  { id:"2b", key:"marine", name:"Marine",  origin:"sibilant /s/", accent:"#0E6273", hover:"#147E94", dark:"#7FD3E3", g1:"#EAF4F7", g2:"#CFE7EE", shadow:"rgba(15,70,90,.13)" },
+  { id:"2c", key:"amber",  name:"Amber",   origin:"open vowel /a/", accent:"#A8710F", hover:"#C88A18", dark:"#F2C264", g1:"#FDF4DC", g2:"#F7E3B0", shadow:"rgba(120,85,10,.14)" },
+  { id:"2d", key:"iris",   name:"Iris",    origin:"nasal /m/", accent:"#4A38A6", hover:"#5D49C4", dark:"#A99BF2", g1:"#EFEBFC", g2:"#DCD4F6", shadow:"rgba(50,35,120,.14)" },
+  { id:"2e", key:"fern",   name:"Fern",    origin:"vortex ring", accent:"#1C6A49", hover:"#26855C", dark:"#7FD8AE", g1:"#EBF6EE", g2:"#D2E9DA", shadow:"rgba(20,80,55,.13)" },
+  { id:"2f", key:"rose",   name:"Rose",    origin:"aspirate /h/", accent:"#B02657", hover:"#CC3670", dark:"#F394B4", g1:"#FFF0F4", g2:"#FBD9E3", shadow:"rgba(120,20,60,.13)" },
+  { id:"2h", key:"coral",  name:"Coral",   origin:"added — warm mid", accent:"#D8583C", hover:"#EE6D50", dark:"#FFA48C", g1:"#FFF1EC", g2:"#FFDBD0", shadow:"rgba(150,60,35,.14)" }
+];
+
+const hexToRgb = h => {
+  const n = parseInt(h.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const rgbStr = h => { const [r,g,b] = hexToRgb(h); return `rgb(${r}, ${g}, ${b})`; };
+
+class Component extends DCLogic {
+  renderVals() {
+    const themes = RAW.map(t => {
+      const [dr, dg, db] = hexToRgb(t.dark);
+      return {
+        id: t.id,
+        name: t.name,
+        origin: t.origin,
+        accent: t.accent,
+        darkAccent: t.dark,
+        gradient: `linear-gradient(152deg, ${t.g1}, ${t.g2})`,
+        shadow: t.shadow,
+        glow: `rgba(${dr}, ${dg}, ${db}, .45)`,
+        stops: [
+          { role:"accent",       hex:t.accent, rgb:rgbStr(t.accent), css:t.accent },
+          { role:"accent hover", hex:t.hover,  rgb:rgbStr(t.hover),  css:t.hover },
+          { role:"accent dark",  hex:t.dark,   rgb:rgbStr(t.dark),   css:t.dark },
+          { role:"ground top",   hex:t.g1,     rgb:rgbStr(t.g1),     css:t.g1 },
+          { role:"ground base",  hex:t.g2,     rgb:rgbStr(t.g2),     css:t.g2 }
+        ],
+        code:
+`--accent:        ${t.accent};   /* ${rgbStr(t.accent)} */
+--accent-hover:  ${t.hover};   /* ${rgbStr(t.hover)} */
+--accent-dark:   ${t.dark};   /* ${rgbStr(t.dark)} — island fiber stripe, dark UI */
+--ground-top:    ${t.g1};   /* ${rgbStr(t.g1)} */
+--ground-base:   ${t.g2};   /* ${rgbStr(t.g2)} */
+--accent-shadow: ${t.shadow};
+--accent-glow:   rgba(${dr}, ${dg}, ${db}, .45);`
+      };
+    });
+
+    const gradients = [
+      { name:"Card ground",
+        use:"Settings and alert cards, onboarding panels. Low-contrast tint so body text stays black.",
+        demo:"linear-gradient(152deg, #EFEBFC, #DCD4F6)",
+        code:"background: linear-gradient(152deg,\n  var(--ground-top),\n  var(--ground-base));" },
+      { name:"Island backlight",
+        use:"Ambient glow behind the island. Radial, never touches the surface — sits in the dark UI.",
+        demo:"radial-gradient(120% 150% at 50% 118%, rgba(169,155,242,.55), rgba(169,155,242,0) 70%), #15181D",
+        code:"background:\n  radial-gradient(120% 150% at 50% 118%,\n    var(--accent-glow),\n    transparent 70%),\n  var(--surface-dark);" },
+      { name:"Fiber stripe",
+        use:"The 1px outline running the island edge. Bright at the top arc, dimmer at the base.",
+        demo:"linear-gradient(180deg, #A99BF2 0%, #7B6BD6 55%, #4A38A6 100%)",
+        code:"border-image: linear-gradient(180deg,\n  var(--accent-dark) 0%,\n  color-mix(in oklab, var(--accent-dark), var(--accent) 60%) 55%,\n  var(--accent) 100%) 1;" }
+    ];
+
+    const cssExport =
+`:root {\n  --surface:      #FBFAF8;  /* rgb(251, 250, 248) */\n  --surface-dark: #15181D;  /* rgb(21, 24, 29)   */\n  --ink:          #141414;  /* rgb(20, 20, 20)   */\n\n  /* semantic — never themed */\n  --state-record: #E03B3B;  /* rgb(224, 59, 59)  */\n  --state-done:   #35A76B;  /* rgb(53, 167, 107) */\n  --state-warn:   #E0A32B;  /* rgb(224, 163, 43) */\n}\n\n` +
+RAW.map(t => {
+  const [dr, dg, db] = hexToRgb(t.dark);
+  return `[data-theme="${t.key}"] {\n  --accent:        ${t.accent};\n  --accent-hover:  ${t.hover};\n  --accent-dark:   ${t.dark};\n  --ground-top:    ${t.g1};\n  --ground-base:   ${t.g2};\n  --accent-shadow: ${t.shadow};\n  --accent-glow:   rgba(${dr}, ${dg}, ${db}, .45);\n}`;
+}).join("\n\n");
+
+    const jsonExport = JSON.stringify({
+      themes: RAW.map(t => {
+        const rgb = h => hexToRgb(h);
+        return {
+          key: t.key, label: t.name, source: t.id,
+          accent: { hex: t.accent, rgb: rgb(t.accent) },
+          accentHover: { hex: t.hover, rgb: rgb(t.hover) },
+          accentDark: { hex: t.dark, rgb: rgb(t.dark) },
+          groundTop: { hex: t.g1, rgb: rgb(t.g1) },
+          groundBase: { hex: t.g2, rgb: rgb(t.g2) }
+        };
+      })
+    }, null, 2);
+
+    return { themes, gradients, cssExport, jsonExport };
+  }
+}
+</script>
+</body>
+</html>

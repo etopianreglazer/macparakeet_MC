@@ -18,6 +18,8 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     private let dictationCaptureActiveProvider: () -> Bool
     private let onOpenMainWindow: () -> Void
     private let onOpenSettings: () -> Void
+    /// Menu-bar "Open Splay" presents the recents card (the second surface).
+    private let onOpenRecent: () -> Void
     private let onNavigate: (SidebarItem) -> Void
     private let onNewTranscription: () -> Void
     private let onStartDictation: () -> Void
@@ -52,6 +54,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         dictationCaptureActiveProvider: @escaping () -> Bool,
         onOpenMainWindow: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
+        onOpenRecent: @escaping () -> Void,
         onNavigate: @escaping (SidebarItem) -> Void,
         onNewTranscription: @escaping () -> Void,
         onStartDictation: @escaping () -> Void,
@@ -72,6 +75,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         self.dictationCaptureActiveProvider = dictationCaptureActiveProvider
         self.onOpenMainWindow = onOpenMainWindow
         self.onOpenSettings = onOpenSettings
+        self.onOpenRecent = onOpenRecent
         self.onNavigate = onNavigate
         self.onNewTranscription = onNewTranscription
         self.onStartDictation = onStartDictation
@@ -84,7 +88,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     private static var appDisplayName: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
             ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
-            ?? "MacParakeet"
+            ?? "Splay"
     }
 
     private func makeMenuItem(title: String, action: Selector, key: String) -> NSMenuItem {
@@ -310,7 +314,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
         let openItem = NSMenuItem(
             title: "Open \(appName)",
-            action: #selector(openMainWindow),
+            action: #selector(openRecentCard),
             keyEquivalent: "o"
         )
         openItem.target = self
@@ -463,6 +467,11 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
     @objc private func openMainWindow() {
         onOpenMainWindow()
+    }
+
+    /// Menu-bar "Open Splay" → the recents card.
+    @objc private func openRecentCard() {
+        onOpenRecent()
     }
 
     @objc private func newTranscription() {

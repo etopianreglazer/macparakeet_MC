@@ -1,5 +1,6 @@
 import AppKit
 import Sparkle
+import SwiftUI
 import MacParakeetCore
 import MacParakeetViewModels
 
@@ -39,9 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var meetingRecordingFlowCoordinator: MeetingRecordingFlowCoordinator?
     private var meetingAutoStartCoordinator: MeetingAutoStartCoordinator?
     /// Ambient island panel (fork: `islandReplacesDictationPill`). Long-lived
-    /// for the app's lifetime; morphs through the capture lifecycle and the
-    /// expanded "Spotlight card" state.
+    /// for the app's lifetime; a pure indicator morphing through the capture
+    /// lifecycle. Anything it needs to say is a card (`splayCardController`).
     private var islandController: IslandController?
+    /// The card surface (fork two-surface design): one centred modal over a
+    /// dimmed scrim, reused for recents / settings / first-run / alerts.
+    private let splayCardController = SplayCardController()
     /// Productized Transforms coordinator (ADR-022). Owns the process-wide
     /// `TransformsHotkeyRegistry` + dispatch from registered hotkeys to the
     /// `TransformExecutor` pipeline. Gated on `AppFeatures.transformsEnabled`.
@@ -254,7 +258,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.windowCoordinator.openMainWindow()
         },
         onOpenSettings: { [weak self] in
-            self?.windowCoordinator.openMainWindowToSettings()
+            // Two-surface design: Settings is a card, not a window.
+            self?.presentSettingsCard()
+        },
+        onOpenRecent: { [weak self] in
+            self?.presentRecentCard()
         },
         onNavigate: { [weak self] item in
             self?.mainWindowState.navigate(to: item)
@@ -308,6 +316,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         onMenuBarOnlyModeChanged: { [weak self] in
             self?.windowCoordinator.applyActivationPolicyFromSettings()
+            self?.islandController?.restoreAmbientVisibility()
         },
         onShowIdlePillChanged: { [weak self] in
             self?.handleShowIdlePillChange()
@@ -317,6 +326,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - App Lifecycle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AudioCaptureDiagnostics.append("splay_start did_finish bundle=\(Bundle.main.bundlePath) disk=\(isRunningFromDiskImage())")
         // Process boot marker for the audio diagnostics log. The dev app and
         // `swift test` write into the same on-disk file
         // (`~/Library/Logs/MacParakeet/dictation-audio.log`); without this
@@ -333,11 +343,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         applyAppAppearance()
+        AudioCaptureDiagnostics.append("splay_start creating_early_island")
+        if AppFeatures.islandReplacesDictationPill {
+            let island = IslandController(pillViewModel: meetingPillViewModel, idleVisible: settingsViewModel.showIdlePill)
+            island.show()
+            islandController = island
+            environmentConfigurer.earlyIslandController = island
+        }
         startEnvironmentSetup()
         menuBarCoordinator.setupMainMenu()
         menuBarCoordinator.setupMenuBar()
         settingsObserverCoordinator.startObserving()
         windowCoordinator.applyActivationPolicyFromSettings()
+        islandController?.restoreAmbientVisibility()
         setupDiscoverContent()
     }
 
@@ -385,7 +403,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows _: Bool) -> Bool {
-        windowCoordinator.handleAppReopen()
+        if AppFeatures.islandReplacesDictationPill {
+            presentRecentCard()
+            return true
+        }
+        return windowCoordinator.handleAppReopen()
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
@@ -426,14 +448,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onPresentEntitlementsAlert: { [weak self] error in
                     self?.presentEntitlementsAlert(error)
                 },
-                onOpenMainWindow: { [weak self] in
-                    self?.windowCoordinator.openMainWindow()
+                onOpenMainWindow: {
+                    // Two-surface design: a finished recording lights the island
+                    // (done) and the file is waiting — no modal is forced open.
                 },
-                onOpenSettingsOverlay: { [weak self] in
-                    self?.windowCoordinator.openSettingsOverlay()
-                },
-                onOpenLibraryOverlay: { [weak self] in
-                    self?.windowCoordinator.openLibraryOverlay()
+                onOpenRecentCard: { [weak self] in
+                    self?.presentRecentCard()
                 },
                 onToggleMeetingRecordingFromHotkey: { [weak self] in
                     guard let self, !self.onboardingWindowController.isVisible else { return }
@@ -567,7 +587,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "MacParakeet Failed to Start"
+        alert.messageText = "Splay Failed to Start"
         alert.informativeText = error.localizedDescription
         alert.addButton(withTitle: "Quit")
         _ = alert.runModal()
@@ -594,9 +614,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showMoveToApplicationsAlert() {
         let alert = NSAlert()
         alert.messageText = "Move to Applications"
-        alert.informativeText = "MacParakeet must be in your Applications folder to work correctly. " +
+        alert.informativeText = "Splay must be in your Applications folder to work correctly. " +
             "Running from a disk image prevents macOS from granting microphone and accessibility permissions.\n\n" +
-            "Drag MacParakeet to the Applications folder in the DMG window, then launch it from there."
+            "Drag Splay to the Applications folder in the DMG window, then launch it from there."
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Quit")
         alert.runModal()
@@ -724,6 +744,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .idle
     }
 
+    // MARK: - Card surface (two-surface design)
+
+    /// Present the recents card: the last five recordings (newest files) with an
+    /// "Open folder" handoff. Loads fresh data before presenting so the snapshot
+    /// is current.
+    private func presentRecentCard() {
+        splayCardController.onDismiss = { [weak self] in self?.islandController?.setHeldOpen(false) }
+        islandController?.setHeldOpen(true)
+        Task { @MainActor in
+            await libraryViewModel.loadTranscriptions().value
+            let now = Date()
+            let all = libraryViewModel.transcriptions
+            let rows = all.prefix(5).map { SplayRecordingRow.from($0, now: now) }
+            let folder = AutoSaveService.resolveFolder(scope: .meeting)
+                ?? AutoSaveService.resolveFolder(scope: .transcription)
+                ?? AutoSaveService.defaultFolder(for: .meeting)
+            let display = folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+            splayCardController.present { dismiss in
+                SplayCards.recent(
+                    rows: rows,
+                    totalCount: all.count,
+                    folderDisplayPath: display,
+                    onOpenFolder: { NSWorkspace.shared.activateFileViewerSelecting([folder]) },
+                    dismiss: dismiss
+                )
+            }
+        }
+    }
+
+    /// Present the settings card: three switches and a quit — the entire settings
+    /// surface (handoff §"Recent & settings").
+    private func presentSettingsCard() {
+        splayCardController.onDismiss = { [weak self] in self?.islandController?.setHeldOpen(false) }
+        islandController?.setHeldOpen(true)
+        splayCardController.present { [weak self] dismiss in
+            guard let self else { return AnyView(EmptyView()) }
+            return SplayCards.settings(
+                settings: self.settingsViewModel,
+                onDone: dismiss,
+                onQuit: { [weak self] in self?.quitApp() }
+            )
+        }
+    }
+
     // MARK: - Meeting Recording
 
     private func toggleMeetingRecording(
@@ -737,14 +801,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        if originatesFromWindow {
-            // The Transcribe tab hosts the Meeting Recording tile, which
-            // reflects live recording state. Show the user that surface so
-            // they see the start/recording transition.
-            mainWindowState.selectedItem = .transcribe
-            windowCoordinator.openMainWindow()
-        }
-
+        // Two-surface design: the island itself lights up on the record/recording
+        // transition — no separate surface needs to be summoned.
         meetingRecordingFlowCoordinator?.toggleRecording(trigger: trigger)
     }
 
@@ -772,7 +830,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch quitState {
         case .starting:
             alert.messageText = "Meeting Recording Is Starting"
-            alert.informativeText = "Cancel the pending recording before quitting, or keep MacParakeet open."
+            alert.informativeText = "Cancel the pending recording before quitting, or keep Splay open."
             alert.addButton(withTitle: "Cancel Recording & Quit")
             alert.addButton(withTitle: "Cancel Quit")
             if alert.buttons.indices.contains(0) {
@@ -784,7 +842,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         case .recording:
             alert.messageText = "Meeting Recording in Progress"
-            alert.informativeText = "End and transcribe the meeting before quitting, discard the recording, or keep MacParakeet open."
+            alert.informativeText = "End and transcribe the meeting before quitting, discard the recording, or keep Splay open."
             alert.addButton(withTitle: "End & Transcribe")
             alert.addButton(withTitle: "Discard Recording")
             alert.addButton(withTitle: "Cancel Quit")
@@ -802,7 +860,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         case .finishing:
             alert.messageText = "Meeting Transcription in Progress"
-            alert.informativeText = "MacParakeet is saving the meeting. Finish transcription before quitting, or keep the app open."
+            alert.informativeText = "Splay is saving the meeting. Finish transcription before quitting, or keep the app open."
             alert.addButton(withTitle: "Finish & Quit")
             alert.addButton(withTitle: "Cancel Quit")
             if alert.runModal() == .alertFirstButtonReturn {
@@ -859,7 +917,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.messageText = "Global Hotkey Unavailable"
         alert.informativeText =
-            "MacParakeet couldn’t enable the system-wide hotkey because Accessibility access is missing. " +
+            "Splay couldn’t enable the system-wide hotkey because Accessibility access is missing. " +
             "You can still open the app manually, but dictation shortcuts won’t work until this is enabled."
         alert.addButton(withTitle: "Open Settings")
         alert.addButton(withTitle: "Not Now")

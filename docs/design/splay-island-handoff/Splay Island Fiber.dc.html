@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics=""><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin=""><link href="https://fonts.googleapis.com/css2?family=Instrument+Serif&amp;family=Inter+Tight:wght@400;500;600&amp;display=swap" rel="stylesheet"><style>
+body{margin:0;background:#d9d4ec;font-family:'Inter Tight',system-ui,sans-serif}
+a{color:#4A38A6}a:hover{color:#2f2277}
+@keyframes latent{0%,100%{opacity:.5}50%{opacity:.85}}
+@keyframes voice{0%{opacity:.5;transform:translateX(-50%) scale(.96)}11%{opacity:.95;transform:translateX(-50%) scale(1.03)}23%{opacity:.62;transform:translateX(-50%) scale(.99)}37%{opacity:1;transform:translateX(-50%) scale(1.06)}49%{opacity:.68;transform:translateX(-50%) scale(1)}61%{opacity:.92;transform:translateX(-50%) scale(1.03)}74%{opacity:.58;transform:translateX(-50%) scale(.98)}87%{opacity:.86;transform:translateX(-50%) scale(1.02)}100%{opacity:.5;transform:translateX(-50%) scale(.96)}}
+@keyframes drift{0%{filter:hue-rotate(0deg) saturate(1)}50%{filter:hue-rotate(42deg) saturate(1.25)}100%{filter:hue-rotate(0deg) saturate(1)}}
+@keyframes breathe{0%,100%{transform:scale(1);opacity:.85}50%{transform:scale(1.08);opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+@keyframes riseC{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes tick{0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes pulse{0%{opacity:.4;transform:scale(.82)}50%{opacity:1;transform:scale(1.18)}100%{opacity:.4;transform:scale(.82)}}
+@keyframes rimlive{0%{opacity:.45}9%{opacity:.95}21%{opacity:.6}36%{opacity:1}48%{opacity:.66}62%{opacity:.9}76%{opacity:.55}88%{opacity:.85}100%{opacity:.45}}
+@keyframes rimsoft{0%,100%{opacity:.4}50%{opacity:.8}}
+</style></helmet>
+
+<div style="display:flex;align-items:flex-start;gap:24px;padding:24px;box-sizing:border-box;min-width:1800px">
+
+<div style="width:296px;flex:none;padding:20px 16px 22px;box-sizing:border-box;border-radius:20px;background:rgba(255,255,255,.62);backdrop-filter:blur(24px);box-shadow:0 14px 44px rgba(40,28,90,.14)">
+<div style="display:flex;align-items:center;gap:11px;padding:0 6px 16px">
+<svg viewBox="180 180 640 660" style="width:22px;height:22px"><g fill="#4A38A6"><path d="M452,234 C418,405 344,623 268,780 C390,639 463,420 452,234 Z"></path><path opacity=".9" d="M508,214 C478,391 474,628 500,806 C530,629 534,392 508,214 Z"></path><path opacity=".6" d="M566,234 C554,420 627,638 748,780 C673,623 600,405 566,234 Z"></path></g></svg>
+<div style="display:flex;flex-direction:column"><span style="font:400 19px 'Instrument Serif',serif;color:#241f38">Splay</span><span style="font-size:11px;color:rgba(36,31,56,.5)">One button. Records anything. Gives you Markdown.</span></div>
+</div>
+<sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;gap:2px;margin-bottom:14px">
+<span style="padding:6px 8px;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(36,31,56,.38)">{{ g.name }}</span>
+<sc-for list="{{ g.items }}" as="i" hint-placeholder-count="4">
+<button onClick="{{ i.pick }}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;border:0;cursor:pointer;text-align:left;border-radius:9px;padding:7px 9px;font:500 12.5px 'Inter Tight',sans-serif;background:{{ i.bg }};color:{{ i.fg }}">
+<span>{{ i.label }}</span><span style="font-size:10.5px;opacity:.5">{{ i.code }}</span>
+</button>
+</sc-for>
+</div>
+</sc-for>
+<div style="margin-top:2px;padding:14px 10px 4px;border-top:1px solid rgba(36,31,56,.1)">
+<span style="display:block;padding:0 0 9px;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(36,31,56,.38)">State</span>
+<div style="display:flex;flex-wrap:wrap;gap:6px">
+<sc-for list="{{ variants }}" as="x" hint-placeholder-count="5">
+<button onClick="{{ x.pick }}" style="border:0;cursor:pointer;border-radius:999px;padding:6px 11px;font:500 11.5px 'Inter Tight',sans-serif;background:{{ x.bg }};color:{{ x.fg }}">{{ x.label }}</button>
+</sc-for>
+</div>
+</div>
+<div style="margin-top:16px;padding:14px 10px 0;border-top:1px solid rgba(36,31,56,.1)">
+<span style="display:block;padding:0 0 8px;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:rgba(36,31,56,.38)">Cut from the fork</span>
+<p style="margin:0;font-size:11.5px;line-height:1.55;color:rgba(36,31,56,.5)">No dictation-into-app, no meeting/dictation split, no Transforms, Discover, calendar, auto-notes, prompts, chat, diarization, stats, provider config, settings window. One local model, no engine picker.</p>
+</div>
+</div><div style="position:relative;width:1440px;height:900px;flex:none;overflow:hidden;border-radius:14px;background:radial-gradient(120% 90% at 20% 6%,#f3f0fb 0%,#ded9f0 45%,#c6c0e3 100%);box-shadow:0 30px 80px rgba(40,28,90,.22);font-family:'Inter Tight',system-ui,sans-serif;color:#241f38">
+
+<div style="position:absolute;left:170px;top:250px;width:1100px;height:560px;border-radius:12px;background:rgba(255,255,255,.52);box-shadow:0 24px 60px rgba(40,28,90,.1);padding:30px 34px;box-sizing:border-box;z-index:1">
+<span style="font-size:12px;color:rgba(36,31,56,.3)">{{ hostApp }}</span>
+<div style="margin-top:20px;display:flex;flex-direction:column;gap:12px">
+<div style="height:10px;width:58%;border-radius:5px;background:rgba(36,31,56,.08)"></div>
+<div style="height:10px;width:86%;border-radius:5px;background:rgba(36,31,56,.06)"></div>
+<div style="height:10px;width:72%;border-radius:5px;background:rgba(36,31,56,.06)"></div>
+<div style="height:10px;width:44%;border-radius:5px;background:rgba(36,31,56,.06)"></div>
+</div>
+</div>
+
+<div style="position:absolute;top:0;left:0;right:0;height:32px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;background:rgba(255,255,255,.34);backdrop-filter:blur(18px);font-size:12.5px;z-index:2">
+<div style="display:flex;align-items:center;gap:18px"><span style="font-weight:600">{{ menuOwner }}</span><span style="opacity:.55">File</span><span style="opacity:.55">Edit</span><span style="opacity:.55">View</span><span style="opacity:.55">Window</span></div>
+<div style="display:flex;align-items:center;gap:14px;opacity:.75">
+<svg viewBox="180 180 640 660" style="width:15px;height:15px"><g fill="{{ barColor }}"><path d="M452,234 C418,405 344,623 268,780 C390,639 463,420 452,234 Z"></path><path opacity=".9" d="M508,214 C478,391 474,628 500,806 C530,629 534,392 508,214 Z"></path><path opacity=".6" d="M566,234 C554,420 627,638 748,780 C673,623 600,405 566,234 Z"></path></g></svg>
+<span>100%</span><span>Fri 7 Aug</span><span>09:41</span></div>
+</div>
+
+<div style="position:absolute;top:0;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;z-index:6">
+
+<div style="position:absolute;top:-70px;left:50%;transform:translateX(-50%);width:{{ glowW }};height:{{ glowH }}; pointer-events: none; border-radius: 50%; filter: blur(46px); background: radial-gradient(closest-side,{{ glowColor }},transparent 72%); opacity: {{ glowOp }}; animation: {{ glowAnim }}"></div>
+<div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);width:{{ glow2W }};height:110px;pointer-events:none;border-radius:50%;filter:blur(22px);background:radial-gradient(closest-side,{{ glowColor }},transparent 70%);opacity:{{ glow2Op }};animation:{{ glowAnim }}"></div>
+
+<div style="position: relative; display: flex; align-items: flex-end; justify-content: space-between; box-sizing: border-box; width:{{ iw }};height:{{ ih }};padding:0 6px 6px; border-radius: 0 0 {{ ir }} {{ ir }}; background: #0B0813; color: #fff; overflow: visible; box-shadow: 0 10px 34px {{ glowColor }}, 0 0 14px -2px {{ fiberSoft }}">
+<div style="position:absolute;left:-1px;right:-1px;top:-3px;bottom:-1px;pointer-events:none;border-radius:0 0 {{ ir }} {{ ir }};border:2px solid {{ fiber }};border-top:0;box-shadow:0 0 9px 0 {{ fiberSoft }}, 0 0 22px 2px {{ fiberSoft }};opacity:{{ fiberOp }};animation:{{ fiberAnim }}"></div>
+<div style="display:flex;align-items:center;gap:7px;flex:1;min-width:0;height:26px;overflow:hidden">
+<sc-if value="{{ showMark }}" hint-placeholder-val="{{ true }}">
+<svg viewBox="180 180 640 660" style="width:16px;height:16px;flex:none;animation:{{ markAnim }}"><g fill="{{ accent }}"><path d="M452,234 C418,405 344,623 268,780 C390,639 463,420 452,234 Z"></path><path opacity=".9" d="M508,214 C478,391 474,628 500,806 C530,629 534,392 508,214 Z"></path><path opacity=".6" d="M566,234 C554,420 627,638 748,780 C673,623 600,405 566,234 Z"></path></g></svg>
+</sc-if>
+<sc-if value="{{ showGlyph }}" hint-placeholder-val="{{ false }}">
+<span style="flex:none;display:flex;align-items:center;justify-content:center;box-sizing:border-box;width:16px;height:16px;border-radius:50%;font-size:9px;line-height:1;color:{{ glyphColor }};border:1.5px solid {{ glyphColor }}">{{ glyphChar }}</span>
+</sc-if>
+</div>
+<div style="width:180px;flex:none"></div>
+<div style="display:flex;align-items:center;justify-content:flex-end;gap:7px;flex:1;min-width:0;height:26px;overflow:hidden">
+<span style="font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap;color:{{ rightColor }}">{{ rightLabel }}</span>
+<sc-if value="{{ showActions }}" hint-placeholder-val="{{ false }}">
+<span style="flex:none;display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:7px;background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);font-size:11px">⧉</span>
+<span style="flex:none;display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:7px;background:{{ accent }};color:#0B0813;font-size:11px">✦</span>
+</sc-if>
+<sc-if value="{{ showChevron }}" hint-placeholder-val="{{ false }}">
+<span style="flex:none;font-size:10px;line-height:1;color:rgba(255,255,255,.45)">⌄</span>
+</sc-if>
+<sc-if value="{{ showSpin }}" hint-placeholder-val="{{ false }}">
+<span style="width:14px;height:14px;flex:none;border-radius:50%;border:2px solid rgba(255,255,255,.18);border-top-color:{{ accent }};animation:spin .8s linear infinite"></span>
+</sc-if>
+</div>
+</div><div style="position:absolute;top:0;left:50%;transform:translateX(-50%);width:180px;height:32px;border-radius:0 0 14px 14px;background:#000;display:flex;align-items:center;justify-content:center;gap:5px;pointer-events:none">
+<span style="width:7px;height:7px;border-radius:50%;background:#151a22;box-shadow:inset 0 0 2px #2c3540"></span>
+<span style="width:4px;height:4px;border-radius:50%;background:#101419"></span>
+</div>
+
+</div>
+
+<sc-if value="{{ cardOn }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;z-index:8;display:flex;align-items:center;justify-content:center;background:rgba(36,31,56,.2);backdrop-filter:blur(3px)">
+<div style="width:{{ cardW }};padding:26px 24px 20px;box-sizing:border-box;border-radius:16px;background:rgba(252,251,255,.98);box-shadow:0 30px 70px rgba(40,28,90,.35);text-align:center;animation:riseC .24s ease both">
+<span style="display:inline-flex;align-items:center;justify-content:center;width:46px;height:46px;border-radius:14px;background:{{ cardTint }};color:{{ cardColor }};font-size:19px">{{ cardGlyph }}</span>
+<div style="margin-top:14px;font-size:14.5px;font-weight:600">{{ cardTitle }}</div>
+<p style="margin:7px 0 0;font-size:12.5px;line-height:1.55;color:rgba(36,31,56,.6);text-wrap:pretty">{{ cardBody }}</p>
+
+<sc-if value="{{ cardDest }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px;display:flex;flex-direction:column;gap:7px;text-align:left">
+<sc-for list="{{ dests }}" as="d" hint-placeholder-count="4">
+<button onClick="{{ d.pick }}" style="display:flex;align-items:center;gap:11px;border:0;cursor:pointer;border-radius:12px;padding:12px 13px;background:{{ d.bg }};border:{{ d.border }}">
+<span style="width:26px;height:26px;flex:none;border-radius:8px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.75);font-size:12px;color:#4A38A6">{{ d.glyph }}</span>
+<span style="flex:1;display:flex;flex-direction:column;gap:1px"><span style="font-size:12.5px;font-weight:500;color:#2c2350">{{ d.name }}</span><span style="font-size:11px;color:rgba(36,31,56,.5)">{{ d.sub }}</span></span>
+<span style="font-size:11px;color:#4A38A6">{{ d.tag }}</span>
+</button>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ cardList }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px;display:flex;flex-direction:column;gap:2px;text-align:left">
+<sc-for list="{{ archive }}" as="a" hint-placeholder-count="5">
+<div style="display:flex;align-items:center;gap:12px;padding:9px 11px;border-radius:11px;background:{{ a.bg }}">
+<div style="width:52px;flex:none;display:flex;flex-direction:column;font-variant-numeric:tabular-nums"><span style="font-size:12px;color:#2c2350">{{ a.time }}</span><span style="font-size:10.5px;color:rgba(36,31,56,.42)">{{ a.dur }}</span></div>
+<span style="flex:1;font-size:12.5px;color:rgba(36,31,56,.72);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ a.text }}</span>
+<span style="flex:none;box-sizing:border-box;width:7px;height:7px;border-radius:50%;border:1.5px solid rgba(74,56,166,.4);background:{{ a.srcBg }}"></span>
+</div>
+</sc-for>
+<div style="margin-top:10px;padding-top:11px;border-top:1px solid rgba(36,31,56,.1);font-size:11.5px;color:rgba(36,31,56,.45)">~/Splay · 214 recordings · everything older is just files</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ cardToggles }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px;display:flex;flex-direction:column;gap:2px;text-align:left">
+<sc-for list="{{ menuToggles }}" as="t" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:11px;padding:10px 11px;border-radius:11px;background:rgba(36,31,56,.035)">
+<span style="flex:1;font-size:12.5px;color:#2c2350">{{ t.label }}</span>
+<span style="width:38px;height:22px;flex:none;border-radius:12px;padding:3px;box-sizing:border-box;display:flex;justify-content:{{ t.align }};background:{{ t.bg }}"><span style="width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2)"></span></span>
+</div>
+</sc-for>
+<div style="margin-top:10px;padding-top:11px;border-top:1px solid rgba(36,31,56,.1);font-size:11.5px;color:rgba(36,31,56,.45)">This is the entire settings surface.</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ cardPerm }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px;padding:13px 15px;border-radius:13px;background:{{ cardTint }};display:flex;align-items:center;gap:12px;text-align:left">
+<span style="width:32px;height:32px;flex:none;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.85);font-size:14px;color:{{ cardColor }}">{{ permGlyph }}</span>
+<div style="flex:1;display:flex;flex-direction:column;gap:1px"><span style="font-size:12.5px;font-weight:500">{{ permName }}</span><span style="font-size:11px;color:rgba(36,31,56,.55)">{{ permSub }}</span></div>
+<span style="font-size:11.5px;font-weight:500;color:{{ cardColor }}">{{ permState }}</span>
+</div>
+</sc-if>
+
+<sc-if value="{{ cardKeys }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px;display:flex;justify-content:center;gap:7px">
+<span style="border-radius:9px;padding:10px 14px;background:rgba(36,31,56,.06);font:500 14px ui-monospace,Menlo,monospace">⌥</span>
+<span style="border-radius:9px;padding:10px 20px;background:rgba(36,31,56,.06);font:500 14px ui-monospace,Menlo,monospace">Space</span>
+</div>
+</sc-if>
+
+<div style="margin-top:20px;display:flex;gap:8px">
+<sc-if value="{{ cardTwo }}" hint-placeholder-val="{{ true }}">
+<button style="flex:1;border:0;cursor:pointer;border-radius:10px;padding:10px 0;font:500 13px 'Inter Tight',sans-serif;background:rgba(36,31,56,.07);color:#2c2350">{{ cardAlt }}</button>
+</sc-if>
+<button style="flex:1;border:0;cursor:pointer;border-radius:10px;padding:10px 0;font:500 13px 'Inter Tight',sans-serif;background:{{ cardGoBg }};color:#fff">{{ cardGo }}</button>
+</div>
+<sc-if value="{{ cardDots }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:16px;display:flex;justify-content:center;gap:6px">
+<sc-for list="{{ dots }}" as="d" hint-placeholder-count="5">
+<span style="width:6px;height:6px;border-radius:50%;background:{{ d.bg }}"></span>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<div style="position:absolute;left:16px;bottom:14px;font-size:11px;color:rgba(36,31,56,.4);z-index:2">{{ screenCode }} · {{ screenName }} · {{ variantName }}</div>
+<div style="position:absolute;right:18px;bottom:14px;max-width:420px;text-align:right;font-size:11.5px;line-height:1.5;color:rgba(36,31,56,.45);z-index:2">{{ note }}</div>
+</div>
+
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1800,&quot;height&quot;:960}}">
+const ACCENT='#A99BF5',INK='#4A38A6';
+const GLOWS={dormant:'rgba(94,72,214,.30)',ready:'rgba(133,104,255,.62)',rec:'rgba(232,84,72,.66)',trans:'rgba(140,110,255,.62)',done:'rgba(72,196,143,.62)',warm:'rgba(244,190,89,.6)',bad:'rgba(236,86,74,.62)'};
+const SCREENS=[
+ {id:'i1',g:'The island',code:'I',n:'Island states',V:['Dormant','Ready','Recording','Transcribing','Done','Copied','Warning','Failed','File dropped']},
+ {id:'f1',g:'Cards',code:'C1',n:'First run',V:['Welcome','Microphone','System audio','Destination','One shortcut']},
+ {id:'r1',g:'Cards',code:'C2',n:'Recent & settings',V:['Recent recordings','Settings']},
+ {id:'n1',g:'Cards',code:'C3',n:'Alerts & handoffs',V:['Delete recording','Stop recording?','Microphone denied','System audio denied','Model repair']}];
+const ARCHIVE=[
+ {time:'09:14',dur:'42:18',text:'Design review — lavender build, beta Friday',src:'mic + system'},
+ {time:'08:31',dur:'04:12',text:'Thinking out loud about the island glow',src:'mic'},
+ {time:'Yest.',dur:'23:11',text:'User call — Anna, permissions copy',src:'mic + system'},
+ {time:'Yest.',dur:'01:38',text:'Note to self: one button, no modes',src:'mic'},
+ {time:'Wed',dur:'48:20',text:'Roadmap call, three decisions',src:'mic + system'}];
+const MD=`## 09:14 · 42:18 · mic + system\n\n[mic] The whole point is one button. If I have to\npick a mode before I speak, I have already lost\nthe thought.\n\n[system] Right — and the file should stay raw.\n\n[mic] Cleaned up, not compressed. I want my own\nwords back, not a summary of them.`;
+class Component extends DCLogic{
+ state={scr:'i1',v:0,dest:2};
+ go=id=>()=>this.setState({scr:id,v:0});
+ setV=i=>()=>this.setState({v:i});
+ renderVals(){
+  const s=this.state,scr=s.scr,S=SCREENS.find(x=>x.id===scr)||SCREENS[0];
+  const v=Math.min(Math.max(s.v,0),S.V.length-1);
+  const groups=[];SCREENS.forEach(x=>{let g=groups.find(y=>y.name===x.g);if(!g){g={name:x.g,items:[]};groups.push(g)}
+   g.items.push({label:x.n,code:x.code,bg:x.id===scr?'rgba(74,56,166,.14)':'transparent',fg:x.id===scr?'#2c2350':'rgba(44,35,80,.72)',pick:this.go(x.id)})});
+
+  const isI=scr==='i1',isR=scr==='r1',isF=scr==='f1',isC=scr==='n1';
+  const rec=isI&&(v===2||v===6),tr=isI&&v===3,ready=isI&&(v===4||v===5),warn=isI&&v===6,fail=isI&&v===7,drop=isI&&v===8;
+  const talk=rec;
+  const hot=rec||tr||ready||drop;
+
+  const geo=()=>{
+   if(!isI)return{iw:'206px',ih:'34px',ir:'17px'};
+   if(v===0)return{iw:'206px',ih:'34px',ir:'17px'};
+   if(v===1)return{iw:'248px',ih:'35px',ir:'18px'};
+   if(v===2)return{iw:'240px',ih:'37px',ir:'19px'};
+   if(v===3)return{iw:'248px',ih:'35px',ir:'18px'};
+   if(v===4||v===5)return{iw:'300px',ih:'40px',ir:'21px'};
+   return{iw:'244px',ih:'35px',ir:'18px'};};
+  const G=geo();
+  const wing=`${Math.max(60,(parseInt(G.iw)-188)/2-2)}px`;
+
+  const glowColor=warn?GLOWS.warm:fail?GLOWS.bad:rec?GLOWS.rec:tr?GLOWS.trans:ready?GLOWS.done:drop?GLOWS.trans:(isI&&v===1)?GLOWS.ready:GLOWS.dormant;
+  const glowAnim=rec?'voice 1.5s ease-in-out infinite':tr?'latent 2.2s ease-in-out infinite':'latent 7s ease-in-out infinite';
+  const act=isI&&v===1;
+  const FIB={dormant:['#5B49B8','rgba(120,96,236,.5)'],ready:['#9B86FF','rgba(140,110,255,.7)'],rec:['#FF6B5E','rgba(255,90,74,.75)'],trans:['#A99BF5','rgba(150,120,255,.7)'],done:['#5FD9A0','rgba(76,206,150,.7)'],warm:['#F6C86B','rgba(244,190,89,.7)'],bad:['#FF7A6E','rgba(240,110,96,.75)']};
+  const fk=warn?'warm':fail?'bad':rec?'rec':tr?'trans':ready?'done':drop?'trans':act?'ready':'dormant';
+
+  const leftLabel='';
+  const rightLabel=isI&&v===1?'⌥␣':'';
+  const GL=isI?{4:['✓',ACCENT],5:['⧉',ACCENT],7:['!','#F0837A']}[v]:null;
+
+  const CARDS={f1:[
+   {glyph:'◍',title:'Splay records anything you can hear',body:'One shortcut starts it. Your voice, a call, a video — it all becomes a Markdown file on this Mac. Nothing is uploaded, ever.',go:'Continue',alt:'',w:'380px',dots:true},
+   {glyph:'●',title:'Splay needs the microphone',body:'macOS will ask next. Splay opens the microphone only while it is recording, and the indicator in the island never lies about it.',go:'Ask macOS',alt:'Later',w:'380px',perm:{g:'●',n:'Microphone',s:'Required',state:'Not requested'},dots:true},
+   {glyph:'▣',title:'And system audio, if you record calls',body:'This is the only reason Splay asks for screen recording. Skip it and Splay still records you — you can turn it on later from the menu bar.',go:'Allow',alt:'Skip',w:'400px',perm:{g:'▣',n:'Screen & system audio',s:'Optional · calls and video',state:'Not requested'},dots:true},
+   {glyph:'⌘',title:'Where should the text go?',body:'Pick one now. Splay will do this silently every time — you can change it in the menu bar.',go:'Use this',alt:'',w:'420px',dest:true,dots:true},
+   {glyph:'⌥',title:'That is the whole app',body:'Hold ⌥Space to start, press it again to stop. The island tells you what is happening; the file is waiting when it goes quiet.',go:'Start recording',alt:'',w:'380px',keys:true,dots:true}],
+  n1:[
+   {glyph:'⌫',title:'Delete this recording?',body:'“Design review”, its audio and its Markdown file are removed from this Mac. This cannot be undone.',go:'Delete',alt:'Keep',w:'330px',danger:true},
+   {glyph:'■',title:'Stop recording?',body:'12:04 has been captured. Splay will transcribe it now and write the file — stopping does not throw anything away.',go:'Stop and transcribe',alt:'Keep recording',w:'340px'},
+   {glyph:'●',title:'The microphone is switched off',body:'macOS is blocking it, so Splay cannot record anything. Turn Splay on under Privacy & Security → Microphone and come straight back.',go:'Open System Settings',alt:'Later',w:'380px',danger:true,perm:{g:'●',n:'Microphone',s:'Required',state:'Denied'}},
+   {glyph:'▣',title:'Call audio will not be recorded',body:'Splay can still record your voice. Screen recording permission is what lets it hear the other side of a call.',go:'Open System Settings',alt:'Record me only',w:'390px',perm:{g:'▣',n:'Screen & system audio',s:'Optional',state:'Denied'}},
+   {glyph:'↺',title:'The speech model needs repairing',body:'One file is incomplete, so transcription would fail. Splay can fetch the missing 240 MB once and then stay offline forever.',go:'Repair model',alt:'Not now',w:'380px'}],
+  r1:[
+   {glyph:'▤',title:'Recent recordings',body:'The last five. Splay keeps no library — these are simply the newest files in ~/Splay.',go:'Open folder',alt:'Close',w:'480px',list:true},
+   {glyph:'◎',title:'Settings',body:'Three switches. Everything else Splay has already decided for you.',go:'Done',alt:'Quit Splay',w:'420px',toggles:true}]};
+  const card=isF?CARDS.f1[Math.min(v,4)]:isC?CARDS.n1[Math.min(v,4)]:isR?CARDS.r1[Math.min(v,1)]:null;
+
+  const NOTES={i1:['Dormant: a few px wider than the camera housing, with a latent glow you only notice when it goes.',
+   'Hover or tap the shortcut: mark on the left, shortcut on the right. Nothing covers the camera.',
+   'Recording: the light behind the island turns red and breathes with your voice. The island itself stays black — nothing is drawn on it.',
+   'Transcribing: mark plus spinner. The glow drifts in colour while the local model works.',
+   'Done: a check and two icons — copy, or hand it to your LLM. No report, no preview, no words.',
+   'Copied: the clipboard glyph replaces the check for a moment, then the island goes quiet again.',
+   'Warning: the light behind turns amber, recording continues. If it needs explaining, an alert card opens — the island never argues.',
+   'Failed: the same shape in red. The audio is kept, so nothing is ever recorded twice.',
+   'A file dropped on the island: mark plus a small arrow, then straight into transcribing.'],
+   r1:['Recent recordings live in the card, not in a panel hanging off the island. Opened from the menu bar item or ⌥⇧Space.','Settings is the same card. Three toggles and a quit — the island never has to explain itself.'],
+   f1:['First run is four cards and a shortcut. Accessibility is never requested — Splay does not type into apps.'],
+   n1:['Two interfaces only: the island indicates, the card asks. Every confirmation, permission and setting uses this one layout.']};
+
+  return {
+   accent:ACCENT,menuOwner:'Google Meet',barColor:hot?INK:'rgba(74,56,166,.55)',
+   hostApp:drop?'Finder — interview-anna.m4a':'Google Meet — Design review',
+   navGroups:groups,variants:S.V.map((label,i)=>({label,bg:i===v?INK:'rgba(36,31,56,.06)',fg:i===v?'#fff':'#2c2350',pick:this.setV(i)})),
+   screenCode:S.code,screenName:S.n,variantName:S.V[v],
+   note:(NOTES[scr]||[''])[Math.min(v,(NOTES[scr]||['']).length-1)],
+   iw:G.iw,ih:G.ih,ir:G.ir,wingW:wing,
+   fiber:FIB[fk][0],fiberSoft:FIB[fk][1],
+   fiberOp:fk==='dormant'?'.55':'1',
+   fiberAnim:rec?'rimlive 1.5s ease-in-out infinite':tr?'rimsoft 2.2s ease-in-out infinite':'none',
+   glowColor,glowAnim,glowW:rec?'640px':hot?'520px':act?'420px':'340px',glowH:rec?'290px':hot?'250px':act?'220px':'190px',
+   glowOp:talk?'1':rec?'.9':tr?'.85':hot?'.65':act?'.5':'.26',
+   glow2W:talk?'400px':hot?'320px':act?'270px':'220px',glow2Op:talk?'.85':rec?'.65':tr?'.6':hot?'.45':act?'.3':'.14',
+   showMark:!isI||(isI&&v!==0&&v!==4&&v!==5&&v!==7),
+   markAnim:rec?'breathe 1.9s ease-in-out infinite':tr?'breathe 1.1s ease-in-out infinite':'breathe 3.6s ease-in-out infinite',
+
+   showGlyph:!!GL,glyphChar:GL?GL[0]:'',glyphColor:GL?GL[1]:ACCENT,
+   leftLabel,rightLabel,rightColor:'rgba(255,255,255,.45)',
+   showSpin:tr,showActions:isI&&v===4,showChevron:warn||fail,
+   archive:ARCHIVE.map((a,i)=>({...a,bg:i===0?'rgba(74,56,166,.07)':'transparent',srcBg:a.src==='mic'?'transparent':'rgba(74,56,166,.4)'})),
+   menuToggles:[['Record system audio too',true],['Launch at login',true],['Play a sound when it starts',false]].map(([label,on])=>({label,align:on?'flex-end':'flex-start',bg:on?INK:'rgba(36,31,56,.16)'})),
+   cardOn:!!card,cardW:card?card.w:'360px',cardGlyph:card?card.glyph:'',cardTitle:card?card.title:'',cardBody:card?card.body:'',
+   cardGo:card?card.go:'',cardAlt:card?card.alt:'',cardTwo:!!(card&&card.alt),
+   cardGoBg:card&&card.danger?'#B3352F':INK,
+   cardColor:card&&card.danger?'#B3352F':INK,cardTint:card&&card.danger?'rgba(179,53,47,.1)':'rgba(74,56,166,.09)',
+   cardDest:!!(card&&card.dest),cardKeys:!!(card&&card.keys),cardDots:!!(card&&card.dots),
+   cardList:!!(card&&card.list),cardToggles:!!(card&&card.toggles),
+   cardPerm:!!(card&&card.perm),permGlyph:card&&card.perm?card.perm.g:'',permName:card&&card.perm?card.perm.n:'',
+   permSub:card&&card.perm?card.perm.s:'',permState:card&&card.perm?card.perm.state:'',
+   dots:[0,1,2,3,4].map(i=>({bg:i===Math.min(v,4)&&isF?INK:'rgba(36,31,56,.15)'})),
+   dests:[{glyph:'▤',name:'A folder',sub:'~/Splay · one .md per recording',glyph2:''},
+    {glyph:'◈',name:'Obsidian',sub:'Into your vault, filed by date'},
+    {glyph:'✦',name:'Claude',sub:'Opens the app with the text pasted'},
+    {glyph:'⧉',name:'Clipboard only',sub:'No file is kept'}].map((d,i)=>({...d,
+     tag:i===s.dest?'Default':'',bg:i===s.dest?'rgba(74,56,166,.09)':'rgba(36,31,56,.04)',
+     border:i===s.dest?`1.5px solid ${INK}`:'1px solid rgba(36,31,56,.08)',pick:()=>this.setState({dest:i})}))};
+ }
+}
+</script>
+</body>
+</html>
