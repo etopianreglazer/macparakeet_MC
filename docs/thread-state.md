@@ -8,7 +8,8 @@
 > **Last updated:** 2026-08-10 **thread 2** — mic-capture forgiving rewrite + click-to-record. **Jump to
 > the "▶ NEXT SESSION STARTS HERE" section below** for the current state (corrected diagnosis, the
 > `MacParakeet-MC` data-namespace gotcha, what's installed in the 16:53 build, and what's still open).
-> Everything still **uncommitted on `main`** at `55be635d`; do **not** push. The thread-1 summary that
+> **Committed** as `452b806f` ("Splay: forgiving mic capture, click-to-record, audio pairing") — 4 commits
+> ahead of `origin/main`, **not pushed**. The thread-1 summary that
 > follows is kept for context but is **superseded** by that section (its "empty transcript discards audio"
 > model was wrong — the real cause is a zero-buffer capture failure).
 >
@@ -136,8 +137,8 @@ the whole session folder → no DB row, no `.m4a`. Recordings that captured **an
 stale/empty results and makes recordings look "vanished" when they're fine. `[[macparakeet-mc-fork]]` memory
 carries this. Probe audio with `/Applications/Splay.app/Contents/Resources/ffmpeg`.
 
-**WHAT LANDED THIS THREAD (uncommitted on `main` at `55be635d`; installed `/Applications/Splay.app`
-16:53 build; do NOT push):**
+**WHAT LANDED THIS THREAD (committed as `452b806f`; installed `/Applications/Splay.app` 16:53 build;
+4 ahead of `origin/main`, NOT pushed):**
 - **Simplified the mic layer (the big one).** *Removed* the fragile recovery-"kick" (restart-on-no-buffer);
   a cold start now just **waits patiently** (`MicrophoneCapture` watchdog is log-only:
   `meeting_mic_no_first_buffer_yet`, no guillotine, no restart). **Silence is never a failure.** This fixes
