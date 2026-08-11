@@ -1,6 +1,14 @@
 # Plan: Microphone-capture resilience (Voice-Memos manners)
 
-> Status: **ACTIVE** — 2026-08-10. Splay fork. Owner: island/recording work.
+> Status: **HISTORICAL / SUPERSEDED** — 2026-08-10. This plan proposed a
+> *recovery-kick* approach (restart-on-zero-buffer, `restart(advanceToNextDevice:)`,
+> built-in fallback, new `.microphoneRecovering`/`.microphoneRecovered` events).
+> Thread 2 instead shipped a **forgiving / patient** design in commit `452b806f`:
+> silence is never a failure (the first-buffer watchdog only logs), the engine
+> follows the system default input with a **non-fatal** restart, and no recovery
+> "kick" or new capture events were added. The state-machine invariant below still
+> holds. See `docs/thread-state.md` (thread 2) for what actually landed. Kept for
+> the constraints / subsystem map; the Phases below describe the rejected approach.
 
 ## Problem
 

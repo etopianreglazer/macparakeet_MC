@@ -253,16 +253,12 @@ final class IslandController: NSObject {
             // fn; solo voice notes are the common case, hardware fn keeps its
             // single=mic / double=mic+system behaviour).
             guard let self else { return }
-            // Observability: island interaction is delivery/geometry-sensitive on
-            // a non-activating panel, so log the click reaching the record path.
-            AudioCaptureDiagnostics.append("splay_island record_dot_clicked has_handler=\(self.onRecord != nil)")
             self.chrome.isHovered = false
             self.chrome.hoveredControl = .none
             self.onRecord?(.microphoneOnly)
         }
         tracker.onStopClick = { [weak self] in
             guard let self else { return }
-            AudioCaptureDiagnostics.append("splay_island stop_clicked has_handler=\(self.onStop != nil)")
             self.onStop?()
         }
         tracker.onControlHover = { [weak self] control in

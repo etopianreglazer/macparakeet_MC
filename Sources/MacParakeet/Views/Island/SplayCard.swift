@@ -402,8 +402,6 @@ struct SplayRecordingRow: Identifiable {
     let time: String
     let duration: String
     let title: String
-    /// Hollow dot = mic only; filled = mic + system.
-    let micAndSystem: Bool
     /// The transcript text this row copies to the clipboard (clean, else raw).
     /// Empty when the recording has no transcript yet.
     let transcript: String
@@ -422,7 +420,6 @@ struct SplayRecordingRow: Identifiable {
             time: timeLabel(for: t.createdAt, now: now, calendar: calendar),
             duration: durationLabel(ms: t.durationMs),
             title: title,
-            micAndSystem: t.sourceType == .meeting,
             transcript: transcript
         )
     }

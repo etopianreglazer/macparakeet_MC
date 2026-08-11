@@ -139,11 +139,8 @@ public final class MicrophoneCapture: @unchecked Sendable {
     /// - Parameters:
     ///   - firstBufferGrace: patience before the first buffer is considered
     ///     missing (default 3.5s — long enough for a cold Bluetooth A2DP→HFP
-    ///     switch). Injectable so tests can drive recovery in milliseconds.
-    ///   - recoveryGrace: grace after each recovery "kick" (engine restart).
-    ///   - maxRecoveryKicks: engine restarts to attempt before surfacing a stall.
-    ///     Total worst-case recovery must stay under the meeting coordinator's
-    ///     10s stall poll so recovery never races that fail-safe.
+    ///     switch). Silence is never a failure; the watchdog only logs. Injectable
+    ///     so tests can drive it in milliseconds.
     public init(
         sharedStream: SharedMicrophoneStream,
         permissionProvider: @escaping @Sendable () -> Bool = {
@@ -217,12 +214,10 @@ public final class MicrophoneCapture: @unchecked Sendable {
         }
         let deathDispatch: SharedMicrophoneStream.EngineDeathHandler = { [weak self] in
             guard let self else { return }
-            // Tag this distinctly: an engine-death stall reaches `stallObserver`
-            // by a different route than the first-buffer watchdog's exhaustion
-            // (which logs `recovery_kick`/`recovery_exhausted`). Without this
-            // marker both surface as an identical `.error`, so the log can't say
-            // which path fired. This route has NO recovery kick today — if it is
-            // what kills cold-Bluetooth starts, that gap is the next fix.
+            // Tag this distinctly: a genuine engine-death stall (the shared engine
+            // stopped unexpectedly) reaches `stallObserver` and becomes `.error`.
+            // Different route from the first-buffer watchdog, which is log-only and
+            // never fails on silence — this marker keeps the two apart in the log.
             AudioCaptureDiagnostics.append(
                 "meeting_mic_engine_death_stall \(AudioCaptureDiagnostics.defaultInputDeviceSummary())"
             )

@@ -106,26 +106,6 @@ final class MicrophoneCaptureTests: XCTestCase {
         )
     }
 
-    /// Poll `condition` until true or the timeout elapses (fails the test).
-    private func waitUntil(
-        timeout: TimeInterval,
-        _ condition: @escaping @Sendable () -> Bool,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) async throws {
-        let deadlineNanos = UInt64(timeout * 1_000_000_000)
-        var waited: UInt64 = 0
-        let step: UInt64 = 10_000_000
-        while !condition() {
-            if waited >= deadlineNanos {
-                XCTFail("Condition not met within \(timeout)s", file: file, line: line)
-                return
-            }
-            try await Task.sleep(nanoseconds: step)
-            waited += step
-        }
-    }
-
     func testSharedModeVPIOForwardsChannelZeroOnly() async throws {
         let platform = SharedMicTestPlatform()
         let stream = SharedMicrophoneStream(platform: platform, bufferSize: 1024)

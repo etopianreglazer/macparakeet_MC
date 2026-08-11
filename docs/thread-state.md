@@ -5,7 +5,20 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-10 **thread 2** — mic-capture forgiving rewrite + click-to-record. **Jump to
+> **Last updated:** 2026-08-10 **thread 3** — installed Imbue **Vet** as a Claude Code skill (see
+> `[[vet-code-review-tool]]` memory / `~/.claude/skills/vet/`; run via `vet "goal" --agentic --agent-harness
+> claude` — no API key on this machine), ran it on `452b806f`, and applied its **low-risk** cleanups:
+> stripped the TEMP `record_dot_clicked`/`stop_clicked` diagnostics from `IslandController`, fixed stale
+> `MicrophoneCapture` recovery-kick docs (removed phantom `recoveryGrace`/`maxRecoveryKicks` param docs +
+> `recovery_kick`/`recovery_exhausted` comment), removed dead `waitUntil` (test) + write-only
+> `SplayRecordingRow.micAndSystem`, and retired `mic-capture-resilience.md` → `plans/completed/`
+> (HISTORICAL — it described the rejected recovery-kick approach). **STT engine is now Whisper**
+> (`speechRecognitionEngine=whisper` set in the **`com.macparakeet.mc`** defaults domain — NOT the CLI's
+> `com.macparakeet.MacParakeet`; WhisperKit `large-v3-turbo` model cloned into the fork namespace; first
+> load paid a ~681s one-time CoreML compile, warm after). Vet's **deferred** findings (held capture-failure
+> silently swallows fn/menu; `isAwaitingFailureDismissal` over-matches non-capture `.error`; no tests for
+> `SharedMicrophoneStream.restart()`/`followDefaultInputChange()`) await a design call.
+> **thread 2** — mic-capture forgiving rewrite + click-to-record. **Jump to
 > the "▶ NEXT SESSION STARTS HERE" section below** for the current state (corrected diagnosis, the
 > `MacParakeet-MC` data-namespace gotcha, what's installed in the 16:53 build, and what's still open).
 > **Committed** as `452b806f` ("Splay: forgiving mic capture, click-to-record, audio pairing") — 4 commits
@@ -170,8 +183,8 @@ carries this. Probe audio with `/Applications/Splay.app/Contents/Resources/ffmpe
   is AirPods-from-start = already fixed).
 - **`noAudioCaptured` (zero-bytes-at-stop) still deletes + errors.** Rare now (patience + follow), but a
   truly-dead-mic recording still hits it. Possible follow-up: keep a stub / don't error on zero-capture.
-- **TEMP click diagnostics** (`record_dot_clicked`/`stop_clicked` `AudioCaptureDiagnostics.append` in
-  `IslandController`) — **strip before any commit.**
+- **TEMP click diagnostics** — **DONE (thread 3):** stripped from `IslandController` in the Vet-driven
+  cleanup commit (build + focused audio/meeting tests green).
 - **Audio quality on AirPods is inherently telephony-grade** (8 kHz mix, high ambient noise floor from HFP
   AGC). Not a bug — it's AirPods-as-mic. User accepted "follow system default"; declined force-built-in
   (walking-around dictation needs AirPods). No device-surfacing indicator wanted (redundant).
