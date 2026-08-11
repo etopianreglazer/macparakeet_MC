@@ -63,12 +63,14 @@ final class AutoSaveServiceTests: XCTestCase {
         fileName: String = "test-audio.mp3",
         rawTranscript: String = "Hello world",
         createdAt: Date = Date(),
-        sourceType: Transcription.SourceType = .file
+        sourceType: Transcription.SourceType = .file,
+        filePath: String? = nil
     ) -> Transcription {
         Transcription(
             id: UUID(),
             createdAt: createdAt,
             fileName: fileName,
+            filePath: filePath,
             rawTranscript: rawTranscript,
             status: .completed,
             isFavorite: false,
@@ -391,6 +393,51 @@ final class AutoSaveServiceTests: XCTestCase {
         XCTAssertTrue(name.contains("Meeting"), "Filename should contain the displayName")
         XCTAssertTrue(name.contains("Apr 6"), "Filename should preserve the date components from the displayName, got \(name)")
         XCTAssertTrue(name.hasSuffix(".md"))
+    }
+
+    func testMeetingScopeCopiesPairedAudioIntoRecordingsSubfolder() throws {
+        // The recording's audio lives elsewhere (an app-support session folder);
+        // saving the transcript must copy it next to the .md so they travel together.
+        let sourceDir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sourceDir) }
+        let audioSource = sourceDir.appendingPathComponent("meeting-playback.m4a")
+        try Data("fake-m4a-bytes".utf8).write(to: audioSource)
+
+        configureMeetingAutoSave(enabled: true, format: .md)
+        let transcription = makeTranscription(
+            fileName: "Design review",
+            sourceType: .meeting,
+            filePath: audioSource.path
+        )
+        makeService().saveIfEnabled(transcription, scope: .meeting)
+
+        // Transcript .md at the top level…
+        let mdFiles = try FileManager.default.contentsOfDirectory(atPath: tempDir.path)
+            .filter { $0.hasSuffix(".md") }
+        XCTAssertEqual(mdFiles.count, 1)
+        let base = (mdFiles[0] as NSString).deletingPathExtension
+
+        // …and the paired audio in Recordings/ with the SAME basename.
+        let recordingsDir = tempDir.appendingPathComponent("Recordings")
+        let audioFiles = try FileManager.default.contentsOfDirectory(atPath: recordingsDir.path)
+        XCTAssertEqual(audioFiles, ["\(base).m4a"], "Audio should be paired next to its transcript")
+    }
+
+    func testMeetingScopeSkipsPairingWhenNoAudioFileExists() throws {
+        // A stale/absent audio path must not create an empty Recordings folder or crash.
+        configureMeetingAutoSave(enabled: true, format: .md)
+        let transcription = makeTranscription(
+            fileName: "Ghost meeting",
+            sourceType: .meeting,
+            filePath: "/nope/does-not-exist.m4a"
+        )
+        makeService().saveIfEnabled(transcription, scope: .meeting)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: tempDir.appendingPathComponent("Recordings").path),
+            "No Recordings folder when the source audio is missing"
+        )
     }
 
     func testMeetingScopeDisabledDoesNothing() {

@@ -23,6 +23,18 @@ enum IslandVisual: Equatable {
     case done
 }
 
+/// The island's interactive controls — the few clickable affordances the pill
+/// exposes per visual state. Used both to route clicks and to drive per-control
+/// hover feedback (the "pop" that tells you a control is touchable). The island
+/// is in constant motion; its controls shouldn't feel dead, so the tracker feeds
+/// the hovered control into the SwiftUI indicator, which lifts it slightly.
+enum IslandControl: Equatable {
+    case none
+    case record   // ready → start a recording
+    case stop     // recording → stop
+    case open     // done → open the recents card
+}
+
 // MARK: - Shared layout (single source of truth for view + tracker)
 
 enum IslandLayout {
@@ -63,8 +75,9 @@ enum IslandLayout {
         }
     }
 
-    /// Width of the right-edge stop-button hit zone inside the recording pill.
-    static let stopHitWidth: CGFloat = 38
+    /// Width of a right-cluster control's hit region (record dot / stop square /
+    /// open button). Generous enough to be an easy target around the ~13pt glyph.
+    static let controlHitWidth: CGFloat = 52
 
     /// Interaction rect for the AppKit tracker — simply the drawn pill (notch-mode
     /// hover is additionally served by `notchRevealRect`).
@@ -89,12 +102,32 @@ enum IslandLayout {
         return CGRect(x: (panelWidth - w) / 2, y: ready.minY - extraBelow, width: w, height: ready.height + extraBelow)
     }
 
-    /// The record dot's hit region — the right cluster of the ready pill. A click
-    /// here records; a click elsewhere on the pill opens the recents card.
+    /// The right-cluster control hit region for a given visual — where the record
+    /// dot / stop square / open button is drawn (`SplayIslandIndicator.rightCluster`,
+    /// far right with 14pt face padding). The rect is a bit wider so it's an easy
+    /// target. The drawn glyph and this rect derive from the same `pillRect`, so
+    /// they never drift.
+    static func controlRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
+        let pill = pillRect(for: visual, notchAttached: notchAttached)
+        let w = controlHitWidth
+        return CGRect(x: pill.maxX - w - 4, y: pill.minY, width: w, height: pill.height)
+    }
+
+    /// Back-compat alias: the record dot's hit region in the ready pill.
     static func recordButtonRect(notchAttached: Bool = false) -> CGRect {
-        let ready = pillRect(for: .idleHover, notchAttached: notchAttached)
-        let w: CGFloat = 52
-        return CGRect(x: ready.maxX - w - 4, y: ready.minY, width: w, height: ready.height)
+        controlRect(for: .idleHover, notchAttached: notchAttached)
+    }
+
+    /// Which interactive control (if any) sits under `point` for the current
+    /// visual. Shared by the click router and the hover-feedback path so the two
+    /// never disagree about where a control is.
+    static func control(at point: CGPoint, visual: IslandVisual, notchAttached: Bool) -> IslandControl {
+        switch visual {
+        case .idleHover:  return controlRect(for: .idleHover, notchAttached: notchAttached).contains(point) ? .record : .none
+        case .recording:  return controlRect(for: .recording, notchAttached: notchAttached).contains(point) ? .stop : .none
+        case .done:       return controlRect(for: .done, notchAttached: notchAttached).contains(point) ? .open : .none
+        default:          return .none
+        }
     }
 
     /// Map recording-flow state (+ idle chrome) onto a visual form. `heldOpen`
@@ -146,6 +179,10 @@ final class IslandChromeModel {
     /// A card (the second surface) is open — hold the idle island in its ready
     /// ("open") form until the card closes, so the two surfaces move together.
     var heldOpen = false
+    /// Which control the cursor is currently over (record dot / stop / open), fed
+    /// by the AppKit tracker so the SwiftUI indicator can pop it on hover. The
+    /// island is display-only, so hover can't come from SwiftUI itself.
+    var hoveredControl: IslandControl = .none
     /// Distance from the panel's physically hidden top to the housing's lower edge.
     var notchCueInset: CGFloat = 0
     init() {}
@@ -186,15 +223,20 @@ struct IslandView: View {
                 SplayIslandIndicator(
                     state: splayState,
                     level: Double(max(pill.micLevel, pill.systemLevel)),
-                    notchAttached: chrome.isNotchResting
+                    notchAttached: chrome.isNotchResting,
+                    hoveredControl: chrome.hoveredControl
                 )
                 // Mirror the tracker's `pillRect` top offset exactly so the drawn
                 // pill and its hit-rect stay aligned: flush to the physical top in
                 // Notch mode, the menu-safe inset otherwise.
                 .padding(.top, chrome.isNotchResting ? 0 : IslandLayout.topInset)
                 // Pop the whole island in from slightly small, anchored at the
-                // notch, so it reads as spawning rather than fading.
-                .transition(.scale(scale: 0.85, anchor: .top).combined(with: .opacity))
+                // notch, so it reads as spawning rather than fading. The blur layer
+                // (harvested from DynamicNotchKit) softens the show/hide so the pill
+                // resolves into focus instead of hard-cutting.
+                .transition(.scale(scale: 0.85, anchor: .top)
+                    .combined(with: .opacity)
+                    .combined(with: .splayBlur(intensity: 8)))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

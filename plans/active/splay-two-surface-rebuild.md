@@ -190,7 +190,15 @@ not yet wired (Phase 5).
 
 ## Folder layout (Phase 4)
 
-**One folder, date-sorted (user preference 2026-08-07):** everything drops into a single `Splay/`
+> **Revision 2026-08-10 (user):** audio goes in a **`Recordings/` subfolder** next to the transcripts,
+> not side-by-side. A focused first step landed ahead of the full Phase-4 iCloud relocation:
+> `AutoSaveService.saveIfEnabled` now copies a meeting's `.m4a` (the mixed playback file at
+> `transcription.filePath`) into `<save-folder>/Recordings/<same-basename>.m4a` after writing the `.md`
+> (best-effort, idempotent; tests in `AutoSaveServiceTests`). This applies to the *current* auto-save
+> bookmark folder — the iCloud `Splay/` relocation + date-title naming below is still unbuilt. Existing
+> recordings are not retro-paired yet (a backfill would copy each DB record's `filePath` into `Recordings/`).
+
+**Superseded flat layout (user preference 2026-08-07):** everything drops into a single `Splay/`
 folder so it sorts by date / most-recent in Finder. The `.md` and its paired `.m4a` share a
 date-prefixed basename and sit side by side — no subfolders.
 

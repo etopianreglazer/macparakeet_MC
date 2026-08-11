@@ -5,19 +5,45 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-08 — **Phase 3 (cards) + seven-accent theming + breathing motion, and this
-> whole two-surface rebuild WIP, COMMITTED to `main`** (still local — do **not** push). Read the next
-> section first. Everything below the "CURRENT DIRECTION" section describes the *previous*
+> **Last updated:** 2026-08-10 **thread 2** — mic-capture forgiving rewrite + click-to-record. **Jump to
+> the "▶ NEXT SESSION STARTS HERE" section below** for the current state (corrected diagnosis, the
+> `MacParakeet-MC` data-namespace gotcha, what's installed in the 16:53 build, and what's still open).
+> Everything still **uncommitted on `main`** at `55be635d`; do **not** push. The thread-1 summary that
+> follows is kept for context but is **superseded** by that section (its "empty transcript discards audio"
+> model was wrong — the real cause is a zero-buffer capture failure).
+>
+> _(thread 1, superseded — kept for context)_ This session, all
+> **uncommitted on `main`** at `55be635d` (14 modified + 2 new files; do **not** push; 3 commits ahead of
+> `origin/main`), in order: **DynamicNotchKit blur-transition harvest** (DNK rejected as substrate;
+> accepted, "elegant"); **micro-UI polish** ×2 (card shadow-clip→subtle, copy-to-clipboard recents, visible
+> recording **stop square** + reworked record button, **hover-pop**); **mic-capture resilience increment 1**
+> (patience + engine-restart "kick"; `plans/active/mic-capture-resilience.md`); and **audio-pairing** (saved
+> meetings now copy their `.m4a` into a `Recordings/` subfolder next to the `.md`). Build-clean; AutoSave +
+> mic tests green. **⚠️ The installed `/Applications/Splay.app` (12:22 build) = mic-resilience increment 1
+> only — it does NOT include the audio-pairing fix.** Phase 3 (cards)+theming+motion remain the last
+> COMMITTED work. **Read the "NEXT SESSION STARTS HERE" section — it opens with the live storage/data-loss
+> item and two questions the user still owes answers to.** Everything below the "CURRENT DIRECTION" section describes the *previous*
 > island-as-router approach, now **superseded** *and deleted* (the router files are gone). Kept for the
 > panel mechanics/gotchas, not as the product direction.
 >
-> **Next thread starts with a decision (not yet acted on):** whether to adopt **DynamicNotchKit**
-> (MrKai77, MIT — https://github.com/MrKai77/DynamicNotchKit) as the island's presentation substrate
-> (it owns the notch window / insets / non-notch floating fallback / compact↔expanded morph we
-> hand-rolled) and layer a `SplayActivity` state-machine on top — vs. keeping our controller and cribbing
-> technique from **boring.notch** (GPL-3.0). Recommended move: a throwaway spike porting idle→ready→
-> recording onto DynamicNotchKit to see if it hosts our below-windows glow panel + record-dot
-> hit-testing. See the research summary in the session that added this note.
+> **DECISION RESOLVED (2026-08-10) — DynamicNotchKit is NOT our substrate.** Read all of DNK 1.1.0's
+> source against our design. Four sourced dealbreakers *for Splay specifically*: (1) `NotchView` hard-
+> masks all content to a solid-black `NotchShape`, so our light that spills *outside* the pill (leaning
+> halo, fiber rim, desktop bloom) gets clipped — and the mask is private, so unmasking = fork; (2) its
+> panel is `level = .screenSaver` (top of everything), so it **cannot host our below-windows glow** at
+> `.normal − 1` — we'd keep our own glow panel regardless; (3) it's **ephemeral** — creates the window
+> on `expand()/compact()`, destroys on `hide()` — vs. our always-on idle nub; (4) the non-notch floating
+> fallback is a **frosted-glass** `VisualEffectView(.popover)` popover that slides down from the top (the
+> exact glass we rejected) with **no compact/idle state on floating screens** — so external/non-notched
+> displays would have no idle indicator at all. Its SwiftUI-native `.onHover`/Button interaction also
+> can't transfer, since our idle nub must stay non-key (never steal focus). **Keeper:** its
+> `.blur(intensity:)` transition — content resolves *into focus* as it scales/fades, softer than our bare
+> scale+opacity. Ported first-party as `AnyTransition.splayBlur(intensity:)` in
+> `Views/Island/SplayTransitions.swift` (MIT-derived, ~30 lines, no dependency). Applied to the face-
+> cluster `spawn` (6), the whole-island appear (8), and the card breathe-open (blur 10). References worth
+> keeping (not adopted): DNK's `NotchShape` (animatable top/bottom radii, the authentic flared silhouette)
+> and its notch-detection via `auxiliaryTopLeftArea`/`safeAreaInsets`. **boring.notch** (GPL-3.0) remains
+> a technique reference only. A clone of DNK 1.1.0 sits in this session's scratchpad for reference.
 
 ---
 
@@ -93,9 +119,210 @@ pill, `SplayIslandIndicator.fnButton`) whose hit region is `IslandLayout.fnButto
 - **Fiber no-gap** — the rim light now traces the pill's exact edge (removed the −1/−3 outward inset
   + radius+1 that caused the visible gap in the screenshots).
 
-### ▶ NEXT SESSION STARTS HERE (Phase 3 landed 2026-08-08)
+### ▶ NEXT SESSION STARTS HERE (mic capture: forgiving rewrite — 2026-08-10, thread 2)
 
-**Latest session = Phase 3, the card system (the second surface).** Build-clean; a signed
+**⚠️ FIRST, THE CORRECTED DIAGNOSIS (thread-1's model was wrong).** The vanishing was **NOT** "empty
+transcript = silently dismiss discards audio." It is a **zero-buffer capture failure**: a cold Bluetooth
+(AirPods) mic delivers *no buffers*, the original **2-second first-buffer watchdog guillotined** the
+recording (`capture_failed`), and `MeetingRecordingService.swift:577-591` (`noAudioCaptured`) then deletes
+the whole session folder → no DB row, no `.m4a`. Recordings that captured **any** audio were always saved
+(even empty-transcript ones save fine as `.completed`). Proven from the log (5+ identical
+`mic_frames=0 capture_failed=true` deaths) and the DB.
+
+**★★ THE DATA-NAMESPACE GOTCHA (cost real time — READ THIS):** the fork stores everything under
+`~/Library/Application Support/**MacParakeet-MC**/` (bundle id `com.macparakeet.mc`), **NOT** the upstream
+`…/MacParakeet/`. DB = `…/MacParakeet-MC/macparakeet.db`; recordings =
+`…/MacParakeet-MC/meeting-recordings/<UUID>/{microphone,system,meeting}.m4a`. Querying the upstream dir shows
+stale/empty results and makes recordings look "vanished" when they're fine. `[[macparakeet-mc-fork]]` memory
+carries this. Probe audio with `/Applications/Splay.app/Contents/Resources/ffmpeg`.
+
+**WHAT LANDED THIS THREAD (uncommitted on `main` at `55be635d`; installed `/Applications/Splay.app`
+16:53 build; do NOT push):**
+- **Simplified the mic layer (the big one).** *Removed* the fragile recovery-"kick" (restart-on-no-buffer);
+  a cold start now just **waits patiently** (`MicrophoneCapture` watchdog is log-only:
+  `meeting_mic_no_first_buffer_yet`, no guillotine, no restart). **Silence is never a failure.** This fixes
+  the cold-AirPods vanishing at the root — the recording waits and captures when buffers arrive (~100ms when
+  AirPods work). Live-proven: 23:48 AirPods-from-start recording succeeded.
+- **Follow Apple's default input.** `MicrophoneEnginePlatform` already *observed* default-input changes
+  (log-only); now `SharedMicrophoneStream.followDefaultInputChange()` re-points the engine onto the new
+  device with backoff retry (0.3/0.8/2s). **`restart()` is now non-fatal** — a failed re-point NEVER kills
+  the recording (removed the `onEngineDeath` firing; guard is subscriber-based; sets `engineRunning=true` on
+  success). Markers: `shared_mic_follow_default_input` / `…_ok attempt=N` / `…_retry` / `…_gave_up`.
+- **Genuine failure = sound + hold (not silence).** `SoundManager.play(.errorSoft)` on `.showError`;
+  `.captureFailed` no longer auto-dismisses (holds the failed island until the user clicks it to clear —
+  `MeetingRecordingFlowCoordinator.isAwaitingFailureDismissal` / `dismissFailure()`, wired via
+  `AppEnvironmentConfigurer` `onOpenCard`). Only fires for real engine death now, not silence.
+- **Click-island-to-record.** `IslandController.dispatchClick` idle cases (`.idleCollapsed`+`.idleHover`) now
+  call `onRecordClick` — a click ANYWHERE on the idle island records (no hover, no tiny dot). Fixes "record
+  button is buggy / doesn't start" (clicks were landing as `onOpenCard`). Recents card is now **menu-bar
+  only** ("Open Splay"); user may want right-click→card added.
+- **Diagnostic markers added** (keep for now): `meeting_capture_failed …` (file-visible, was os_log-only) in
+  `MeetingRecordingService.failCapture`; `meeting_mic_engine_death_stall` in `MicrophoneCapture.deathDispatch`.
+- Tests green: `MicrophoneCaptureTests`/`SharedMicrophoneStreamTests` (47), `MeetingRecordingFlowStateMachineTests` (18).
+
+**REMAINING / OPEN:**
+- **Mid-recording AirPods *insert* still goes silent after the switch.** Follow succeeds structurally
+  (recording survives, `capture_failed=false`) but freshly-connected AirPods deliver no buffers for ~10s
+  (cold A2DP→HFP), so post-switch audio is lost (22:27 test: 15.4s recording, 4.35s audio). Real fix =
+  "don't drop the working mic until the new one is actually delivering" (keep old device, switch the tap only
+  once the new one produces). Gated on whether the user actually switches mid-recording (their real workflow
+  is AirPods-from-start = already fixed).
+- **`noAudioCaptured` (zero-bytes-at-stop) still deletes + errors.** Rare now (patience + follow), but a
+  truly-dead-mic recording still hits it. Possible follow-up: keep a stub / don't error on zero-capture.
+- **TEMP click diagnostics** (`record_dot_clicked`/`stop_clicked` `AudioCaptureDiagnostics.append` in
+  `IslandController`) — **strip before any commit.**
+- **Audio quality on AirPods is inherently telephony-grade** (8 kHz mix, high ambient noise floor from HFP
+  AGC). Not a bug — it's AirPods-as-mic. User accepted "follow system default"; declined force-built-in
+  (walking-around dictation needs AirPods). No device-surfacing indicator wanted (redundant).
+- **Environment caveat:** repeated Bluetooth insert/remove/record thrashing wedges CoreAudio (built-in mic
+  starts returning zero buffers, `-10868` everywhere). Reset with `sudo killall coreaudiod` before trusting
+  a test.
+
+---
+
+#### Earlier this session — mic-capture resilience (increment 1)
+
+**Latest = making the recorder "Voice-Memos-patient" so a cold Bluetooth mic stops killing recordings.**
+Plan: `plans/active/mic-capture-resilience.md`. All uncommitted; do not push. Signed install built.
+
+- **Root cause (confirmed from the log):** AirPods mic starts but delivers **zero buffers** because the
+  A2DP→HFP route switch hadn't completed; a hard **2s first-buffer watchdog** guillotined the recording
+  (`capture_failed`). Buffers *were* coming, just not in 2s. Not a button bug (record-dot click works 100%);
+  hits fn recordings too. User's framing: "most software is pretty dumb" / how does Voice Memos do it —
+  answer: it's **patient** (waits for the route), **self-heals**, and **follows the route**; we hand-rolled
+  a trigger-happy watchdog.
+- **Design decision (keeps blast radius tiny):** recovery lives **entirely in the audio layer, BELOW the
+  meeting state machine**, bounded to finish under the coordinator's 10s stall poll. So the tested invariant
+  "capture failure → `.error`, never `.completed`" is **untouched** — a *recoverable* stall simply never
+  becomes a capture failure; only exhausted recovery emits the existing terminal `.error`. No state-machine,
+  coordinator, or new-event changes needed. Verified: all 253 audio/meeting-flow tests + the invariant tests
+  green.
+- **Increment 1 — DONE (patience + engine-restart "kick"), the piece most likely to fix the AirPods case:**
+  - `SharedMicrophoneStream.restart()` (new) — tears down + rebuilds the physical engine and re-runs the
+    device chain **without dropping subscribers** (re-installs the fan-out tap). A fresh engine drops the
+    CoreAudio aggregate and re-negotiates the route — the "kick." Uses only existing platform API, so no
+    protocol/mock churn.
+  - `MicrophoneCapture` watchdog reworked: first-buffer grace **2s→3.5s** (patience), and on timeout it
+    **restarts the engine up to `maxRecoveryKicks` (2×)** with a short re-grace before surfacing a stall.
+    Worst case ≈ 3.5 + 2×2.5 ≈ 8.5s, under the 10s poll. Grace/kicks are **injectable init params**
+    (defaults 3.5/2.5/2) so tests run in ms.
+  - Tests: `testZeroBufferStartRecoversViaEngineRestartKick` + `…StallsOnlyAfterRecoveryExhausted` (green).
+  - **New diagnostic markers** (in `~/Library/Logs/MacParakeet/dictation-audio.log`): `meeting_mic_recovery_kick
+    attempt=N`, `shared_mic_engine_restarted`, then `meeting_mic_first_buffer` = **recovered**; or
+    `meeting_mic_no_buffers_recovery_exhausted` = the kick didn't shake it loose.
+- **To verify live (the critical experiment):** record with AirPods from a cold start (idle a while first).
+  Does it now record instead of dying at 3s? Pull the log: a `recovery_kick` followed by `first_buffer`
+  means the kick worked; `recovery_exhausted` means it didn't (→ built-in fallback becomes the real fix).
+- **Increment 2 (next, gated on the live-test):** built-in-mic fallback (platform restart advancing past the
+  last-succeeded device) + mid-recording resilience (ongoing mic heartbeat + route observers → same
+  recovery, so a mid-session drop restarts+continues). See the plan.
+- **Still open from before:** the record-dot TEMP click diagnostics are still in (strip before commit); the
+  "should the dormant nub click record vs open the card?" question is unanswered.
+
+---
+
+#### Earlier this day — micro-UI polish, round 2 (2026-08-10)
+
+**Latest = a second live-test loop on the micro-UI.** All uncommitted on `main` at `55be635d` + working-tree
+edits; do **not** push. Signed `/Applications/Splay.app` rebuilt for live-test.
+
+- **★ Record-dot "non-clickable / stops itself" — DIAGNOSED, and it is NOT the button.** The diagnostic log
+  (`~/Library/Logs/MacParakeet/dictation-audio.log`) is decisive: every `splay_island record_dot_clicked
+  has_handler=true` is followed by `meeting_recording_started` — the click works 100%. The recordings die
+  ~3s later via `meeting_recording_health … capture_failed=true mic_first_buffer=false mic_frames=0` on a
+  **`transport=bluetooth`** mic: the engine starts but delivers **zero buffers**, so the health watchdog
+  auto-stops it. **No `stop_clicked` ever fired** — the stop square was never involved. And `capture_failed`
+  hits fn/menu recordings too (7 failures total, only 4 button) while many fn recordings succeed
+  (mic_frames in the 10⁴–10⁶). ⇒ an **intermittent Bluetooth mic-capture issue**, not button-specific, not
+  caused by this session. Next step is the user's controlled test (fn vs button, Bluetooth vs built-in/wired
+  mic) — if it reproduces on built-in mic AND only via the button, *then* investigate a button-path cause
+  (leading theory: the non-activating island click leaves the app inactive, vs fn; unverified). Secondary:
+  after `capture_failed` the island sits in `.failed`/done and the record dot doesn't return until the flow
+  resets to idle → "can't record again via button" (fn still works). The **click-path TEMP diagnostics**
+  (`record_dot_clicked` / `stop_clicked` `AudioCaptureDiagnostics.append`) are still in — keep until the mic
+  issue is closed, then **strip before commit**.
+- **Card shadow** re-tuned twice: was heavy (`0.35`, r35, y24) → clipped-fix bumped padding to 80 → user
+  said still too much → now a subtle two-layer macOS-style shadow (`0.10 r3 y1` contact + `0.14 r22 y11`
+  ambient) with padding back to **48**.
+- **Hover-pop strengthened** (user: "buttons not alive enough, no pop"): scale up (record 1.22 / stop 1.2 /
+  folder 1.16) **plus a soft coloured halo** on hover (`hoverPop` now adds a `.shadow` bloom) so a control
+  answers even with a stationary cursor. Mechanism unchanged (tracker `mouseMoved` → `hoveredControl` →
+  indicator); if still not visible live, add a hover diagnostic to confirm `hoveredControl` is updating.
+- **Copy-to-clipboard recents** confirmed working (user copied a real transcript; test rows with no
+  transcript are correctly disabled).
+
+#### Round 1 (earlier same day) — island micro-interactions + card polish, on the accepted blur harvest.
+All uncommitted; signed install for live-test. Blur transition user-accepted ("elegant, a keeper").
+
+- **Card drop-shadow was clipped** → fixed. `SplayCardFloat` padded only 44pt but the card shadow
+  (`radius 35, y 24`) reaches ~60pt below; the fit-to-content panel clipped its bottom into a hard
+  "unrendered" edge. Padding bumped to **80** (`SplayCardController.swift`).
+- **Recents rows are now copy-to-clipboard.** They were inert (trailing mic/system dot). The whole row
+  now copies that recording's transcript (`cleanTranscript ?? rawTranscript`) — trailing clipboard glyph
+  flashes a checkmark, hover highlights the row + pops the glyph. `SplayRecordingRow` gained a `transcript`
+  field; `SplayRecordingList`/`SplayCards.recent` gained an `onCopy`; `AppDelegate.presentRecentCard` wires
+  it to `appEnvironment.clipboardService.copyToClipboard`. Rows with no transcript are disabled ("No
+  transcript yet"). The mic/system dot was dropped (field kept). *Folder stays the archive; copy saves the trip.*
+- **Island record/stop button reworked** (`SplayIslandIndicator` + `IslandView`/`IslandController`):
+  - New `IslandControl` enum (`.none/.record/.stop/.open`). Recording now shows a **visible red stop
+    square** (Voice-Memos: circle = start, square = stop) instead of the old invisible 38pt right-edge
+    zone — resolves "the red button is on idle but recording has no button, and the dot's a gimmick."
+  - Hit-rects unified: `IslandLayout.controlRect(for:)` + `control(at:visual:notchAttached:)` are the one
+    source for *both* the click router and hover, so drawn glyph ↔ hit-rect can't drift. `stopHitWidth`
+    replaced by `controlHitWidth = 52`.
+  - **Clickability diagnosis is instrumented, not yet proven.** `onRecordClick`/`onStopClick` now
+    `AudioCaptureDiagnostics.append("splay_island record_dot_clicked / stop_clicked has_handler=…")`
+    (**TEMP — strip before commit**). The click architecture is unchanged (monitors + `dispatchClick`);
+    if the dot still doesn't record, read `AudioCaptureDiagnostics.diagnosticLogURL()` — if the marker
+    fires, the handler ran (look at meeting toggle / `coordinatorRefs.meeting`); if not, it's
+    delivery/geometry. Suspected real cause is the **hover-gated dot**: click the *dormant* nub → opens
+    card (`idleCollapsed → onOpenCard`); the record dot only exists after hover establishes `.ready`, so a
+    too-quick click lands as a card-open. Open question for the user: should clicking the dormant nub
+    *record* rather than open the card? (Two-surface design currently says nub-click = card.)
+- **Hover "pop" on island buttons** (user: island moves but buttons feel static / "want a visual haptic").
+  The AppKit tracker's `mouseMoved` now computes the hovered control in every state and feeds
+  `IslandChromeModel.hoveredControl` → `SplayIslandIndicator.hoverPop(...)` lifts the record dot (1.16),
+  stop square (1.14), and folder button (1.12) with a soft spring; disabled under Reduce Motion. Pointer-
+  cursor was intentionally **not** added (forcing a cursor across the 840px transparent panel would
+  override the underlying app's cursor); revisit with proper cursor rects if wanted. Card controls already
+  had hover feel; recents rows got it this round.
+- **To verify live:** (1) card shadow renders as a soft even halo, no hard bottom edge; (2) recents rows —
+  hover highlights + glyph pops, click copies (checkmark flash), paste to confirm; (3) hover the record
+  dot / stop square / folder → each pops smoothly; (4) **the key one**: click the record dot → does it
+  start recording? click the stop square → does it stop? If not, pull the diagnostic log (path above).
+
+---
+
+#### Earlier this session — the blur-transition harvest (accepted)
+
+**DynamicNotchKit evaluation → rejected as substrate; blur transition harvested.**
+See the "DECISION RESOLVED" note at the very top for the full rationale. Net code change is small and
+additive; nothing from the DNK library is a dependency. **User verdict: "elegant, I like it" — keeper.**
+
+- **What landed (uncommitted, on `main` at `55be635d` + working-tree edits):**
+  - **New file** `Views/Island/SplayTransitions.swift` — `AnyTransition.splayBlur(intensity:)`, a
+    first-party port of DNK's `.blur(intensity:)` transition (content blurs across insert/remove so it
+    resolves *into focus* instead of hard-popping).
+  - **Three callsites upgraded** to `…scale…combined(opacity)…combined(splayBlur)`:
+    `SplayIslandIndicator.spawn` (intensity **6** — the face glyphs that swap on every state change; the
+    most-seen effect), `IslandView`'s whole-island appear transition (**8**), and — as a direct animated
+    `.blur(radius: visible ? 0 : 10)` (the card breathes via a `visible` bool, not an `AnyTransition`) —
+    `SplayCardFloat` in `SplayCardController`.
+  - **Deliberately skipped** the desktop glow (`SplayGlow`): it's already blurred ~90px, so a transition
+    blur is invisible there. Reduce-motion stays honored (all three are gated by nil animations already).
+  - `intensity` is the single knob at each site if the effect reads too soft/strong live.
+- **To verify live (hand-off checklist):** watch the **face glyphs** as state changes
+  (dormant→ready→recording→transcribing→done) — each swapped glyph (mark / record dot / spinner / check /
+  folder) should now *blur into focus* rather than snap; the **whole island** should soften on show/hide;
+  the **card** should resolve into focus as it breathes open and soften as it dismisses. Confirm none of
+  it feels sluggish or mushy (dial `intensity` down if so), and that the pill's tuned recording glow /
+  light-vector sway are unchanged.
+
+---
+
+#### Superseded next-step note (Phase 3, landed 2026-08-08)
+
+**Prior session = Phase 3, the card system (the second surface).** Build-clean; a signed
 `/Applications/Splay.app` install was produced for live-test. All uncommitted; do not push.
 
 - **What landed (see `plans/active/splay-two-surface-rebuild.md` → Phase 3 for the full list):**

@@ -40,6 +40,20 @@ public protocol MicrophoneEnginePlatform: AnyObject, Sendable {
     /// (`CADefaultDeviceAggregate-<pid>-N`). Mirrors the ephemeral-engine
     /// pattern proven in `MicrophoneCapture` (PR #186).
     func stopEngine()
+
+    /// Install a handler invoked when the **system default input device**
+    /// changes while the engine is running. The owner uses this to "follow the
+    /// default input" — rebuild the engine so it re-resolves onto the new
+    /// device (the device-attempt chain is re-evaluated on each start) without
+    /// dropping subscribers, so an in-progress recording simply continues on
+    /// the new mic. Pass `nil` to clear.
+    func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?)
+}
+
+public extension MicrophoneEnginePlatform {
+    /// Default no-op so platforms that don't observe device changes (test
+    /// doubles, the diagnostic-only `AudioProcessor` path) need no changes.
+    func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?) {}
 }
 
 /// Production adapter that drives a real `AVAudioEngine`. Mirrors the
@@ -87,6 +101,11 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     /// trigger for the silent tap-stall under investigation.
     private var configurationChangeObserver: NSObjectProtocol?
     private var defaultInputChangeObserver: AudioObjectPropertyListenerBlock?
+    /// Handler invoked from the default-input listener (owner follows the new
+    /// device). Held under its own lock — the listener fires on
+    /// `defaultInputListenerQueue`, not the engine `queue`.
+    private let defaultInputChangeHandlerLock = NSLock()
+    private var _defaultInputChangeHandler: (@Sendable () -> Void)?
 
     public init(
         deviceAttemptsBuilder: DeviceAttemptsBuilder? = nil,
@@ -450,10 +469,12 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             mScope: kAudioObjectPropertyScopeGlobal,
             mElement: kAudioObjectPropertyElementMain
         )
-        let block: AudioObjectPropertyListenerBlock = { _, _ in
+        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
             AudioCaptureDiagnostics.append(
                 "audio_default_input_changed \(AudioCaptureDiagnostics.defaultInputDeviceSummary())"
             )
+            // Follow the new default input (rebuild onto it, recording continues).
+            self?.defaultInputChangeHandler?()
         }
         let status = AudioObjectAddPropertyListenerBlock(
             AudioObjectID(kAudioObjectSystemObject),
@@ -484,6 +505,18 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             block
         )
         defaultInputChangeObserver = nil
+    }
+
+    public func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?) {
+        defaultInputChangeHandlerLock.lock()
+        _defaultInputChangeHandler = handler
+        defaultInputChangeHandlerLock.unlock()
+    }
+
+    private var defaultInputChangeHandler: (@Sendable () -> Void)? {
+        defaultInputChangeHandlerLock.lock()
+        defer { defaultInputChangeHandlerLock.unlock() }
+        return _defaultInputChangeHandler
     }
 }
 

@@ -69,6 +69,63 @@ final class MicrophoneCaptureTests: XCTestCase {
         XCTAssertEqual(counter.value, 2)
     }
 
+    // MARK: - First-buffer patience (silence is never a failure)
+
+    /// A start that delivers no buffers — cold Bluetooth route still waking, a
+    /// quiet room, a user who walked away — must NOT fail and must NOT restart
+    /// the engine. Silence is forgiven: no stall is surfaced and there is
+    /// exactly one engine start (the fragile "kick" that rebuilt onto a
+    /// not-yet-ready device is gone). Genuine engine death still stalls — see
+    /// `testSharedModeEngineDeathSurfacesAsStall`.
+    func testZeroBufferStartIsForgivenWithNoStallAndNoRestart() async throws {
+        let platform = SharedMicTestPlatform()
+        let stream = SharedMicrophoneStream(platform: platform, bufferSize: 1024)
+        let capture = MicrophoneCapture(
+            sharedStream: stream,
+            permissionProvider: { true },
+            firstBufferGrace: 0.05
+        )
+        let stallBox = MicrophoneCaptureTestStallBox()
+        _ = try await capture.start(
+            processingMode: .raw,
+            handler: { _, _ in },
+            onStall: { error in stallBox.record(error) }
+        )
+        defer { capture.stop() }
+
+        // Let the first-buffer grace elapse with no buffer delivered.
+        try await Task.sleep(for: .milliseconds(250))
+
+        XCTAssertNil(
+            stallBox.recordedError,
+            "Silence must never be flagged as a failure."
+        )
+        XCTAssertEqual(
+            platform.configureAndStartCalls.count, 1,
+            "No restart 'kick': the patient watchdog only logs, it never rebuilds the engine."
+        )
+    }
+
+    /// Poll `condition` until true or the timeout elapses (fails the test).
+    private func waitUntil(
+        timeout: TimeInterval,
+        _ condition: @escaping @Sendable () -> Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let deadlineNanos = UInt64(timeout * 1_000_000_000)
+        var waited: UInt64 = 0
+        let step: UInt64 = 10_000_000
+        while !condition() {
+            if waited >= deadlineNanos {
+                XCTFail("Condition not met within \(timeout)s", file: file, line: line)
+                return
+            }
+            try await Task.sleep(nanoseconds: step)
+            waited += step
+        }
+    }
+
     func testSharedModeVPIOForwardsChannelZeroOnly() async throws {
         let platform = SharedMicTestPlatform()
         let stream = SharedMicrophoneStream(platform: platform, bufferSize: 1024)

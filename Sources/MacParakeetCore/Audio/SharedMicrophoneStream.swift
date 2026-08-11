@@ -125,6 +125,43 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     ) {
         self.platform = platform
         self.bufferSize = bufferSize
+        // Follow Apple's default input: when the system default mic changes
+        // (e.g. AirPods inserted mid-recording), rebuild the engine onto the
+        // new device without dropping subscribers so the recording continues.
+        platform.setDefaultInputChangeHandler { [weak self] in
+            self?.followDefaultInputChange()
+        }
+    }
+
+    /// Re-point the engine onto the new system-default input. A no-op when idle
+    /// (`restart()` skips when there are no subscribers). The recording keeps
+    /// running — this only changes which device feeds it.
+    ///
+    /// A just-connected Bluetooth mic isn't capture-ready for a beat (CoreAudio
+    /// -10868), so we retry with backoff. A failed attempt never kills the
+    /// recording (`restart()` no longer fires engine-death): worst case the
+    /// engine's own device-attempt chain falls back to the built-in mic, or —
+    /// if every attempt fails — the recording simply runs silent until the next
+    /// change or a device becomes ready. Input problems are forgiven, never fatal.
+    private func followDefaultInputChange() {
+        AudioCaptureDiagnostics.append("shared_mic_follow_default_input")
+        Task { [weak self] in
+            guard let self else { return }
+            let backoff: [Duration] = [.milliseconds(300), .milliseconds(800), .seconds(2)]
+            for (index, delay) in backoff.enumerated() {
+                try? await Task.sleep(for: delay)
+                do {
+                    try await self.restart()
+                    AudioCaptureDiagnostics.append("shared_mic_follow_default_input_ok attempt=\(index + 1)")
+                    return
+                } catch {
+                    AudioCaptureDiagnostics.append(
+                        "shared_mic_follow_default_input_retry attempt=\(index + 1) \(AudioCaptureDiagnostics.errorFields(error))"
+                    )
+                }
+            }
+            AudioCaptureDiagnostics.append("shared_mic_follow_default_input_gave_up recording_continues=true")
+        }
     }
 
     // MARK: - Public API
@@ -298,6 +335,77 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
                     }
                 }
                 cont.resume()
+            }
+        }
+    }
+
+    /// Restart the physical engine **in place** — tear down + rebuild + re-run
+    /// the platform's device-attempt chain — without disturbing subscribers.
+    ///
+    /// This is the "kick" for capture recovery: a cold Bluetooth mic can start
+    /// (engine running, no throw) yet deliver zero buffers because the A2DP→HFP
+    /// route switch stalled. Rebuilding the engine drops the CoreAudio VPAU
+    /// aggregate and re-negotiates the route, which usually shakes the buffers
+    /// loose. Subscribers keep their tokens and the fan-out tap is re-installed,
+    /// so buffers simply resume — no re-subscribe, no refcount change.
+    ///
+    /// No-op when the engine isn't running / has no subscribers. On failure the
+    /// platform leaves the engine stopped; we mark it not-running and fire the
+    /// `onEngineDeath` callbacks (off-lock, off the engine queue) so the caller
+    /// can escalate to a real stall.
+    public func restart() async throws {
+        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
+            engineQueue.async { [weak self] in
+                guard let self else {
+                    cont.resume(throwing: SubscribeError.engineStartFailed("stream deallocated"))
+                    return
+                }
+                // Restart whenever a subscriber needs audio — NOT only when the
+                // engine is currently running. A prior failed attempt leaves
+                // `engineRunning == false`, and a retry must still try to bring
+                // the engine back up on the (re-resolved) current default device.
+                let (shouldRestart, vpio): (Bool, Bool) = self.lock.withLock { state in
+                    (!state.subscribers.isEmpty, state.vpioEngaged)
+                }
+                guard shouldRestart else {
+                    self.emitDiagnosticsLog(transition: "restart_skipped", wantsVPIO: nil)
+                    cont.resume()
+                    return
+                }
+                do {
+                    // configureAndStart tears down the running engine and walks
+                    // the device chain again; passing the live fan-out keeps every
+                    // subscriber wired.
+                    try self.platform.configureAndStart(
+                        vpioEnabled: vpio,
+                        bufferSize: self.bufferSize,
+                        tapHandler: self.makeFanOut()
+                    )
+                    self.lock.withLock { $0.engineRunning = true }
+                    AudioCaptureDiagnostics.append("shared_mic_engine_restarted vpio=\(vpio)")
+                    self.emitDiagnosticsLog(transition: "restart", wantsVPIO: nil)
+                    cont.resume()
+                } catch {
+                    // Forgiving by design: a failed re-point must NEVER kill the
+                    // recording. We mark the engine down and throw so the caller
+                    // (`followDefaultInputChange`) retries with backoff — but we
+                    // do NOT fire `onEngineDeath`, because that is what used to
+                    // take an in-progress recording down when a just-connected
+                    // Bluetooth mic wasn't capture-ready yet (CoreAudio -10868).
+                    self.lock.withLock { $0.engineRunning = false }
+                    self.logger.error(
+                        "shared_mic_engine_restart_failed error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
+                    )
+                    AudioCaptureDiagnostics.append(
+                        "shared_mic_engine_restart_failed \(AudioCaptureDiagnostics.errorFields(error))"
+                    )
+                    self.emitDiagnosticsLog(transition: "restart_failed", wantsVPIO: nil)
+                    cont.resume(
+                        throwing: SubscribeError.engineStartFailed(
+                            AudioCaptureDiagnostics.sanitizedLogValue(error.localizedDescription)
+                        )
+                    )
+                }
             }
         }
     }

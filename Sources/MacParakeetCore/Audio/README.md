@@ -22,6 +22,14 @@ fan-out. There is exactly one instance per process, owned by
   fallback chain, VPIO toggle, tap install, engine recreation on
   every teardown (so coreaudiod releases the VPAU aggregate
   device), `AVAudioEngineConfigurationChangeNotification` observer.
+  Also owns a `kAudioHardwarePropertyDefaultInputDevice` listener that
+  fires `setDefaultInputChangeHandler` — the shared stream uses this to
+  **follow the system default input**: when the default mic changes
+  (AirPods inserted, headset unplugged), `SharedMicrophoneStream`
+  re-points the engine onto the new device without dropping subscribers,
+  so an in-progress recording continues. The re-point is non-fatal — a
+  failed rebuild (a just-connected Bluetooth mic that isn't capture-ready,
+  CoreAudio -10868) never kills the recording; it retries with backoff.
 
 **Mic consumers (each subscribes to the shared stream)**
 - `AudioRecorder.swift` — dictation capture.
@@ -31,8 +39,12 @@ fan-out. There is exactly one instance per process, owned by
 - `MicrophoneCapture.swift` — meeting microphone capture. Subscribes
   with `wantsVPIO: false` by default via `MeetingMicProcessingMode.raw`.
   VPIO modes remain available for explicit experiments, with raw fallback
-  when `.vpioPreferred` cannot engage. Has its own silent-buffer watchdog
-  with a stall observer wired up to the meeting flow.
+  when `.vpioPreferred` cannot engage. Its first-buffer watchdog is
+  **log-only and forgiving**: silence is never a failure (a cold Bluetooth
+  route still waking, a quiet room, a user who walked away all just keep
+  recording — no guillotine, no restart). The `stallObserver` still fires,
+  but only for a *genuine* engine death (`deathDispatch`), not for a slow
+  or silent start.
 
 **Meeting-side audio (independent of the mic stream)**
 - `SystemAudioStream.swift` — meeting system audio via

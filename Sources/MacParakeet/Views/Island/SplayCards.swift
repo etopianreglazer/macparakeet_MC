@@ -18,6 +18,7 @@ enum SplayCards {
         totalCount: Int,
         folderDisplayPath: String,
         onOpenFolder: @escaping () -> Void,
+        onCopy: @escaping (SplayRecordingRow) -> Void,
         dismiss: @escaping () -> Void
     ) -> AnyView {
         let noun = totalCount == 1 ? "recording" : "recordings"
@@ -39,7 +40,7 @@ enum SplayCards {
                 if rows.isEmpty {
                     SplayEmptyRecordings()
                 } else {
-                    SplayRecordingList(rows: rows, footer: footer)
+                    SplayRecordingList(rows: rows, footer: footer, onCopy: onCopy)
                 }
             }
         )

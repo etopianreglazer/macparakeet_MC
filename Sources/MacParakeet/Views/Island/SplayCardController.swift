@@ -41,13 +41,18 @@ private struct SplayCardFloat<Content: View>: View {
     var body: some View {
         content()
             // Grow from small → settle; contract back on exit. Anchored centre so
-            // it emerges from itself, not from an edge.
+            // it emerges from itself, not from an edge. The blur (harvested from
+            // DynamicNotchKit) lets the card resolve *into focus* as it breathes
+            // open, and soften back out on dismiss.
             .scaleEffect(presentation.visible ? 1 : 0.86, anchor: .center)
             .opacity(presentation.visible ? 1 : 0)
+            .blur(radius: presentation.visible ? 0 : 10)
             .animation(reduceMotion ? nil : .spring(response: 0.42, dampingFraction: 0.66),
                        value: presentation.visible)
-            // Room for the card's drop shadow, and a comfortable off-card dismiss ring.
-            .padding(44)
+            // Room for the card's (now subtle) drop shadow + a comfortable off-card
+            // dismiss ring. The panel is sized to fit this padded content, so this
+            // must exceed the shadow's ~33pt reach or its edge gets clipped.
+            .padding(48)
             // The transparent margin around the card. A click here (the card
             // swallows its own taps) dismisses; the desktop behind the small panel
             // stays fully visible and interactive — no scrim, nothing locked.

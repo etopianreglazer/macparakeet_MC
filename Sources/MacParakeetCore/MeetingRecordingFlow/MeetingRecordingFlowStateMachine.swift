@@ -123,7 +123,16 @@ public struct MeetingRecordingFlowStateMachine: Equatable, Sendable {
         case (.recording, .captureFailed(let gen, let message)):
             guard gen == generation else { return [] }
             state = .finishing(outcome: .error(message))
-            return [.showError(message), .updateMenuBar(.idle), .finalizeFailedCapture, .startAutoDismissTimer(seconds: 8)]
+            // Fork: a capture failure means nothing was saved (zero-buffer cold
+            // Bluetooth mic → `noAudioCaptured`). Unlike a transcription failure
+            // (audio is safe in Library), this must NOT auto-dismiss — if it
+            // vanished after 8s the user, often away from the screen dictating,
+            // would return to an idle island with no sign the recording died.
+            // We hold the error until the user dismisses it (clicking the failed
+            // island → `.dismissRequested`); `.finishing` is inactive for
+            // settle/quit, so holding is safe and simply blocks a new start until
+            // acknowledged. A failure sound (in `.showError`) is the real-time cue.
+            return [.showError(message), .updateMenuBar(.idle), .finalizeFailedCapture]
 
         case (.transcribing, .transcriptionCompleted(let gen, let transcriptionID)):
             guard gen == generation else { return [] }

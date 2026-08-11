@@ -99,9 +99,16 @@ final class MeetingRecordingFlowStateMachineTests: XCTestCase {
         let effects = machine.handle(.captureFailed(generation: 1, message: "input lost"))
 
         XCTAssertEqual(machine.state, .finishing(outcome: .error("input lost")))
+        // A capture failure holds (no auto-dismiss timer): nothing was saved,
+        // so the failed island must stay until the user dismisses it rather than
+        // silently reverting to idle after 8s. See the `.captureFailed` case.
         XCTAssertEqual(
             effects,
-            [.showError("input lost"), .updateMenuBar(.idle), .finalizeFailedCapture, .startAutoDismissTimer(seconds: 8)]
+            [.showError("input lost"), .updateMenuBar(.idle), .finalizeFailedCapture]
+        )
+        XCTAssertFalse(
+            effects.contains { if case .startAutoDismissTimer = $0 { return true } else { return false } },
+            "Capture failure must not schedule an auto-dismiss — it holds until the user clears it."
         )
     }
 

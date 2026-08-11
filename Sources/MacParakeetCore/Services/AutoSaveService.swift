@@ -107,6 +107,12 @@ public final class AutoSaveService {
             }
 
             logger.info("Auto-saved \(scope.rawValue) transcript to \(fileURL.lastPathComponent)")
+            // Pair the recording's audio next to its transcript. The export above
+            // writes text only; without this the .m4a stays buried in the
+            // app-support session folder and the user's folder has orphan
+            // transcripts. (User ask 2026-08-10: "a recording folder next to the
+            // transcripts.")
+            copyPairedAudioIfAvailable(transcription: transcription, transcriptURL: fileURL, folderURL: folderURL, scope: scope)
             sendAutoSaveOperation(
                 operationContext: operationContext,
                 scope: scope,
@@ -122,6 +128,36 @@ public final class AutoSaveService {
                 outcome: .failure,
                 errorType: Observability.errorType(for: error)
             )
+        }
+    }
+
+    /// Copy the recording's audio into a `Recordings/` subfolder next to the
+    /// transcript, sharing the transcript's basename, so the audio and its
+    /// transcript live together in the user's folder. Meetings/voice notes only —
+    /// file and YouTube transcriptions keep their original source in place.
+    /// Best-effort: a copy failure never fails the transcript save.
+    private func copyPairedAudioIfAvailable(
+        transcription: Transcription,
+        transcriptURL: URL,
+        folderURL: URL,
+        scope: AutoSaveScope
+    ) {
+        guard scope == .meeting else { return }
+        guard let sourcePath = transcription.filePath,
+              sourcePath.lowercased().hasSuffix(".m4a"),
+              FileManager.default.fileExists(atPath: sourcePath) else { return }
+        let sourceURL = URL(fileURLWithPath: sourcePath)
+        let recordingsDir = folderURL.appendingPathComponent("Recordings", isDirectory: true)
+        let base = transcriptURL.deletingPathExtension().lastPathComponent
+        let destURL = recordingsDir.appendingPathComponent(base).appendingPathExtension("m4a")
+        do {
+            try FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+            // Idempotent: a re-save (e.g. re-transcribe) shouldn't error or dupe.
+            guard !FileManager.default.fileExists(atPath: destURL.path) else { return }
+            try FileManager.default.copyItem(at: sourceURL, to: destURL)
+            logger.info("Auto-saved paired audio to Recordings/\(destURL.lastPathComponent)")
+        } catch {
+            logger.warning("Auto-save paired audio failed: \(error.localizedDescription)")
         }
     }
 

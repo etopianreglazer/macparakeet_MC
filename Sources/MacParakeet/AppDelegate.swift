@@ -761,12 +761,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ?? AutoSaveService.resolveFolder(scope: .transcription)
                 ?? AutoSaveService.defaultFolder(for: .meeting)
             let display = folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
-            splayCardController.present { dismiss in
+            splayCardController.present { [weak self] dismiss in
                 SplayCards.recent(
                     rows: rows,
                     totalCount: all.count,
                     folderDisplayPath: display,
                     onOpenFolder: { NSWorkspace.shared.activateFileViewerSelecting([folder]) },
+                    onCopy: { row in
+                        guard !row.transcript.isEmpty,
+                              let clipboard = self?.appEnvironment?.clipboardService else { return }
+                        Task { await clipboard.copyToClipboard(row.transcript) }
+                    },
                     dismiss: dismiss
                 )
             }

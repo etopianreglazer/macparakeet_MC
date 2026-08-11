@@ -125,6 +125,7 @@ public final class MicrophoneCapture: @unchecked Sendable {
     private let permissionProvider: @Sendable () -> Bool
     private let sharedStream: SharedMicrophoneStream
     private let watchdogLock = NSLock()
+    private let firstBufferGrace: TimeInterval
 
     private var state: LifecycleState = .idle
     private var bufferHandler: AudioBufferHandler?
@@ -135,14 +136,24 @@ public final class MicrophoneCapture: @unchecked Sendable {
     /// unsubscribe can fire without holding `self`.
     private var sharedSubscriberToken: SharedMicrophoneStream.SubscriberToken?
 
+    /// - Parameters:
+    ///   - firstBufferGrace: patience before the first buffer is considered
+    ///     missing (default 3.5s — long enough for a cold Bluetooth A2DP→HFP
+    ///     switch). Injectable so tests can drive recovery in milliseconds.
+    ///   - recoveryGrace: grace after each recovery "kick" (engine restart).
+    ///   - maxRecoveryKicks: engine restarts to attempt before surfacing a stall.
+    ///     Total worst-case recovery must stay under the meeting coordinator's
+    ///     10s stall poll so recovery never races that fail-safe.
     public init(
         sharedStream: SharedMicrophoneStream,
         permissionProvider: @escaping @Sendable () -> Bool = {
             AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
-        }
+        },
+        firstBufferGrace: TimeInterval = 3.5
     ) {
         self.sharedStream = sharedStream
         self.permissionProvider = permissionProvider
+        self.firstBufferGrace = firstBufferGrace
     }
 
     deinit {
@@ -206,6 +217,15 @@ public final class MicrophoneCapture: @unchecked Sendable {
         }
         let deathDispatch: SharedMicrophoneStream.EngineDeathHandler = { [weak self] in
             guard let self else { return }
+            // Tag this distinctly: an engine-death stall reaches `stallObserver`
+            // by a different route than the first-buffer watchdog's exhaustion
+            // (which logs `recovery_kick`/`recovery_exhausted`). Without this
+            // marker both surface as an identical `.error`, so the log can't say
+            // which path fired. This route has NO recovery kick today — if it is
+            // what kills cold-Bluetooth starts, that gap is the next fix.
+            AudioCaptureDiagnostics.append(
+                "meeting_mic_engine_death_stall \(AudioCaptureDiagnostics.defaultInputDeviceSummary())"
+            )
             let observer = self.handlerLock.withLock { self.stallObserver }
             observer?(.captureRuntimeFailure(
                 "shared microphone engine stopped unexpectedly"
@@ -400,24 +420,44 @@ public final class MicrophoneCapture: @unchecked Sendable {
         callback?(deliveredBuffer, time)
     }
 
+    // MARK: First-buffer patience (no guillotine, no restart)
+
+    /// Arm a single, **log-only** first-buffer check. Silence is never a failure:
+    /// a mic that hasn't delivered yet — a cold Bluetooth route still waking, a
+    /// quiet room, a user who walked away — is fine. The buffers arrive on their
+    /// own once the device is ready, and if the *default input* changes,
+    /// `SharedMicrophoneStream` follows to the new device. We do NOT restart or
+    /// stall here (that fragile "kick" caused cold-Bluetooth rebuilds to fail and
+    /// take the recording down with them). This marker exists purely so a slow
+    /// start is visible in `dictation-audio.log`.
     private func scheduleSilentBufferWatchdog() {
+        watchdogLock.withLock { firstBufferReceived = false }
         let workItem = watchdogLock.withLock { () -> DispatchWorkItem in
-            firstBufferReceived = false
             watchdogWorkItem?.cancel()
             let item = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                let shouldLog = self.watchdogLock.withLock { !self.firstBufferReceived }
-                guard shouldLog else { return }
-                let error = MeetingAudioError.captureRuntimeFailure(
-                    "microphone capture started but delivered no buffers within 2 seconds"
-                )
-                self.logger.warning("microphone_capture_no_buffers_within_timeout")
-                self.handlerLock.withLock { self.stallObserver }?(error)
+                self?.noteFirstBufferStillPending()
             }
             watchdogWorkItem = item
             return item
         }
-        watchdogQueue.asyncAfter(deadline: .now() + 2, execute: workItem)
+        watchdogQueue.asyncAfter(deadline: .now() + firstBufferGrace, execute: workItem)
+    }
+
+    private var isRunning: Bool {
+        lifecycleQueue.sync { state == .running }
+    }
+
+    private func noteFirstBufferStillPending() {
+        if watchdogLock.withLock({ firstBufferReceived }) { return }
+        guard isRunning else { return }
+        // Patience, not punishment: note it and keep recording. No stall, no
+        // restart — the recording continues (silent for now) and picks up
+        // buffers whenever the device becomes ready or the default input
+        // changes and the stream follows to a live device.
+        logger.notice("microphone_capture_no_first_buffer_yet_still_waiting")
+        AudioCaptureDiagnostics.append(
+            "meeting_mic_no_first_buffer_yet grace_s=\(firstBufferGrace) \(AudioCaptureDiagnostics.defaultInputDeviceSummary())"
+        )
     }
 
     private func markFirstBufferReceived() {

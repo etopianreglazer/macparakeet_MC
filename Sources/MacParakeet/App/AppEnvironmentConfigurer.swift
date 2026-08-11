@@ -385,9 +385,15 @@ final class AppEnvironmentConfigurer {
                 guard !callbacks.isOnboardingVisible() else { return }
                 coordinatorRefs.meeting?.toggleRecording(trigger: .manual, sourceModeOverride: mode)
             }
-            // Any other pill click opens the recents card (the second surface).
+            // Any other pill click opens the recents card (the second surface) —
+            // except when the island is holding a failed-recording state, where
+            // the click is the dismiss gesture that clears it back to idle.
             controller.onOpenCard = {
-                callbacks.onOpenRecentCard()
+                if coordinatorRefs.meeting?.isAwaitingFailureDismissal == true {
+                    coordinatorRefs.meeting?.dismissFailure()
+                } else {
+                    callbacks.onOpenRecentCard()
+                }
             }
             controller.show()
             coordinatorRefs.island = controller

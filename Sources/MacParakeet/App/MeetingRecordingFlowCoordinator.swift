@@ -201,6 +201,22 @@ final class MeetingRecordingFlowCoordinator {
         }
     }
 
+    /// True while the island is holding a failed-recording state that no longer
+    /// auto-dismisses (see `.captureFailed` in the state machine). The island's
+    /// click routes here so tapping the failed pill clears it instead of opening
+    /// the recents card.
+    var isAwaitingFailureDismissal: Bool {
+        if case .finishing(outcome: .error) = stateMachine.state { return true }
+        return false
+    }
+
+    /// Clear a held failed-recording state (user acknowledged it), returning the
+    /// island to idle so the next recording can start.
+    func dismissFailure() {
+        guard isAwaitingFailureDismissal else { return }
+        sendEvent(.dismissRequested)
+    }
+
     func stopRecordingAndWaitForCompletion() async {
         switch stateMachine.state {
         case .checkingPermissions, .starting:
@@ -659,6 +675,12 @@ final class MeetingRecordingFlowCoordinator {
             }
 
         case .showError(let message):
+            // Real-time audible cue so a recording failure is never silent —
+            // the user is often away from the screen (walking-around dictation)
+            // when a cold Bluetooth mic yields nothing. Separate from the
+            // (off-by-default) start sound; gated only by the macOS
+            // "play sound effects" setting inside SoundManager.
+            SoundManager.shared.play(.errorSoft)
             stopPillPolling()
             stopTranscriptObservation()
             stopSpeechWarmUpObservation()

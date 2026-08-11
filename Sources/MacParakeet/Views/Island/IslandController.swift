@@ -23,9 +23,15 @@ private final class IslandTrackingView: NSView {
     /// The record dot inside the ready pill was clicked — start a recording.
     var onRecordClick: (() -> Void)?
     var onStopClick: (() -> Void)?
+    /// The control under the cursor changed (record / stop / open / none) — drives
+    /// the SwiftUI hover pop. Distinct from `onHoverEnter/Exit`, which only govern
+    /// the idle nub → ready growth.
+    var onControlHover: ((IslandControl) -> Void)?
 
     /// Cursor is over the idle nub's hover zone (grows the pill to the hint).
     private var hovering = false
+    /// Last control the cursor was over, so we only signal on change.
+    private var lastControl: IslandControl = .none
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -54,28 +60,41 @@ private final class IslandTrackingView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         if hovering { hovering = false; onHoverExit?() }
+        setControlHover(.none)
     }
 
     override func mouseMoved(with event: NSEvent) {
-        // Hover only matters in the idle form.
-        guard stateProvider() == .idle else {
-            if hovering { hovering = false; onHoverExit?() }
-            return
-        }
         let point = convert(event.locationInWindow, from: nil)
-        // Hysteresis: a "reach the notch/back" zone activates the ready pill; a
-        // larger "stay while on the tile" zone keeps it active so crossing onto
-        // the pill no longer snaps it back to idle.
-        let enterRect = notchProvider()
-            ? IslandLayout.notchRevealRect()
-            : IslandLayout.hitRect(for: .idleCollapsed, notchAttached: false)
-        let stayRect = IslandLayout.hoverStayRect(notchAttached: notchProvider())
-        let active = hovering ? stayRect : enterRect
-        if active.contains(point) {
-            if !hovering { hovering = true; onHoverEnter?() }
-        } else {
-            if hovering { hovering = false; onHoverExit?() }
+
+        // Idle nub → ready growth (hysteresis) lives only in the idle form.
+        if stateProvider() == .idle {
+            // Hysteresis: a "reach the notch/back" zone activates the ready pill; a
+            // larger "stay while on the tile" zone keeps it active so crossing onto
+            // the pill no longer snaps it back to idle.
+            let enterRect = notchProvider()
+                ? IslandLayout.notchRevealRect()
+                : IslandLayout.hitRect(for: .idleCollapsed, notchAttached: false)
+            let stayRect = IslandLayout.hoverStayRect(notchAttached: notchProvider())
+            let active = hovering ? stayRect : enterRect
+            if active.contains(point) {
+                if !hovering { hovering = true; onHoverEnter?() }
+            } else {
+                if hovering { hovering = false; onHoverExit?() }
+            }
+        } else if hovering {
+            hovering = false; onHoverExit?()
         }
+
+        // Per-control hover (record dot / stop square / open button) for the pop
+        // feedback — computed for whatever the current visual is, in every state.
+        setControlHover(IslandLayout.control(at: point, visual: currentVisual(), notchAttached: notchProvider()))
+    }
+
+    /// Signal the hovered control only when it changes.
+    private func setControlHover(_ control: IslandControl) {
+        guard control != lastControl else { return }
+        lastControl = control
+        onControlHover?(control)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -87,29 +106,23 @@ private final class IslandTrackingView: NSView {
     func dispatchClick(at point: CGPoint) {
         let visual = currentVisual()
         guard IslandLayout.hitRect(for: visual, notchAttached: notchProvider()).contains(point) else { return }
+        let control = IslandLayout.control(at: point, visual: visual, notchAttached: notchProvider())
 
         switch visual {
-        case .idleCollapsed:
+        case .idleCollapsed, .idleHover:
+            // Recording is the primary action, so a click ANYWHERE on the idle
+            // island records — no hover required, no small dot to hit. The old
+            // model gated recording behind hover + a tiny record-dot rect, so a
+            // click on the dormant nub (or before hover registered on this
+            // non-activating panel) opened the recents card instead of
+            // recording, which read as "the record button doesn't work." The
+            // recents/settings card is still reachable from the menu bar.
             hovering = false
-            onOpenCard?()
-        case .idleHover:
-            hovering = false
-            if IslandLayout.recordButtonRect(notchAttached: notchProvider()).contains(point) {
-                onRecordClick?()          // the record dot → record
-            } else {
-                onOpenCard?()             // elsewhere on the pill → recents card
-            }
+            onRecordClick?()
         case .recording:
-            let pill = IslandLayout.pillRect(for: visual, notchAttached: notchProvider())
-            let stopRect = CGRect(
-                x: pill.maxX - IslandLayout.stopHitWidth,
-                y: pill.minY,
-                width: IslandLayout.stopHitWidth,
-                height: pill.height
-            )
-            if stopRect.contains(point) { onStopClick?() }
+            if control == .stop { onStopClick?() }        // the stop square → stop
         case .done:
-            onOpenCard?()
+            onOpenCard?()                                 // after a recording, the done pill opens the card
         case .transcribing, .hidden:
             break
         }
@@ -236,13 +249,25 @@ final class IslandController: NSObject {
             self?.onOpenCard?()
         }
         tracker.onRecordClick = { [weak self] in
-            // The on-screen record dot mirrors pressing fn: start a mic recording
-            // (solo voice notes are the common case; hardware fn keeps its
+            // A click anywhere on the idle island starts a mic recording (mirrors
+            // fn; solo voice notes are the common case, hardware fn keeps its
             // single=mic / double=mic+system behaviour).
-            self?.chrome.isHovered = false
-            self?.onRecord?(.microphoneOnly)
+            guard let self else { return }
+            // Observability: island interaction is delivery/geometry-sensitive on
+            // a non-activating panel, so log the click reaching the record path.
+            AudioCaptureDiagnostics.append("splay_island record_dot_clicked has_handler=\(self.onRecord != nil)")
+            self.chrome.isHovered = false
+            self.chrome.hoveredControl = .none
+            self.onRecord?(.microphoneOnly)
         }
-        tracker.onStopClick = { [weak self] in self?.onStop?() }
+        tracker.onStopClick = { [weak self] in
+            guard let self else { return }
+            AudioCaptureDiagnostics.append("splay_island stop_clicked has_handler=\(self.onStop != nil)")
+            self.onStop?()
+        }
+        tracker.onControlHover = { [weak self] control in
+            self?.chrome.hoveredControl = control
+        }
         trackingView = tracker
 
         container.addSubview(hosting)   // display (below)

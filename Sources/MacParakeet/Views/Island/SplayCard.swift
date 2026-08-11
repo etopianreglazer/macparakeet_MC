@@ -119,7 +119,11 @@ struct SplayCardView<BodyBlock: View>: View {
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(SplayCardPalette.surface)
-                .shadow(color: SplayCardPalette.rgba(40, 28, 90, 0.35), radius: 35, y: 24)
+                // Two soft layers, macOS-panel style: a faint contact shadow for
+                // the near edge + a low-opacity ambient for lift. Deliberately
+                // subtle (was a heavy radius-35 / 0.35 slab that read as a grey band).
+                .shadow(color: SplayCardPalette.rgba(28, 20, 55, 0.10), radius: 3, y: 1)
+                .shadow(color: SplayCardPalette.rgba(28, 20, 55, 0.14), radius: 22, y: 11)
         )
         // Swallow taps that land on the card so a click-away (in the margin) only
         // fires outside it. Entry/exit motion is owned by `SplayCardFloat`.
@@ -400,6 +404,9 @@ struct SplayRecordingRow: Identifiable {
     let title: String
     /// Hollow dot = mic only; filled = mic + system.
     let micAndSystem: Bool
+    /// The transcript text this row copies to the clipboard (clean, else raw).
+    /// Empty when the recording has no transcript yet.
+    let transcript: String
 
     /// Build a row from a stored transcription (the newest files in ~/Splay).
     static func from(_ t: Transcription, now: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> SplayRecordingRow {
@@ -408,12 +415,15 @@ struct SplayRecordingRow: Identifiable {
             let base = (t.fileName as NSString).deletingPathExtension
             return base.isEmpty ? t.fileName : base
         }()
+        let transcript = (t.cleanTranscript ?? t.rawTranscript ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         return SplayRecordingRow(
             id: t.id,
             time: timeLabel(for: t.createdAt, now: now, calendar: calendar),
             duration: durationLabel(ms: t.durationMs),
             title: title,
-            micAndSystem: t.sourceType == .meeting
+            micAndSystem: t.sourceType == .meeting,
+            transcript: transcript
         )
     }
 
@@ -441,34 +451,14 @@ struct SplayRecordingRow: Identifiable {
 struct SplayRecordingList: View {
     let rows: [SplayRecordingRow]
     let footer: String
+    /// Copy this row's transcript to the clipboard. The folder stays the archive;
+    /// this saves the trip there for the common "grab what I just said" case.
+    let onCopy: (SplayRecordingRow) -> Void
 
     var body: some View {
         VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                HStack(spacing: 11) {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(row.time).font(.system(size: 12)).foregroundStyle(SplayCardPalette.secondaryInk)
-                        Text(row.duration).font(.system(size: 10.5)).foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.42))
-                    }
-                    .frame(width: 52, alignment: .leading)
-                    .monospacedDigit()
-
-                    Text(row.title)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.72))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                    Spacer(minLength: 8)
-                    Circle()
-                        .fill(row.micAndSystem ? SplayCardPalette.brandTint(0.4) : Color.clear)
-                        .frame(width: 7, height: 7)
-                        .overlay(Circle().strokeBorder(SplayCardPalette.brandTint(0.4), lineWidth: 1))
-                }
-                .padding(EdgeInsets(top: 9, leading: 11, bottom: 9, trailing: 11))
-                .background(
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .fill(index == 0 ? SplayCardPalette.brandTint(0.09) : Color.clear)
-                )
+                SplayRecordingRowView(row: row, firstRow: index == 0) { onCopy(row) }
             }
 
             Divider()
@@ -480,6 +470,72 @@ struct SplayRecordingList: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 11)
         }
+    }
+}
+
+/// One recents row. The whole row copies its transcript (bigger target than the
+/// icon alone); the trailing clipboard glyph is the affordance and flashes a
+/// checkmark on copy. Hover highlights the row + pops the glyph so it reads as
+/// interactive rather than a static list entry.
+private struct SplayRecordingRowView: View {
+    let row: SplayRecordingRow
+    let firstRow: Bool
+    let onCopy: () -> Void
+    @State private var hovering = false
+    @State private var copied = false
+
+    private var canCopy: Bool { !row.transcript.isEmpty }
+
+    var body: some View {
+        HStack(spacing: 11) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(row.time).font(.system(size: 12)).foregroundStyle(SplayCardPalette.secondaryInk)
+                Text(row.duration).font(.system(size: 10.5)).foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.42))
+            }
+            .frame(width: 52, alignment: .leading)
+            .monospacedDigit()
+
+            Text(row.title)
+                .font(.system(size: 12.5))
+                .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.72))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 8)
+            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(copied
+                                 ? SplayCardPalette.brand
+                                 : SplayCardPalette.brandTint(canCopy ? (hovering ? 0.95 : 0.5) : 0.22))
+                .frame(width: 16, alignment: .center)
+                .scaleEffect(hovering && canCopy ? 1.16 : 1)
+                .animation(.easeOut(duration: 0.12), value: hovering)
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: copied)
+        }
+        .padding(EdgeInsets(top: 9, leading: 11, bottom: 9, trailing: 11))
+        .background(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(rowFill)
+        )
+        .scaleEffect(hovering && canCopy ? 1.008 : 1)
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard canCopy else { return }
+            onCopy()
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
+        }
+        .onHover { hovering = $0 && canCopy; SplayHoverCursor.apply(hovering) }
+        .help(canCopy ? "Copy transcript" : "No transcript yet")
+        .accessibilityElement()
+        .accessibilityLabel("\(row.title), \(row.time)")
+        .accessibilityHint(canCopy ? "Copies the transcript" : "No transcript yet")
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private var rowFill: Color {
+        if firstRow { return SplayCardPalette.brandTint(hovering ? 0.14 : 0.09) }
+        return SplayCardPalette.rgba(36, 31, 56, hovering ? 0.05 : 0)
     }
 }
 

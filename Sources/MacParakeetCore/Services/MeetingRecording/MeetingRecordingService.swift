@@ -996,6 +996,14 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         microphoneMutedHostTime = nil
         completedMicrophoneMuteHostTimeRanges = []
         logger.error("meeting_capture_failed error_type=\(AudioCaptureDiagnostics.errorType(error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
+        // File-visible sibling of the os_log line above. `failCapture` is the
+        // single choke point for every terminal capture failure, so this marker
+        // is what names the actual trigger (error type + whether any mic buffer
+        // was ever seen) in dictation-audio.log — the difference between a
+        // zero-buffer cold-Bluetooth stall and a mid-recording engine death.
+        AudioCaptureDiagnostics.append(
+            "meeting_capture_failed mic_first_buffer=\(captureHealthMetrics.microphoneFirstBufferSeen) \(AudioCaptureDiagnostics.errorFields(error))"
+        )
         await audioCaptureService.stop()
     }
 

@@ -16,6 +16,9 @@ struct SplayIslandIndicator: View {
     /// On a notched built-in display the pill straddles the camera housing, so a
     /// central dead zone is reserved. External displays render a centred row.
     var notchAttached: Bool = true
+    /// Which control the cursor is over (from the AppKit tracker) — drives the
+    /// subtle hover "pop" so the buttons answer the touch against the moving pill.
+    var hoveredControl: IslandControl = .none
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -92,8 +95,13 @@ struct SplayIslandIndicator: View {
     /// Elements scale up + fade as they appear, so they feel spawned with the
     /// island (fires under the parent's spring animation on state change). A gentle
     /// 0.8 start (was 0.5) reads as a quick settle rather than a half-size pop.
+    /// The `splayBlur` layer (harvested from DynamicNotchKit) blurs each glyph as
+    /// it swaps in on every state change, so the face resolves into focus rather
+    /// than hard-popping. `intensity` is the one knob to dial if it's too soft/hard.
     private var spawn: AnyTransition {
-        .scale(scale: 0.8, anchor: .center).combined(with: .opacity)
+        .scale(scale: 0.8, anchor: .center)
+            .combined(with: .opacity)
+            .combined(with: .splayBlur(intensity: 6))
     }
 
     /// The mark/glyph colour tracks the state's light (recording → coral, done →
@@ -119,25 +127,45 @@ struct SplayIslandIndicator: View {
     @ViewBuilder private var rightCluster: some View {
         switch state {
         case .ready:
-            recordButton.transition(spawn)   // clickable record affordance; the tracker owns the click
+            hoverPop(recordButton, control: .record).transition(spawn)   // click → start; the tracker owns the click
+        case .recording:
+            hoverPop(stopButton, control: .stop, scale: 1.2).transition(spawn)  // click → stop
         case .transcribing:
-            SplayIslandSpinner().frame(width: 14, height: 14).transition(spawn)
+            SplayIslandSpinner().frame(width: 14, height: 14).transition(spawn)  // "wrapping up" — no button
         case .done:
             // One icon only. At the 280 max width the two-button cluster spilled
             // into the 180px camera dead zone and disappeared behind the housing
             // (2026-08-07 feedback). A single trailing "open" button clears the
             // camera — and clicking the done pill already triggers Open, so this is
             // just its affordance.
-            actionButton(system: "folder", background: SplayTheme.shared.accent.islandBright, glyph: SplayLight.surface)
-                .transition(spawn)
+            hoverPop(
+                actionButton(system: "folder", background: SplayTheme.shared.accent.islandBright, glyph: SplayLight.surface),
+                control: .open, scale: 1.16, glow: SplayTheme.shared.accent.islandBright
+            )
+            .transition(spawn)
         case .warning, .failed:
             Image(systemName: "chevron.down")
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.45))
                 .transition(spawn)
-        case .dormant, .recording, .copied, .dropped:
+        case .dormant, .copied, .dropped:
             EmptyView()
         }
+    }
+
+    /// The hover "pop": lift a control and bloom a soft halo when the tracker
+    /// reports the cursor is over it, so it clearly answers the touch against the
+    /// moving island. The halo matters because the cursor is often stationary over
+    /// the control (scale alone was too quiet to read). Smoothed spring; disabled
+    /// under Reduce Motion.
+    @ViewBuilder private func hoverPop<V: View>(
+        _ view: V, control: IslandControl, scale: CGFloat = 1.22, glow: Color = SplayLight.recordRed
+    ) -> some View {
+        let on = hoveredControl == control && !reduceMotion
+        view
+            .scaleEffect(on ? scale : 1)
+            .shadow(color: glow.opacity(on ? 0.8 : 0), radius: on ? 6 : 0)
+            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.58), value: hoveredControl)
     }
 
     // MARK: Pieces
@@ -150,6 +178,20 @@ struct SplayIslandIndicator: View {
             .fill(SplayLight.recordRed)
             .frame(width: 13, height: 13)   // sized to match the mark's visual weight
             .overlay(Circle().strokeBorder(.white.opacity(0.22), lineWidth: 0.75))
+            .shadow(color: SplayLight.recordRed.opacity(0.6), radius: 4)
+    }
+
+    /// Recording's clickable affordance: a red rounded square (Voice-Memos stop),
+    /// matched to the record dot's weight + glow so the two states read as one
+    /// control changing meaning — circle = start, square = stop. Previously the
+    /// recording pill had only an invisible right-edge hit zone, which made the
+    /// record dot feel like a gimmick that vanished the moment you used it.
+    private var stopButton: some View {
+        RoundedRectangle(cornerRadius: 3, style: .continuous)
+            .fill(SplayLight.recordRed)
+            .frame(width: 12, height: 12)
+            .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .strokeBorder(.white.opacity(0.22), lineWidth: 0.75))
             .shadow(color: SplayLight.recordRed.opacity(0.6), radius: 4)
     }
 
