@@ -30,9 +30,10 @@ enum IslandVisual: Equatable {
 /// the hovered control into the SwiftUI indicator, which lifts it slightly.
 enum IslandControl: Equatable {
     case none
-    case record   // ready → start a recording
+    case menu     // the mark (left) → open the card (recents / settings / about)
+    case record   // idle → start a recording
     case stop     // recording → stop
-    case open     // done → open the recents card
+    case open     // done → open the menu card
 }
 
 // MARK: - Shared layout (single source of truth for view + tracker)
@@ -75,9 +76,10 @@ enum IslandLayout {
         }
     }
 
-    /// Width of a right-cluster control's hit region (record dot / stop square /
-    /// open button). Generous enough to be an easy target around the ~13pt glyph.
-    static let controlHitWidth: CGFloat = 52
+    /// Width of a right-cluster control's hit region (the status dot / open
+    /// button). Kept tight — close to the drawn glyph — so hover/click detection
+    /// hugs the small dot instead of arming across the whole right of the pill.
+    static let controlHitWidth: CGFloat = 16
 
     /// Interaction rect for the AppKit tracker — simply the drawn pill (notch-mode
     /// hover is additionally served by `notchRevealRect`).
@@ -102,31 +104,55 @@ enum IslandLayout {
         return CGRect(x: (panelWidth - w) / 2, y: ready.minY - extraBelow, width: w, height: ready.height + extraBelow)
     }
 
-    /// The right-cluster control hit region for a given visual — where the record
-    /// dot / stop square / open button is drawn (`SplayIslandIndicator.rightCluster`,
-    /// far right with 14pt face padding). The rect is a bit wider so it's an easy
-    /// target. The drawn glyph and this rect derive from the same `pillRect`, so
-    /// they never drift.
+    /// The right-cluster control hit region for a given visual — where the status
+    /// dot / open button is drawn (`SplayIslandIndicator.rightCluster`, trailing-
+    /// aligned with 14pt face padding, in both notch and non-notch layouts). The
+    /// rect is a bit wider than the glyph so it's an easy target. The drawn glyph
+    /// and this rect derive from the same `pillRect`, so they never drift.
     static func controlRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
         let pill = pillRect(for: visual, notchAttached: notchAttached)
         let w = controlHitWidth
-        return CGRect(x: pill.maxX - w - 4, y: pill.minY, width: w, height: pill.height)
+        // Centre the tight target on the trailing glyph (drawn ~14pt in from the
+        // pill's right edge), not flush to the edge, so it sits right over the dot.
+        let center = pill.maxX - 18
+        return CGRect(x: center - w / 2, y: pill.minY, width: w, height: pill.height)
     }
 
-    /// Back-compat alias: the record dot's hit region in the ready pill.
-    static func recordButtonRect(notchAttached: Bool = false) -> CGRect {
-        controlRect(for: .idleHover, notchAttached: notchAttached)
+    /// A compact hit target over the leading-aligned mark (drawn at ~x 14…30: a
+    /// 14pt leading pad + a 16pt glyph, identical in notch and non-notch layouts).
+    /// Deliberately narrow — a click on the empty middle of the bar must still
+    /// record / stop, not open the card — and clamped so it can never reach the
+    /// right-cluster control rect.
+    static let markHitWidth: CGFloat = 44
+    static func markRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
+        let pill = pillRect(for: visual, notchAttached: notchAttached)
+        let w = min(markHitWidth, pill.width - controlHitWidth - 8)
+        return CGRect(x: pill.minX, y: pill.minY, width: max(0, w), height: pill.height)
     }
 
     /// Which interactive control (if any) sits under `point` for the current
     /// visual. Shared by the click router and the hover-feedback path so the two
-    /// never disagree about where a control is.
+    /// never disagree about where a control is. The right-cluster control (record /
+    /// stop / open) wins its rect; the mark (menu) owns the left region.
     static func control(at point: CGPoint, visual: IslandVisual, notchAttached: Bool) -> IslandControl {
         switch visual {
-        case .idleHover:  return controlRect(for: .idleHover, notchAttached: notchAttached).contains(point) ? .record : .none
-        case .recording:  return controlRect(for: .recording, notchAttached: notchAttached).contains(point) ? .stop : .none
-        case .done:       return controlRect(for: .done, notchAttached: notchAttached).contains(point) ? .open : .none
-        default:          return .none
+        case .idleHover:
+            if controlRect(for: .idleHover, notchAttached: notchAttached).contains(point) { return .record }
+            if markRect(for: .idleHover, notchAttached: notchAttached).contains(point) { return .menu }
+            return .none
+        case .idleCollapsed:
+            // The dormant nub draws no mark or dot — any click just records.
+            return .none
+        case .recording:
+            if controlRect(for: .recording, notchAttached: notchAttached).contains(point) { return .stop }
+            if markRect(for: .recording, notchAttached: notchAttached).contains(point) { return .menu }
+            return .none
+        case .transcribing:
+            return markRect(for: .transcribing, notchAttached: notchAttached).contains(point) ? .menu : .none
+        case .done:
+            return controlRect(for: .done, notchAttached: notchAttached).contains(point) ? .open : .none
+        default:
+            return .none
         }
     }
 
@@ -179,10 +205,14 @@ final class IslandChromeModel {
     /// A card (the second surface) is open — hold the idle island in its ready
     /// ("open") form until the card closes, so the two surfaces move together.
     var heldOpen = false
-    /// Which control the cursor is currently over (record dot / stop / open), fed
+    /// Which control the cursor is currently over (mark / status dot / open), fed
     /// by the AppKit tracker so the SwiftUI indicator can pop it on hover. The
     /// island is display-only, so hover can't come from SwiftUI itself.
     var hoveredControl: IslandControl = .none
+    /// Which control is momentarily *pressed* (a short pulse fired on click), so the
+    /// indicator can depress it like a physical key. Cleared automatically after the
+    /// pulse. Also fed by the tracker, since the click lives at the AppKit layer.
+    var pressedControl: IslandControl = .none
     /// Distance from the panel's physically hidden top to the housing's lower edge.
     var notchCueInset: CGFloat = 0
     init() {}
@@ -224,7 +254,8 @@ struct IslandView: View {
                     state: splayState,
                     level: Double(max(pill.micLevel, pill.systemLevel)),
                     notchAttached: chrome.isNotchResting,
-                    hoveredControl: chrome.hoveredControl
+                    hoveredControl: chrome.hoveredControl,
+                    pressedControl: chrome.pressedControl
                 )
                 // Mirror the tracker's `pillRect` top offset exactly so the drawn
                 // pill and its hit-rect stay aligned: flush to the physical top in

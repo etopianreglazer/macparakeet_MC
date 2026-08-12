@@ -17,16 +17,19 @@ private final class IslandTrackingView: NSView {
 
     var onHoverEnter: (() -> Void)?
     var onHoverExit: (() -> Void)?
-    /// A click anywhere on the pill (other than the record dot / stop zone) opens
-    /// the recents card.
+    /// The mark (left cluster) was clicked — open the menu card. A click anywhere
+    /// else on the pill records or stops instead.
     var onOpenCard: (() -> Void)?
-    /// The record dot inside the ready pill was clicked — start a recording.
+    /// An idle click off the mark (the status dot, or the bar) — start a recording.
     var onRecordClick: (() -> Void)?
     var onStopClick: (() -> Void)?
     /// The control under the cursor changed (record / stop / open / none) — drives
     /// the SwiftUI hover pop. Distinct from `onHoverEnter/Exit`, which only govern
     /// the idle nub → ready growth.
     var onControlHover: ((IslandControl) -> Void)?
+    /// A control was pressed (a click pulse: pressed → released) — drives the
+    /// SwiftUI "physical key" depress on the touched control.
+    var onControlPress: ((IslandControl) -> Void)?
 
     /// Cursor is over the idle nub's hover zone (grows the pill to the hint).
     private var hovering = false
@@ -85,7 +88,7 @@ private final class IslandTrackingView: NSView {
             hovering = false; onHoverExit?()
         }
 
-        // Per-control hover (record dot / stop square / open button) for the pop
+        // Per-control hover (mark / status dot / open button) for the pop
         // feedback — computed for whatever the current visual is, in every state.
         setControlHover(IslandLayout.control(at: point, visual: currentVisual(), notchAttached: notchProvider()))
     }
@@ -108,23 +111,46 @@ private final class IslandTrackingView: NSView {
         guard IslandLayout.hitRect(for: visual, notchAttached: notchProvider()).contains(point) else { return }
         let control = IslandLayout.control(at: point, visual: visual, notchAttached: notchProvider())
 
+        // Depress the touched control like a physical key (a short pulse), before
+        // running its action. Only a real glyph (mark / dot / open) depresses; a
+        // click on the empty bar records but has nothing to push down.
+        pressPulse(control)
+
+        // The mark (left cluster) opens the card in every state where it's shown —
+        // this is the "click the splay icon to reach the menu" affordance. It takes
+        // precedence over the pill-body actions below.
+        if control == .menu {
+            hovering = false
+            onOpenCard?()
+            return
+        }
+
         switch visual {
         case .idleCollapsed, .idleHover:
-            // Recording is the primary action, so a click ANYWHERE on the idle
-            // island records — no hover required, no small dot to hit. The old
-            // model gated recording behind hover + a tiny record-dot rect, so a
-            // click on the dormant nub (or before hover registered on this
-            // non-activating panel) opened the recents card instead of
-            // recording, which read as "the record button doesn't work." The
-            // recents/settings card is still reachable from the menu bar.
+            // Recording is the primary action, so a click anywhere on the idle
+            // island *other than the mark* records — no hover required. The mark
+            // (handled above) is the one spot that opens the menu instead.
             hovering = false
             onRecordClick?()
         case .recording:
-            if control == .stop { onStopClick?() }        // the stop square → stop
+            // A click anywhere on the recording bar (off the mark) stops it — the
+            // glowing dot is the affordance but the whole bar is forgiving.
+            onStopClick?()
         case .done:
             onOpenCard?()                                 // after a recording, the done pill opens the card
         case .transcribing, .hidden:
             break
+        }
+    }
+
+    /// Fire a short "pressed" pulse on the touched control, then release it, so the
+    /// SwiftUI indicator can depress it like a physical key. Auto-releases (rather
+    /// than tracking mouse-up) so a fast tap is still visibly a down-then-up press.
+    private func pressPulse(_ control: IslandControl) {
+        guard control != .none else { return }
+        onControlPress?(control)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.13) { [weak self] in
+            self?.onControlPress?(.none)
         }
     }
 
@@ -178,8 +204,9 @@ private final class IslandContainerView: NSView {
 /// Owns the single, long-lived top-center island panel. The SwiftUI
 /// `IslandView` morphs through the capture lifecycle (dormant → recording →
 /// transcribing → done) as a pure indicator. Interaction is minimal: hover grows
-/// the nub, the record dot records, the stop zone stops, and any other click
-/// opens a card (`onOpenCard`) — the island never becomes a control surface.
+/// the nub; clicking the mark (left) opens a card (`onOpenCard`); clicking the
+/// status dot — or anywhere else on the bar — records (idle) or stops (recording).
+/// The island never becomes a control surface.
 @MainActor
 final class IslandController: NSObject {
     private var anchorPanel: NSPanel?
@@ -212,11 +239,12 @@ final class IslandController: NSObject {
         return IslandPlacementPreference.resolved(placementPreference, safeAreaTop: screen.safeAreaInsets.top, hasAuxiliaryTopArea: auxiliary, isBuiltIn: builtIn) == .notch
     }
 
-    /// Stop square clicked while recording.
+    /// The recording bar was clicked off the mark — stop the recording.
     var onStop: (() -> Void)?
-    /// Start a recording with the chosen source mode (the on-screen record dot).
+    /// Start a recording with the chosen source mode (the status dot, or any idle
+    /// click off the mark).
     var onRecord: ((MeetingAudioSourceMode) -> Void)?
-    /// A pill click (idle / done) opens the recents card — the second surface.
+    /// The mark was clicked (any state), or the done pill — open the menu card.
     var onOpenCard: (() -> Void)?
 
     init(pillViewModel: MeetingRecordingPillViewModel, idleVisible: Bool) {
@@ -263,6 +291,9 @@ final class IslandController: NSObject {
         }
         tracker.onControlHover = { [weak self] control in
             self?.chrome.hoveredControl = control
+        }
+        tracker.onControlPress = { [weak self] control in
+            self?.chrome.pressedControl = control
         }
         trackingView = tracker
 

@@ -17,8 +17,11 @@ struct SplayIslandIndicator: View {
     /// central dead zone is reserved. External displays render a centred row.
     var notchAttached: Bool = true
     /// Which control the cursor is over (from the AppKit tracker) — drives the
-    /// subtle hover "pop" so the buttons answer the touch against the moving pill.
+    /// hover "pop" (lift + glow) so the buttons answer the touch against the moving pill.
     var hoveredControl: IslandControl = .none
+    /// Which control is momentarily pressed (a click pulse from the tracker) —
+    /// depresses it like a physical key.
+    var pressedControl: IslandControl = .none
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -86,8 +89,7 @@ struct SplayIslandIndicator: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(height: 26)
-        // More horizontal breathing room so the mark clears the rounded corner
-        // and sits balanced against the fn chip (was 6 — felt jammed into the edge).
+        // Horizontal breathing room so the mark clears the rounded corner.
         .padding(.horizontal, 14)
         .padding(.bottom, 6)
     }
@@ -112,7 +114,11 @@ struct SplayIslandIndicator: View {
     @ViewBuilder private func leftCluster(markBreathe: (Double, Double), live: Bool) -> some View {
         switch state {
         case .ready, .recording, .transcribing, .dropped:
-            mark(markBreathe: markBreathe, live: live).transition(spawn)
+            // The mark is the menu affordance (revealed on hover): clicking it opens
+            // the card (recents / settings / about). Kept off the dormant nub so idle
+            // stays a quiet, hidden bar.
+            hoverPop(mark(markBreathe: markBreathe, live: live), control: .menu, scale: 1.20, glow: markColor)
+                .transition(spawn)
         case .done:
             glyphCircle("checkmark", color: markColor).transition(spawn)
         case .copied:
@@ -127,9 +133,12 @@ struct SplayIslandIndicator: View {
     @ViewBuilder private var rightCluster: some View {
         switch state {
         case .ready:
-            hoverPop(recordButton, control: .record).transition(spawn)   // click → start; the tracker owns the click
+            // The record dot (revealed on hover) — a small status LED, calm and
+            // glow-free at rest. Clicking it (or anywhere off the mark) records.
+            hoverPop(statusDot, control: .record).transition(spawn)
         case .recording:
-            hoverPop(stopButton, control: .stop, scale: 1.2).transition(spawn)  // click → stop
+            // The same dot, now lit red + glowing = "recording". Clicking it stops.
+            hoverPop(statusDot, control: .stop, scale: 1.2).transition(spawn)
         case .transcribing:
             SplayIslandSpinner().frame(width: 14, height: 14).transition(spawn)  // "wrapping up" — no button
         case .done:
@@ -153,47 +162,60 @@ struct SplayIslandIndicator: View {
         }
     }
 
-    /// The hover "pop": lift a control and bloom a soft halo when the tracker
-    /// reports the cursor is over it, so it clearly answers the touch against the
-    /// moving island. The halo matters because the cursor is often stationary over
-    /// the control (scale alone was too quiet to read). Smoothed spring; disabled
-    /// under Reduce Motion.
+    /// Interactive feedback for a control. On **hover** it lifts, brightens, and
+    /// blooms a strong coloured glow — a clear 3D "you can press this" invite. On
+    /// **press** (a click pulse from the tracker) it pushes *down* below the hover
+    /// pop and the glow squeezes in, like a physical key bottoming out; it then
+    /// springs back up. Press wins over hover. Both disabled under Reduce Motion.
     @ViewBuilder private func hoverPop<V: View>(
-        _ view: V, control: IslandControl, scale: CGFloat = 1.22, glow: Color = SplayLight.recordRed
+        _ view: V, control: IslandControl, scale: CGFloat = 1.20,
+        glow: Color = SplayLight.recordRed, hueShift: Double = 0
     ) -> some View {
-        let on = hoveredControl == control && !reduceMotion
+        let hovered = hoveredControl == control && !reduceMotion
+        let pressed = pressedControl == control && !reduceMotion
+        let active = hovered || pressed
+        // Rest → flat. Hover → scale up, brighten, *richen* (saturate — makes the red
+        // read as lucious rather than washed), tight glow. Press → sink toward rest
+        // (0.95), glow tightens, a touch darker — the key bottoming out.
+        let s: CGFloat = pressed ? 0.95 : (hovered ? scale : 1)
+        let glowRadius: CGFloat = pressed ? 1 : (hovered ? 3 : 0)
+        let glowOpacity: Double = pressed ? 0.6 : (hovered ? 1.0 : 0)
+        let lift: CGFloat = pressed ? 0 : (hovered ? 2 : 0)   // sits "above" the surface on hover
         view
-            .scaleEffect(on ? scale : 1)
-            .shadow(color: glow.opacity(on ? 0.8 : 0), radius: on ? 6 : 0)
+            .saturation(active ? 1.30 : 1)                      // richer, more lucious on touch
+            .hueRotation(.degrees(active ? hueShift : 0))       // nudge the red's hue (dot only; 0 = off)
+            .brightness(pressed ? -0.05 : (hovered ? 0.25 : 0))
+            .scaleEffect(s)
+            .shadow(color: glow.opacity(glowOpacity), radius: glowRadius, y: lift)
             .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.58), value: hoveredControl)
+            // A soft, gentle spring for the press.
+            .animation(reduceMotion ? nil : .spring(response: 0.20, dampingFraction: 0.55), value: pressedControl)
     }
 
     // MARK: Pieces
 
-    /// The island's one deliberately clickable thing: a simple record dot
-    /// (Voice-Memos-style) — a red circle with a thin rim and a soft red glow.
-    /// Clicking it records; the AppKit tracker owns the click.
-    private var recordButton: some View {
-        Circle()
-            .fill(SplayLight.recordRed)
-            .frame(width: 13, height: 13)   // sized to match the mark's visual weight
-            .overlay(Circle().strokeBorder(.white.opacity(0.22), lineWidth: 0.75))
-            .shadow(color: SplayLight.recordRed.opacity(0.6), radius: 4)
+    /// The island's persistent record LED (right cluster). A small, light coral-red
+    /// dot — the *colour* is constant (see `statusDotColor`); only the glow and rim
+    /// brighten while recording. So rest = a calm light-red dot (no glow), recording
+    /// = the same dot lit. Clicking it records (idle) or stops (recording); the
+    /// AppKit tracker owns the click. Replaces the old hover-gated dot / stop square.
+    private var statusDot: some View {
+        let recording = state == .recording
+        return Circle()
+            .fill(statusDotColor)
+            .frame(width: 8, height: 8)   // small — a status light, not a button
+            .overlay(Circle().strokeBorder(.white.opacity(recording ? 0.3 : 0.12), lineWidth: 0.5))
+            // Glow ONLY while recording (design brief): the resting bar stays quiet.
+            .shadow(color: recording ? SplayLight.recordRed.opacity(0.85) : .clear,
+                    radius: recording ? 5 : 0)
     }
 
-    /// Recording's clickable affordance: a red rounded square (Voice-Memos stop),
-    /// matched to the record dot's weight + glow so the two states read as one
-    /// control changing meaning — circle = start, square = stop. Previously the
-    /// recording pill had only an invisible right-edge hit zone, which made the
-    /// record dot feel like a gimmick that vanished the moment you used it.
-    private var stopButton: some View {
-        RoundedRectangle(cornerRadius: 3, style: .continuous)
-            .fill(SplayLight.recordRed)
-            .frame(width: 12, height: 12)
-            .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .strokeBorder(.white.opacity(0.22), lineWidth: 0.75))
-            .shadow(color: SplayLight.recordRed.opacity(0.6), radius: 4)
-    }
+    /// A vivid, light coral-red at all times — "the red the button had before."
+    /// (Dimming this to 50% opacity over the near-black pill produced a dark, muddy
+    /// red, which read as an odd colour.) Recording doesn't darken or lighten the
+    /// hue — it just adds the glow below, so rest = light red, recording = the same
+    /// light red, lit.
+    private var statusDotColor: Color { SplayLight.recordRed }
 
     @ViewBuilder private func mark(markBreathe: (Double, Double), live: Bool) -> some View {
         // Give the mark its own soft, breathing glow in the state's colour, so the

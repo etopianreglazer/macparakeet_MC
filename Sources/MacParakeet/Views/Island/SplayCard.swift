@@ -70,17 +70,22 @@ struct SplayCardChrome {
 /// optional body block so callers pass any of the five blocks — or `EmptyView`.
 struct SplayCardView<BodyBlock: View>: View {
     let chrome: SplayCardChrome
+    /// Optional replacement for the glyph tile header (e.g. the menu card's tab
+    /// strip). When nil, the card draws its standard glyph tile.
+    let header: AnyView?
     let onPrimary: () -> Void
     let onSecondary: () -> Void
     @ViewBuilder var bodyBlock: () -> BodyBlock
 
     init(
         chrome: SplayCardChrome,
+        header: AnyView? = nil,
         onPrimary: @escaping () -> Void,
         onSecondary: @escaping () -> Void = {},
         @ViewBuilder bodyBlock: @escaping () -> BodyBlock = { EmptyView() }
     ) {
         self.chrome = chrome
+        self.header = header
         self.onPrimary = onPrimary
         self.onSecondary = onSecondary
         self.bodyBlock = bodyBlock
@@ -88,7 +93,7 @@ struct SplayCardView<BodyBlock: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            glyphTile
+            if let header { header } else { glyphTile }
             Text(chrome.title)
                 .font(.system(size: 14.5, weight: .semibold))
                 .foregroundStyle(SplayCardPalette.ink)

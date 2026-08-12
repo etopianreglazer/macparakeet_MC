@@ -119,10 +119,12 @@ enum SplayGeometry {
     /// bar that never re-sizes between states; only idle→ready→active step it up.
     static let maxWidth: CGFloat = 280
 
-    /// The compact resting nub (idle looks good — left unchanged).
+    /// The compact resting nub — a quiet, hidden bar. The mark + record dot are
+    /// revealed on hover (the ready step), not drawn here, so idle stays minimal.
     static let dormantWidth: CGFloat = 206
     /// The hover/ready step: clearly wider AND taller than dormant so touching the
-    /// nub visibly grows it (the hover response the resting nub was missing).
+    /// nub visibly grows it (the hover response the resting nub was missing). This
+    /// is where the clickable mark (left) + the status dot (right) appear.
     static let readyWidth: CGFloat = 248
 
     /// Pill width / height per state. Three widths total (dormant → ready → active

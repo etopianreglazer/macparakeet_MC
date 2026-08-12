@@ -87,9 +87,11 @@ final class SplayCardController: NSObject {
 
     var isPresenting: Bool { panel != nil && !isDismissing }
 
-    /// Present a card. `make` receives a `dismiss` closure so buttons can close it;
-    /// the controller supplies the floating panel + the breathing animation.
-    func present(make: @escaping (_ dismiss: @escaping () -> Void) -> AnyView) {
+    /// Present a card. `make` receives a `dismiss` closure so buttons can close it,
+    /// and a `resize` closure so a card whose content height changes (e.g. switching
+    /// tabs in the menu card) can re-fit + re-centre the floating panel. The
+    /// controller supplies the panel + the breathing animation.
+    func present(make: @escaping (_ dismiss: @escaping () -> Void, _ resize: @escaping () -> Void) -> AnyView) {
         guard let screen = NSScreen.main else { return }
 
         // Cancel any in-flight teardown so re-presenting reuses the live panel.
@@ -99,11 +101,12 @@ final class SplayCardController: NSObject {
 
         let panel = self.panel ?? makePanel()
         let dismiss: () -> Void = { [weak self] in self?.dismiss() }
+        let resize: () -> Void = { [weak self] in self?.refit(animated: true) }
 
         // Start small + faded so the first frame is the pre-entry state; the async
         // flip to `visible = true` below then animates the breathing entry.
         presentation.visible = false
-        let root = SplayCardFloat(presentation: presentation, onDismiss: dismiss) { make(dismiss) }
+        let root = SplayCardFloat(presentation: presentation, onDismiss: dismiss) { make(dismiss, resize) }
         let hosting = NSHostingView(rootView: root)
         hosting.layoutSubtreeIfNeeded()
         // Size the panel to the card + its shadow margin, then centre it. A small
@@ -149,6 +152,35 @@ final class SplayCardController: NSObject {
         }
         removalWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.34, execute: work)
+    }
+
+    /// Re-measure the hosted card and resize + re-centre the panel to fit it. Used
+    /// when the card's content height changes in place (menu tab switch), so the
+    /// floating window grows/shrinks to the new tab instead of clipping or leaving
+    /// a gap. The SwiftUI content has a fixed width, so `fittingSize` gives the new
+    /// natural height for that width.
+    func refit(animated: Bool) {
+        guard let panel, let content = panel.contentView else { return }
+        content.invalidateIntrinsicContentSize()
+        content.layoutSubtreeIfNeeded()
+        let size = content.fittingSize
+        guard size.width > 100, size.height > 100 else { return }
+        let screen = panel.screen ?? NSScreen.main
+        let origin = NSPoint(
+            x: (screen?.frame.midX ?? panel.frame.midX) - size.width / 2,
+            y: (screen?.frame.midY ?? panel.frame.midY) - size.height / 2
+        )
+        let frame = NSRect(origin: origin, size: size)
+        guard frame != panel.frame else { return }
+        if animated {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.26
+                ctx.allowsImplicitAnimation = true
+                panel.animator().setFrame(frame, display: true)
+            }
+        } else {
+            panel.setFrame(frame, display: true)
+        }
     }
 
     private func makePanel() -> SplayCardPanel {

@@ -746,10 +746,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Card surface (two-surface design)
 
-    /// Present the recents card: the last five recordings (newest files) with an
-    /// "Open folder" handoff. Loads fresh data before presenting so the snapshot
-    /// is current.
-    private func presentRecentCard() {
+    /// Present the menu card opened to the recents tab (the last five recordings).
+    private func presentRecentCard() { presentMenuCard(startingTab: .recents) }
+
+    /// Present the menu card opened to the settings tab.
+    private func presentSettingsCard() { presentMenuCard(startingTab: .settings) }
+
+    /// Present Splay's single tabbed menu card (Recents · Settings · About). Loads
+    /// fresh recents before presenting so the snapshot is current; the About tab
+    /// carries the licence + version + the Sparkle updater.
+    private func presentMenuCard(startingTab: SplayCardTab) {
         splayCardController.onDismiss = { [weak self] in self?.islandController?.setHeldOpen(false) }
         islandController?.setHeldOpen(true)
         Task { @MainActor in
@@ -761,35 +767,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ?? AutoSaveService.resolveFolder(scope: .transcription)
                 ?? AutoSaveService.defaultFolder(for: .meeting)
             let display = folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
-            splayCardController.present { [weak self] dismiss in
-                SplayCards.recent(
+            let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? ""
+            let repoURL = URL(string: "https://github.com/moona3k/macparakeet")
+            splayCardController.present { [weak self] dismiss, resize in
+                guard let self else { return AnyView(EmptyView()) }
+                return AnyView(SplayMenuCard(
+                    tab: startingTab,
                     rows: rows,
                     totalCount: all.count,
                     folderDisplayPath: display,
                     onOpenFolder: { NSWorkspace.shared.activateFileViewerSelecting([folder]) },
-                    onCopy: { row in
+                    onCopy: { [weak self] row in
                         guard !row.transcript.isEmpty,
                               let clipboard = self?.appEnvironment?.clipboardService else { return }
                         Task { await clipboard.copyToClipboard(row.transcript) }
                     },
-                    dismiss: dismiss
-                )
+                    settings: self.settingsViewModel,
+                    appVersion: version,
+                    onCheckForUpdates: { [weak self] in self?.updaterController.checkForUpdates(nil) },
+                    onOpenRepo: { if let repoURL { NSWorkspace.shared.open(repoURL) } },
+                    onQuit: { [weak self] in self?.quitApp() },
+                    dismiss: dismiss,
+                    resize: resize
+                ))
             }
-        }
-    }
-
-    /// Present the settings card: three switches and a quit — the entire settings
-    /// surface (handoff §"Recent & settings").
-    private func presentSettingsCard() {
-        splayCardController.onDismiss = { [weak self] in self?.islandController?.setHeldOpen(false) }
-        islandController?.setHeldOpen(true)
-        splayCardController.present { [weak self] dismiss in
-            guard let self else { return AnyView(EmptyView()) }
-            return SplayCards.settings(
-                settings: self.settingsViewModel,
-                onDone: dismiss,
-                onQuit: { [weak self] in self?.quitApp() }
-            )
         }
     }
 

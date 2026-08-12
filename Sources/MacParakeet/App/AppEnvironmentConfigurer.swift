@@ -26,8 +26,8 @@ final class AppEnvironmentConfigurer {
         let onMenuBarIconUpdate: () -> Void
         let onPresentEntitlementsAlert: (Error) -> Void
         let onOpenMainWindow: () -> Void
-        /// The island idle/done click and the menu-bar "Open Splay" item present
-        /// the recents card (the second surface).
+        /// The island mark click and the menu-bar "Open Splay" item present the
+        /// menu card (the second surface), opened to its recents tab.
         let onOpenRecentCard: () -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
@@ -380,13 +380,13 @@ final class AppEnvironmentConfigurer {
             controller.onStop = {
                 coordinatorRefs.meeting?.toggleRecording(trigger: .manual)
             }
-            // The on-screen record dot mirrors fn (mic-only by default).
+            // The status dot / idle-bar click mirrors fn (mic-only by default).
             controller.onRecord = { mode in
                 guard !callbacks.isOnboardingVisible() else { return }
                 coordinatorRefs.meeting?.toggleRecording(trigger: .manual, sourceModeOverride: mode)
             }
-            // Any other pill click opens the recents card (the second surface) —
-            // except when the island is holding a failed-recording state, where
+            // The mark (and the done pill) opens the menu card (the second surface)
+            // — except when the island is holding a failed-recording state, where
             // the click is the dismiss gesture that clears it back to idle.
             controller.onOpenCard = {
                 if coordinatorRefs.meeting?.isAwaitingFailureDismissal == true {
