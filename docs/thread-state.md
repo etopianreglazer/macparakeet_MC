@@ -5,7 +5,37 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-10 **thread 3** — installed Imbue **Vet** as a Claude Code skill (see
+> **Last updated:** 2026-08-11 **thread 4** — island interaction pass, **committed `9166348c`**
+> ("Splay: island interaction pass…"; 8 ahead of `origin/main`, **NOT pushed**). Reworked the record dot
+> into ONE persistent **light-red status LED** — base is full `recordRed` now (the dimmed 0.5-opacity
+> version read as a dark/muddy red over the black pill), glows **only while recording**, hit region
+> tightened **52→16pt** centred on the drawn dot. The **splay mark (left) now opens the menu**; the dot /
+> rest of the bar records (idle) or stops (recording). **Idle stays a bare hidden nub** — the mark + dot
+> **reveal on hover** (the earlier "permanent dot on the resting bar" made idle look expanded; user
+> rejected it). Added **hover pop + physical key-press feedback**: `hoverPop` (hover = scale 1.20 +
+> brightness + saturation 1.30 + tight glow; press = `pressPulse`/`onControlPress` depress to 0.95, auto-
+> released) — the pop values were dialed in a **live HTML tuner** (`[[visual-tuning-with-live-tuner]]`)
+> then ported (final: brightness 0.25, sat 1.30, glow 3, scale 1.20, no hue shift, press depth 0.95 /
+> 0.20s). The two one-shot cards became one **tabbed `SplayMenuCard`** (Recents · Settings · **About** =
+> version + GPL-3.0 attribution + Sparkle "Check for Updates") reusing `SplayCardView` via a pluggable
+> `header`; `SplayCardController.refit(animated:)` resizes the panel on tab switch. Full `swift test`
+> green; **3 Vet passes clean of logic issues** (only doc-hygiene findings, all fixed).
+>
+> **★ NEXT-THREAD NOTES (user-requested, 2026-08-11):**
+> 1. **Menu card tab-switch resize re-centres** → the *top edge jumps* when switching tabs, which is
+>    annoying for quickly flipping between settings. Make it **top-anchored**: pin the top y and grow
+>    *downward* instead of re-centring on screen (`SplayCardController.refit` currently centres via
+>    `screen.frame.midY - size.height/2`; keep the panel's current top constant instead).
+> 2. **Rename slice — QUEUED + APPROVED.** User chose **"Identity + code rename"**: rename the SwiftPM
+>    package + modules `MacParakeet*`→`Splay*` (dirs under `Sources/`+`Tests/`, every `import`, target/
+>    product names, `Package.swift`, build/install scripts) **but KEEP** the bundle id `com.macparakeet.mc`,
+>    the `MacParakeet-MC` data namespace, AND the `macparakeet-cli` executable name (data/permission/CLI-
+>    contract preservation). Update `docs/BRANDING.md` (it currently says module names stay unchanged).
+>    Do it as its own slice, validated by `swift build` + `swift test` (no eyeball needed).
+> 3. **Open (undecided):** should the **transcribing** state show an amber dot ("yellow = processing")
+>    instead of the spinner? User floated "yellow or red" but hasn't decided; left as the spinner.
+>
+> **thread 3** — installed Imbue **Vet** as a Claude Code skill (see
 > `[[vet-code-review-tool]]` memory / `~/.claude/skills/vet/`; run via `vet "goal" --agentic --agent-harness
 > claude` — no API key on this machine), ran it on `452b806f`, and applied its **low-risk** cleanups:
 > stripped the TEMP `record_dot_clicked`/`stop_clicked` diagnostics from `IslandController`, fixed stale

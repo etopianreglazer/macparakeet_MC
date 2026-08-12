@@ -134,9 +134,12 @@ There is **no** dropdown off the island, **no** menu-bar popover panel, **no** s
   (level `popUpMenu+1`, above the island) rendering scrim (behind-window `NSVisualEffectView` blur +
   violet tint) + centred card. Esc (local key monitor + `.onExitCommand`) and click-away (scrim tap +
   armed `windowDidResignKey`) dismiss.
-- New `Views/Island/SplayCards.swift` — the two wired cards: **Recent recordings** (last 5 from the
-  library VM, "Open folder" reveals the current save folder) and **Settings** (three live toggles →
-  `meetingAudioSourceMode`, `launchAtLogin`, and a persisted `splay.playSoundOnStart`; "Quit Splay").
+- New `Views/Island/SplayCards.swift` — **UPDATED (thread 4, `9166348c`):** the two one-shot cards were
+  merged into one tabbed `SplayMenuCard` (Recents · Settings · **About**), reusing `SplayCardView` via a
+  pluggable `header` (the tab strip). **Recents** (last 5 from the library VM, "Open folder"), **Settings**
+  (three live toggles → `meetingAudioSourceMode`, `launchAtLogin`, persisted `splay.playSoundOnStart`;
+  "Quit Splay"), **About** (version + GPL-3.0 attribution + "Check for Updates" via the Sparkle updater).
+  `SplayCardController.refit` resizes the floating panel on tab switch.
 - **Retired the router:** deleted `ExpandedIslandView.swift`, `IslandRoute.swift`,
   `IslandRoutePages.swift`. `IslandView` is now a pure indicator; `IslandController` lost all
   expand/collapse/route/resize machinery and gained `onOpenCard`. `IslandLayout` lost the `.expanded`
