@@ -1,7 +1,7 @@
 import ArgumentParser
 import XCTest
 @testable import CLI
-@testable import MacParakeetCore
+@testable import SplayCore
 
 final class LLMConfigCommandTests: XCTestCase {
     func testValidateCustomBaseURLAcceptsAbsoluteHTTPURL() throws {

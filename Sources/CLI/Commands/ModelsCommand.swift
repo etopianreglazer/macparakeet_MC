@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 import os
 
 struct ModelsCommand: AsyncParsableCommand {

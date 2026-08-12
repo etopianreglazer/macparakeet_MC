@@ -1,7 +1,7 @@
 import Foundation
 import XCTest
 @testable import CLI
-@testable import MacParakeetCore
+@testable import SplayCore
 
 final class QuickPromptsCommandTests: XCTestCase {
 

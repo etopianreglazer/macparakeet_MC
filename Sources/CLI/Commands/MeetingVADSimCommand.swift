@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 /// `macparakeet-cli meeting-vad-sim <audio>` — headlessly replay the meeting
 /// live-preview chunking path on an audio file and compare the fixed 5s strategy

@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 let macParakeetAppDefaultsSuiteName = "com.macparakeet.MacParakeet"
 let cliValidationMisuseExitCode = ExitCode(2)

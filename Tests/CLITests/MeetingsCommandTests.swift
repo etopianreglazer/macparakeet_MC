@@ -1,6 +1,6 @@
 import XCTest
 @testable import CLI
-@testable import MacParakeetCore
+@testable import SplayCore
 
 final class MeetingsCommandTests: XCTestCase {
     func testMeetingsCommandIsRegisteredAtTopLevel() {

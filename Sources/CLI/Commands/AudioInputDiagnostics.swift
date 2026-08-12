@@ -1,6 +1,6 @@
 import CoreAudio
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 struct AudioInputDiagnostics {
     let devices: [AudioDeviceManager.InputDevice]

@@ -1,0 +1,2024 @@
+import AppKit
+import Foundation
+import SplayCore
+import OSLog
+
+@MainActor
+@Observable
+public final class SettingsViewModel {
+    public enum LocalModelStatus: Equatable {
+        case unknown
+        case checking
+        case ready
+        case notLoaded
+        case notDownloaded
+        case preparing
+        case repairing
+        case failed
+    }
+
+    public enum MicrophoneTestState: Equatable {
+        case idle
+        case testing
+        case succeeded
+        case failed(String)
+    }
+
+    public struct MicrophoneDeviceOption: Identifiable, Equatable, Sendable {
+        public let id: String
+        public let uid: String
+        public let name: String
+        public let transportLabel: String
+        public let isDefault: Bool
+        public let isAvailable: Bool
+
+        public var displayName: String {
+            if !isAvailable { return "\(name) (unavailable)" }
+            return isDefault ? "\(name) (System Default)" : name
+        }
+
+        public var detail: String {
+            isAvailable ? transportLabel : "Reconnect this microphone or choose another input."
+        }
+    }
+
+    public static let systemDefaultMicrophoneSelection = "__system_default__"
+    private static let microphoneTestSilenceThreshold: Float = 0.01
+
+    // General
+    public var launchAtLogin: Bool {
+        didSet {
+            guard !isApplyingLaunchAtLoginState else { return }
+            applyLaunchAtLoginChange(launchAtLogin)
+        }
+    }
+    public var launchAtLoginDetail: String = ""
+    public var launchAtLoginError: String?
+    public var menuBarOnlyMode: Bool {
+        didSet {
+            defaults.set(menuBarOnlyMode, forKey: AppPreferences.menuBarOnlyModeKey)
+            NotificationCenter.default.post(name: .macParakeetMenuBarOnlyModeDidChange, object: nil)
+            Telemetry.send(.settingChanged(setting: .menuBarOnly))
+        }
+    }
+    public var appAppearanceMode: AppAppearanceMode {
+        didSet {
+            defaults.set(appAppearanceMode.rawValue, forKey: AppPreferences.appearanceModeKey)
+            NotificationCenter.default.post(name: .macParakeetAppearanceModeDidChange, object: nil)
+            Telemetry.send(.settingChanged(setting: .appAppearance))
+        }
+    }
+    public var showIdlePill: Bool {
+        didSet {
+            defaults.set(showIdlePill, forKey: UserDefaultsAppRuntimePreferences.showIdlePillKey)
+            NotificationCenter.default.post(name: .macParakeetShowIdlePillDidChange, object: nil)
+            Telemetry.send(.settingChanged(setting: .hidePill))
+        }
+    }
+    public var telemetryEnabled: Bool {
+        didSet {
+            defaults.set(telemetryEnabled, forKey: AppPreferences.telemetryEnabledKey)
+            if !telemetryEnabled {
+                Telemetry.clearQueue()
+                Telemetry.send(.telemetryOptedOut)
+                Task { await Telemetry.flush() }
+            }
+        }
+    }
+    /// Play a chime (and, when MacParakeet is in the background, post a banner)
+    /// when a file/URL transcription or a batch finishes. Default on.
+    public var notifyOnTranscriptionComplete: Bool {
+        didSet {
+            defaults.set(
+                notifyOnTranscriptionComplete,
+                forKey: UserDefaultsAppRuntimePreferences.notifyOnTranscriptionCompleteKey
+            )
+            Telemetry.send(.settingChanged(setting: .transcriptionCompletionNotification))
+        }
+    }
+
+    // Dictation
+    public var hotkeyTrigger: HotkeyTrigger {
+        didSet {
+            hotkeyTrigger.save(to: defaults)
+            NotificationCenter.default.post(name: .macParakeetHotkeyTriggerDidChange, object: nil)
+            Telemetry.send(hotkeyTrigger.customizedEvent(surface: .dictation))
+        }
+    }
+    public var pushToTalkHotkeyTrigger: HotkeyTrigger {
+        didSet {
+            pushToTalkHotkeyTrigger.save(to: defaults, defaultsKey: HotkeyTrigger.pushToTalkDefaultsKey)
+            NotificationCenter.default.post(
+                name: .macParakeetPushToTalkHotkeyTriggerDidChange,
+                object: nil
+            )
+            Telemetry.send(pushToTalkHotkeyTrigger.customizedEvent(surface: .pushToTalk))
+        }
+    }
+    public var meetingHotkeyTrigger: HotkeyTrigger {
+        didSet {
+            meetingHotkeyTrigger.save(to: defaults, defaultsKey: HotkeyTrigger.meetingDefaultsKey)
+            NotificationCenter.default.post(
+                name: .macParakeetMeetingHotkeyTriggerDidChange,
+                object: nil
+            )
+            Telemetry.send(meetingHotkeyTrigger.customizedEvent(surface: .meeting))
+        }
+    }
+    public var fileTranscriptionHotkeyTrigger: HotkeyTrigger {
+        didSet {
+            fileTranscriptionHotkeyTrigger.save(to: defaults, defaultsKey: HotkeyTrigger.fileTranscriptionDefaultsKey)
+            NotificationCenter.default.post(
+                name: .macParakeetFileTranscriptionHotkeyTriggerDidChange,
+                object: nil
+            )
+            Telemetry.send(fileTranscriptionHotkeyTrigger.customizedEvent(surface: .fileTranscription))
+        }
+    }
+    public var youtubeTranscriptionHotkeyTrigger: HotkeyTrigger {
+        didSet {
+            youtubeTranscriptionHotkeyTrigger.save(to: defaults, defaultsKey: HotkeyTrigger.youtubeTranscriptionDefaultsKey)
+            NotificationCenter.default.post(
+                name: .macParakeetYouTubeTranscriptionHotkeyTriggerDidChange,
+                object: nil
+            )
+            Telemetry.send(youtubeTranscriptionHotkeyTrigger.customizedEvent(surface: .youtubeTranscription))
+        }
+    }
+    public var silenceAutoStop: Bool {
+        didSet {
+            defaults.set(silenceAutoStop, forKey: UserDefaultsAppRuntimePreferences.silenceAutoStopKey)
+            Telemetry.send(.settingChanged(setting: .silenceAutoStop))
+        }
+    }
+    public var silenceDelay: Double {
+        didSet { defaults.set(silenceDelay, forKey: UserDefaultsAppRuntimePreferences.silenceDelayKey) }
+    }
+    public var keepDictationOnClipboard: Bool {
+        didSet {
+            defaults.set(
+                keepDictationOnClipboard,
+                forKey: UserDefaultsAppRuntimePreferences.keepDictationOnClipboardKey
+            )
+            Telemetry.send(.settingChanged(setting: .keepDictationOnClipboard))
+        }
+    }
+    public var selectedMicrophoneDeviceUID: String {
+        didSet {
+            let normalized = Self.normalizedMicrophoneSelection(selectedMicrophoneDeviceUID)
+            if selectedMicrophoneDeviceUID != normalized {
+                selectedMicrophoneDeviceUID = normalized
+            }
+            if normalized == Self.systemDefaultMicrophoneSelection {
+                defaults.removeObject(forKey: UserDefaultsAppRuntimePreferences.selectedMicrophoneDeviceUIDKey)
+            } else {
+                defaults.set(normalized, forKey: UserDefaultsAppRuntimePreferences.selectedMicrophoneDeviceUIDKey)
+            }
+            microphoneTestTask?.cancel()
+            microphoneTestTask = nil
+            microphoneTestState = .idle
+            microphoneTestLevel = 0
+            Telemetry.send(.settingChanged(setting: .microphoneSelection))
+        }
+    }
+    public var meetingAudioSourceMode: MeetingAudioSourceMode {
+        didSet {
+            defaults.set(
+                meetingAudioSourceMode.rawValue,
+                forKey: UserDefaultsAppRuntimePreferences.meetingAudioSourceModeKey
+            )
+            Telemetry.send(.settingChanged(setting: .meetingAudioSourceMode))
+        }
+    }
+    public var pauseMediaDuringDictation: Bool {
+        didSet {
+            defaults.set(
+                pauseMediaDuringDictation,
+                forKey: UserDefaultsAppRuntimePreferences.pauseMediaDuringDictationKey
+            )
+            Telemetry.send(.settingChanged(setting: .pauseMediaDuringDictation))
+        }
+    }
+    public var microphoneDeviceOptions: [MicrophoneDeviceOption] = []
+    public var microphoneTestState: MicrophoneTestState = .idle
+    public var microphoneTestLevel: Float = 0
+    public var selectedMicrophoneStatusText: String {
+        if selectedMicrophoneDeviceUID == Self.systemDefaultMicrophoneSelection {
+            if meetingAudioSourceMode == .systemOnly {
+                if let currentDefault = microphoneDeviceOptions.first(where: \.isDefault) {
+                    return "Using macOS System Default for dictation: \(currentDefault.name). Meeting recording is set to System Audio Only."
+                }
+                return "Using macOS System Default for dictation. Meeting recording is set to System Audio Only."
+            }
+            if let currentDefault = microphoneDeviceOptions.first(where: \.isDefault) {
+                return "Using macOS System Default: \(currentDefault.name)."
+            }
+            return "Using macOS System Default."
+        }
+        guard let selected = microphoneDeviceOptions.first(where: { $0.uid == selectedMicrophoneDeviceUID }) else {
+            return "Selected microphone is unavailable. MacParakeet will use System Default until it returns."
+        }
+        guard selected.isAvailable else {
+            return "Selected microphone is unavailable. MacParakeet will use System Default until it returns."
+        }
+        if meetingAudioSourceMode == .systemOnly {
+            return "Using \(selected.name) for dictation. Meeting recording is set to System Audio Only."
+        }
+        return "Using \(selected.name) for dictation and meeting microphone capture."
+    }
+
+    // Voice Return
+    public var voiceReturnEnabled: Bool {
+        didSet {
+            defaults.set(voiceReturnEnabled, forKey: UserDefaultsAppRuntimePreferences.voiceReturnEnabledKey)
+            Telemetry.send(.settingChanged(setting: .voiceReturn))
+        }
+    }
+    public var voiceReturnTrigger: String {
+        didSet { defaults.set(voiceReturnTrigger, forKey: UserDefaultsAppRuntimePreferences.voiceReturnTriggerKey) }
+    }
+
+    // Processing
+    public var processingMode: String {
+        didSet {
+            guard Dictation.ProcessingMode(rawValue: processingMode) != nil else {
+                // didSet doesn't re-trigger when assigning within itself,
+                // so execute side effects explicitly for the fallback.
+                let fallback = Dictation.ProcessingMode.raw.rawValue
+                processingMode = fallback
+                defaults.set(fallback, forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
+                return
+            }
+            defaults.set(processingMode, forKey: UserDefaultsAppRuntimePreferences.processingModeKey)
+            Telemetry.send(.processingModeChanged(mode: processingMode))
+        }
+    }
+    public var customWordCount: Int = 0
+    public var snippetCount: Int = 0
+
+    // Storage
+    public var saveDictationHistory: Bool {
+        didSet {
+            defaults.set(saveDictationHistory, forKey: UserDefaultsAppRuntimePreferences.saveDictationHistoryKey)
+            Telemetry.send(.settingChanged(setting: .saveHistory))
+        }
+    }
+    public var saveAudioRecordings: Bool {
+        didSet {
+            defaults.set(saveAudioRecordings, forKey: UserDefaultsAppRuntimePreferences.saveAudioRecordingsKey)
+            Telemetry.send(.settingChanged(setting: .audioRetention))
+        }
+    }
+    public var saveTranscriptionAudio: Bool {
+        didSet {
+            defaults.set(saveTranscriptionAudio, forKey: UserDefaultsAppRuntimePreferences.saveTranscriptionAudioKey)
+            Telemetry.send(.settingChanged(setting: .saveTranscriptionAudio))
+        }
+    }
+
+    // Transcription
+    public var youtubeAudioQuality: YouTubeAudioQuality {
+        didSet {
+            defaults.set(youtubeAudioQuality.rawValue, forKey: UserDefaultsAppRuntimePreferences.youtubeAudioQualityKey)
+            Telemetry.send(.settingChanged(setting: .youtubeAudioQuality))
+        }
+    }
+    public var speakerDiarization: Bool {
+        didSet {
+            defaults.set(speakerDiarization, forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey)
+            Telemetry.send(.settingChanged(setting: .speakerDiarization))
+        }
+    }
+    public var speechEnginePreference: SpeechEnginePreference {
+        didSet {
+            guard !isApplyingSpeechEngineState else { return }
+            applySpeechEngineChange(speechEnginePreference)
+        }
+    }
+    /// Which Parakeet build (multilingual `v3` vs English-only `v2`) is active.
+    /// Changing it live-reloads the model when Parakeet is the selected engine
+    /// (downloading the target on first use); see `applyParakeetModelVariantChange`.
+    public var parakeetModelVariant: ParakeetModelVariant {
+        didSet {
+            guard !isApplyingParakeetVariantState else { return }
+            applyParakeetModelVariantChange(parakeetModelVariant)
+        }
+    }
+    public var whisperDefaultLanguage: String {
+        didSet {
+            SpeechEnginePreference.saveWhisperDefaultLanguage(whisperDefaultLanguage, defaults: defaults)
+            Telemetry.send(.settingChanged(setting: .whisperDefaultLanguage))
+        }
+    }
+    public var speechEngineSwitching = false
+    public var speechEngineSwitchTarget: SpeechEnginePreference?
+    public var speechEngineSwitchDetail: String?
+    /// True while a Parakeet *build* swap (v3 ↔ v2) is in flight, as opposed to
+    /// an engine switch. Both set `speechEngineSwitchTarget = .parakeet`, so the
+    /// banner needs this to avoid the misleading "Switching to Parakeet" copy
+    /// when the user is already on Parakeet and only changing the build.
+    public var isParakeetVariantSwitch = false
+    public var speechEngineSwitchAvailability: SpeechEngineSwitchAvailability = .available
+    public var speechEngineError: String?
+    public var whisperModelStatus: LocalModelStatus = .unknown
+    public var whisperModelStatusDetail: String = "Not checked yet."
+    public var whisperDownloading = false
+    public var isWhisperModelDownloaded: Bool {
+        whisperModelStatus == .ready || whisperModelStatus == .notLoaded
+    }
+    /// True once the active Whisper variant has paid its one-time on-device
+    /// optimize, so the next load is fast. Drives cold ("Setup needed",
+    /// minutes) vs warm ("Downloaded", seconds) status in the engine picker.
+    /// Reads through `defaults`; the value flips after the first successful
+    /// `WhisperEngine.prepare()`, surfaced on the next `refreshModelStatus()`.
+    public var whisperHasBeenOptimized: Bool {
+        SpeechEnginePreference.hasOptimizedWhisper(
+            variant: SpeechEnginePreference.whisperModelVariant(defaults: defaults),
+            defaults: defaults
+        )
+    }
+    public private(set) var pendingMeetingRecoveryCount = 0
+    public var onRecoverPendingMeetingRecordings: (() -> Void)?
+
+    // Auto-save (transcription)
+    public var autoSaveTranscripts: Bool {
+        didSet {
+            defaults.set(autoSaveTranscripts, forKey: AutoSaveService.enabledKey)
+            Telemetry.send(.settingChanged(setting: .autoSave))
+        }
+    }
+    public var autoSaveFormat: AutoSaveFormat {
+        didSet {
+            defaults.set(autoSaveFormat.rawValue, forKey: AutoSaveService.formatKey)
+        }
+    }
+    public var autoSaveFolderPath: String?
+
+    // Auto-save (meeting)
+    public var meetingAutoSave: Bool {
+        didSet {
+            defaults.set(meetingAutoSave, forKey: AutoSaveScope.meeting.enabledKey)
+            Telemetry.send(.settingChanged(setting: .meetingAutoSave))
+        }
+    }
+    public var meetingAutoSaveFormat: AutoSaveFormat {
+        didSet {
+            defaults.set(meetingAutoSaveFormat.rawValue, forKey: AutoSaveScope.meeting.formatKey)
+        }
+    }
+    public var meetingAutoSaveFolderPath: String?
+
+    // Calendar auto-start (ADR-017)
+    //
+    // Each `didSet` writes the value through to `UserDefaults`, fires the
+    // shared `macParakeetCalendarSettingsDidChange` notification (so the
+    // coordinator re-reads its config without waiting for the next poll
+    // tick), and emits a typed telemetry event. Excluded calendar IDs flow
+    // through the same notification — the coordinator's filter changes the
+    // moment a checkbox is toggled.
+    public var calendarAutoStartMode: CalendarAutoStartMode {
+        didSet {
+            defaults.set(calendarAutoStartMode.rawValue, forKey: CalendarAutoStartPreferences.modeKey)
+            // Guard ALL side effects (not just the auth prompt). Onboarding
+            // posts the cross-VM notification itself; if we re-post here
+            // during the resulting reload, the observer cycles indefinitely
+            // (the .common-mode Task hop drops the re-entrancy guard before
+            // the observer fires again). The originator already emitted
+            // telemetry — don't double-emit on sync.
+            guard !isResolvingCalendarSettings else { return }
+            NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
+            Telemetry.send(.settingChanged(setting: .calendarAutoStartMode))
+            // Enabling reminders requires notification authorization. The
+            // onboarding-grant flow asks for this in tandem with Calendar
+            // access, but a user who granted Calendar earlier (or via
+            // System Settings) and *now* flips the mode picker to non-`.off`
+            // would otherwise hit the silent-drop path: coordinator marks
+            // the event reminded, finds notifications unauthorized, returns
+            // without delivering.
+            if calendarAutoStartMode != .off {
+                Task { await CalendarNotificationAuthorization.requestIfNeeded() }
+            }
+        }
+    }
+    public var calendarReminderMinutes: Int {
+        didSet {
+            defaults.set(calendarReminderMinutes, forKey: CalendarAutoStartPreferences.reminderMinutesKey)
+            guard !isResolvingCalendarSettings else { return }
+            NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
+            Telemetry.send(.settingChanged(setting: .calendarReminderMinutes))
+        }
+    }
+    public var meetingTriggerFilter: MeetingTriggerFilter {
+        didSet {
+            defaults.set(meetingTriggerFilter.rawValue, forKey: CalendarAutoStartPreferences.triggerFilterKey)
+            guard !isResolvingCalendarSettings else { return }
+            NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
+            Telemetry.send(.settingChanged(setting: .calendarTriggerFilter))
+        }
+    }
+    public var calendarExcludedIdentifiers: Set<String> {
+        didSet {
+            defaults.set(Array(calendarExcludedIdentifiers), forKey: CalendarAutoStartPreferences.excludedCalendarIdsKey)
+            guard !isResolvingCalendarSettings else { return }
+            NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
+            Telemetry.send(.settingChanged(setting: .calendarIncludedCalendars))
+        }
+    }
+    /// Three-state Calendar permission. Settings UI needs to distinguish
+    /// `.denied` from `.notDetermined` because macOS only shows the
+    /// EventKit prompt once — after denial, the only recovery path is
+    /// System Settings, so the Settings button label has to change too.
+    public var calendarPermissionStatus: CalendarService.PermissionStatus = .notDetermined
+    /// Convenience derived from `calendarPermissionStatus` for callers that
+    /// only care about the granted-or-not boolean (onboarding gating, etc.).
+    public var calendarPermissionGranted: Bool {
+        calendarPermissionStatus == .granted
+    }
+    /// Whether macOS notification authorization is granted. Calendar reminders
+    /// (`.notify`, and the pre-meeting reminder in `.autoStart`) are delivered
+    /// via `UNUserNotificationCenter`, a *separate* TCC scope from Calendar —
+    /// so a user can grant Calendar yet have reminders silently dropped.
+    /// Settings surfaces this; refreshed by the view (defaults to `true` so the
+    /// warning never flashes before the first async check resolves).
+    public var calendarNotificationsAuthorized: Bool = true
+
+    // Permission status
+    public var microphoneGranted = false
+    public var accessibilityGranted = false
+    public var screenRecordingGranted = false
+
+    // Stats
+    public var dictationCount = 0
+    public var youtubeDownloadCount = 0
+    public var youtubeDownloadStorageMB: Double = 0
+    public var formattedYouTubeStorage: String {
+        let mb = youtubeDownloadStorageMB
+        if mb >= 1024 {
+            return String(format: "%.1f GB", mb / 1024)
+        }
+        return String(format: "%.0f MB", mb)
+    }
+
+    // Local model status / repair
+    public var parakeetStatus: LocalModelStatus = .unknown
+    public var parakeetStatusDetail: String = "Not checked yet."
+    public var parakeetRepairing = false
+    /// Which Parakeet builds are present on disk. Drives the per-variant
+    /// download badges in the Parakeet Model card; refreshed in
+    /// `refreshModelStatus()`.
+    public var downloadedParakeetVariants: Set<ParakeetModelVariant> = []
+
+    // Licensing / entitlements
+    public var entitlementsSummary: String = ""
+    public var entitlementsDetail: String = ""
+    public var isUnlocked: Bool = false
+    public var licenseKeyInput: String = ""
+    public var licensingBusy: Bool = false
+    public var licensingError: String?
+    public var checkoutURL: URL?
+
+    private var permissionService: PermissionServiceProtocol?
+    private var dictationRepo: DictationRepositoryProtocol?
+    private var transcriptionRepo: TranscriptionRepositoryProtocol?
+    private var transformHistoryRepo: TransformHistoryRepositoryProtocol?
+    private var customWordRepo: CustomWordRepositoryProtocol?
+    private var snippetRepo: TextSnippetRepositoryProtocol?
+    private var entitlementsService: EntitlementsService?
+    private var launchAtLoginService: LaunchAtLoginControlling?
+    private var sttClient: STTClientProtocol?
+    private var speechEngineSwitcher: SpeechEngineSwitching?
+    private var speechEngineSwitchAvailabilityProvider: SpeechEngineSwitchAvailabilityProviding?
+    private var meetingRecoveryService: MeetingRecordingRecoveryServicing?
+    private var sharedMicStream: SharedMicrophoneStream?
+    private let defaults: UserDefaults
+    private let youtubeDownloadsDirPath: @Sendable () -> String
+    private let parakeetModelVariantCached: @Sendable (ParakeetModelVariant) -> Bool
+    private let deleteParakeetModelOnDisk: @Sendable (ParakeetModelVariant) -> Bool
+    private let deleteWhisperModelOnDisk: @Sendable (String) -> Bool
+    private let inputDevicesProvider: @Sendable () -> [AudioDeviceManager.InputDevice]
+    private let defaultInputDeviceUIDProvider: @Sendable () -> String?
+    private let permissionPollingInterval: Duration
+    private var isApplyingLaunchAtLoginState = false
+    private var isApplyingSpeechEngineState = false
+    private var isApplyingParakeetVariantState = false
+    private var modelStatusRefreshGeneration = 0
+    // `deinit` is nonisolated even though this type is `@MainActor`.
+    // These handles are only mutated on the main actor during the view
+    // model lifetime; unsafe access lets deinit cancel/unregister.
+    @ObservationIgnored nonisolated(unsafe) private var permissionPollingTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var microphoneTestTask: Task<Void, Never>?
+    /// Retained so the island's lightweight setup surface can offer a real
+    /// cancellation affordance while the existing safe runtime warm-up owns
+    /// download, cache validation, and retry behavior.
+    @ObservationIgnored nonisolated(unsafe) private var parakeetSetupTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) private var calendarSettingsObserver: NSObjectProtocol?
+    /// Re-entrancy guard so `observeCalendarSettings()` doesn't fire `didSet`
+    /// → notification → re-resolve → `didSet` → … on every user toggle.
+    private var isResolvingCalendarSettings = false
+    private let logger = Logger(subsystem: "com.macparakeet.viewmodels", category: "SettingsViewModel")
+
+    public init(
+        defaults: UserDefaults = .standard,
+        youtubeDownloadsDirPath: @escaping @Sendable () -> String = { AppPaths.youtubeDownloadsDir },
+        parakeetModelVariantCached: @escaping @Sendable (ParakeetModelVariant) -> Bool = {
+            STTRuntime.isModelCached(version: $0.asrModelVersion)
+        },
+        deleteParakeetModelOnDisk: @escaping @Sendable (ParakeetModelVariant) -> Bool = {
+            STTRuntime.deleteParakeetModel(version: $0.asrModelVersion)
+        },
+        deleteWhisperModelOnDisk: @escaping @Sendable (String) -> Bool = {
+            STTRuntime.deleteWhisperModel(variant: $0)
+        },
+        inputDevicesProvider: @escaping @Sendable () -> [AudioDeviceManager.InputDevice] = {
+            AudioDeviceManager.inputDevices()
+        },
+        defaultInputDeviceUIDProvider: @escaping @Sendable () -> String? = {
+            AudioDeviceManager.defaultInputDeviceInfo()?.uid
+        },
+        permissionPollingInterval: Duration = .seconds(2)
+    ) {
+        AutoSaveService.migrateLegacyMeetingSettingsIfNeeded(defaults: defaults)
+        self.defaults = defaults
+        self.youtubeDownloadsDirPath = youtubeDownloadsDirPath
+        self.parakeetModelVariantCached = parakeetModelVariantCached
+        self.deleteParakeetModelOnDisk = deleteParakeetModelOnDisk
+        self.deleteWhisperModelOnDisk = deleteWhisperModelOnDisk
+        self.inputDevicesProvider = inputDevicesProvider
+        self.defaultInputDeviceUIDProvider = defaultInputDeviceUIDProvider
+        self.permissionPollingInterval = permissionPollingInterval
+        launchAtLogin = defaults.bool(forKey: "launchAtLogin")
+        menuBarOnlyMode = AppPreferences.isMenuBarOnlyModeEnabled(defaults: defaults)
+        appAppearanceMode = AppPreferences.appearanceMode(defaults: defaults)
+        showIdlePill = defaults.object(forKey: UserDefaultsAppRuntimePreferences.showIdlePillKey) as? Bool ?? true
+        telemetryEnabled = AppPreferences.isTelemetryEnabled(defaults: defaults)
+        notifyOnTranscriptionComplete = defaults.object(
+            forKey: UserDefaultsAppRuntimePreferences.notifyOnTranscriptionCompleteKey
+        ) as? Bool ?? true
+        let resolvedDictationHotkeys = Self.resolveDictationHotkeyTriggers(defaults: defaults)
+        hotkeyTrigger = resolvedDictationHotkeys.handsFree
+        pushToTalkHotkeyTrigger = resolvedDictationHotkeys.pushToTalk
+        if resolvedDictationHotkeys.shouldPersistHandsFree {
+            resolvedDictationHotkeys.handsFree.save(to: defaults)
+        }
+        if resolvedDictationHotkeys.shouldPersistPushToTalk {
+            resolvedDictationHotkeys.pushToTalk.save(to: defaults, defaultsKey: HotkeyTrigger.pushToTalkDefaultsKey)
+        }
+        meetingHotkeyTrigger = Self.resolveMeetingHotkeyTrigger(defaults: defaults)
+        fileTranscriptionHotkeyTrigger = Self.resolveTranscriptionHotkeyTrigger(
+            defaults: defaults,
+            defaultsKey: HotkeyTrigger.fileTranscriptionDefaultsKey
+        )
+        youtubeTranscriptionHotkeyTrigger = Self.resolveTranscriptionHotkeyTrigger(
+            defaults: defaults,
+            defaultsKey: HotkeyTrigger.youtubeTranscriptionDefaultsKey
+        )
+        silenceAutoStop = defaults.bool(forKey: UserDefaultsAppRuntimePreferences.silenceAutoStopKey)
+        let delay = defaults.double(forKey: UserDefaultsAppRuntimePreferences.silenceDelayKey)
+        silenceDelay = delay == 0 ? 2.0 : delay
+        keepDictationOnClipboard = defaults.bool(
+            forKey: UserDefaultsAppRuntimePreferences.keepDictationOnClipboardKey
+        )
+        selectedMicrophoneDeviceUID = Self.normalizedMicrophoneSelection(
+            defaults.string(forKey: UserDefaultsAppRuntimePreferences.selectedMicrophoneDeviceUIDKey)
+        )
+        meetingAudioSourceMode = MeetingAudioSourceMode.current(defaults: defaults)
+        pauseMediaDuringDictation = defaults.object(
+            forKey: UserDefaultsAppRuntimePreferences.pauseMediaDuringDictationKey
+        ) as? Bool ?? false
+        voiceReturnEnabled = defaults.bool(forKey: UserDefaultsAppRuntimePreferences.voiceReturnEnabledKey)
+        voiceReturnTrigger = defaults.string(forKey: UserDefaultsAppRuntimePreferences.voiceReturnTriggerKey) ?? "press return"
+        processingMode = Self.normalizedProcessingMode(defaults.string(forKey: UserDefaultsAppRuntimePreferences.processingModeKey))
+        saveDictationHistory = defaults.object(forKey: UserDefaultsAppRuntimePreferences.saveDictationHistoryKey) as? Bool ?? true
+        saveAudioRecordings = defaults.object(forKey: UserDefaultsAppRuntimePreferences.saveAudioRecordingsKey) as? Bool ?? true
+        saveTranscriptionAudio = defaults.object(forKey: UserDefaultsAppRuntimePreferences.saveTranscriptionAudioKey) as? Bool ?? true
+        youtubeAudioQuality = YouTubeAudioQuality.current(defaults: defaults)
+        speakerDiarization = defaults.object(forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey) as? Bool ?? false
+        speechEnginePreference = SpeechEnginePreference.current(defaults: defaults)
+        parakeetModelVariant = SpeechEnginePreference.parakeetModelVariant(defaults: defaults)
+        whisperDefaultLanguage = SpeechEnginePreference.whisperDefaultLanguage(defaults: defaults) ?? "auto"
+        // Ensure auto-save folders are configured before reading paths.
+        // Idempotent: existing user-chosen folders are preserved; only
+        // unset bookmarks get the default. This guarantees the read
+        // below sees a non-nil path in the common case so the toggle
+        // can never sit in the bad "ON · no folder" combination.
+        AutoSaveService.ensureFolderConfigured(scope: .transcription, defaults: defaults)
+        AutoSaveService.ensureFolderConfigured(scope: .meeting, defaults: defaults)
+
+        autoSaveTranscripts = (defaults.object(forKey: AutoSaveService.enabledKey) as? Bool) ?? true
+        autoSaveFormat = AutoSaveFormat(rawValue: defaults.string(forKey: AutoSaveService.formatKey) ?? "md") ?? .md
+        autoSaveFolderPath = Self.resolveAutoSaveFolderPath(defaults: defaults, scope: .transcription)
+        meetingAutoSave = (defaults.object(forKey: AutoSaveScope.meeting.enabledKey) as? Bool) ?? true
+        meetingAutoSaveFormat = AutoSaveFormat(rawValue: defaults.string(forKey: AutoSaveScope.meeting.formatKey) ?? "md") ?? .md
+        meetingAutoSaveFolderPath = Self.resolveAutoSaveFolderPath(defaults: defaults, scope: .meeting)
+        calendarAutoStartMode = Self.resolveCalendarAutoStartMode(defaults: defaults)
+        calendarReminderMinutes = Self.resolveCalendarReminderMinutes(defaults: defaults)
+        meetingTriggerFilter = Self.resolveMeetingTriggerFilter(defaults: defaults)
+        calendarExcludedIdentifiers = Self.resolveCalendarExcludedIdentifiers(defaults: defaults)
+
+        // Defense-in-depth self-heal: in the rare case that
+        // `ensureFolderConfigured` couldn't create the default folder
+        // (disk full, `~/Documents` not writable, stale bookmark
+        // unresolvable), folder may still be nil. Toggling ON in that
+        // state silently no-ops every save, so reset the toggle to
+        // match reality. Writes through to defaults because didSet
+        // doesn't fire during init.
+        if autoSaveTranscripts && autoSaveFolderPath == nil {
+            autoSaveTranscripts = false
+            defaults.set(false, forKey: AutoSaveService.enabledKey)
+        }
+        if meetingAutoSave && meetingAutoSaveFolderPath == nil {
+            meetingAutoSave = false
+            defaults.set(false, forKey: AutoSaveScope.meeting.enabledKey)
+        }
+
+        refreshMicrophoneDevices()
+        observeCalendarSettings()
+    }
+
+    deinit {
+        permissionPollingTask?.cancel()
+        microphoneTestTask?.cancel()
+        if let calendarSettingsObserver {
+            NotificationCenter.default.removeObserver(calendarSettingsObserver)
+        }
+    }
+
+    /// Onboarding writes calendar settings directly to UserDefaults (it
+    /// doesn't own a `SettingsViewModel`). Without this observer, an open
+    /// Settings window would show stale mode/lead/filter until Settings was
+    /// closed and re-opened. Re-resolving from defaults keeps every UI
+    /// surface that holds a `SettingsViewModel` in sync.
+    private func observeCalendarSettings() {
+        let center = NotificationCenter.default
+        calendarSettingsObserver = center.addObserver(
+            forName: .macParakeetCalendarSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.reloadCalendarSettings() }
+        }
+    }
+
+    private func reloadCalendarSettings() {
+        // Avoid the `didSet` → post-notification → reload → `didSet` loop:
+        // re-resolving has to skip the `didSet` write-through. The flag
+        // guards the entire batch so partial updates can't fire telemetry
+        // for a value the user didn't actually change.
+        guard !isResolvingCalendarSettings else { return }
+        isResolvingCalendarSettings = true
+        defer { isResolvingCalendarSettings = false }
+
+        let resolvedMode = Self.resolveCalendarAutoStartMode(defaults: defaults)
+        if calendarAutoStartMode != resolvedMode { calendarAutoStartMode = resolvedMode }
+
+        let resolvedMinutes = Self.resolveCalendarReminderMinutes(defaults: defaults)
+        if calendarReminderMinutes != resolvedMinutes { calendarReminderMinutes = resolvedMinutes }
+
+        let resolvedFilter = Self.resolveMeetingTriggerFilter(defaults: defaults)
+        if meetingTriggerFilter != resolvedFilter { meetingTriggerFilter = resolvedFilter }
+
+        let resolvedExcluded = Self.resolveCalendarExcludedIdentifiers(defaults: defaults)
+        if calendarExcludedIdentifiers != resolvedExcluded { calendarExcludedIdentifiers = resolvedExcluded }
+    }
+
+    private static func resolveCalendarAutoStartMode(defaults: UserDefaults) -> CalendarAutoStartMode {
+        guard let raw = defaults.string(forKey: CalendarAutoStartPreferences.modeKey),
+              let mode = CalendarAutoStartMode(rawValue: raw) else {
+            return .off  // Off by default — opt-in only via onboarding or Settings.
+        }
+        return mode
+    }
+
+    private static func resolveCalendarReminderMinutes(defaults: UserDefaults) -> Int {
+        guard defaults.object(forKey: CalendarAutoStartPreferences.reminderMinutesKey) != nil else {
+            return CalendarAutoStartPreferences.defaultReminderMinutes
+        }
+        return defaults.integer(forKey: CalendarAutoStartPreferences.reminderMinutesKey)
+    }
+
+    private static func resolveMeetingTriggerFilter(defaults: UserDefaults) -> MeetingTriggerFilter {
+        guard let raw = defaults.string(forKey: CalendarAutoStartPreferences.triggerFilterKey),
+              let filter = MeetingTriggerFilter(rawValue: raw) else {
+            return .withLink
+        }
+        return filter
+    }
+
+    private static func resolveCalendarExcludedIdentifiers(defaults: UserDefaults) -> Set<String> {
+        guard let raw = defaults.array(forKey: CalendarAutoStartPreferences.excludedCalendarIdsKey) as? [String] else {
+            return []
+        }
+        return Set(raw)
+    }
+
+    private static func normalizedMicrophoneSelection(_ uid: String?) -> String {
+        AudioDeviceManager.normalizedUID(uid) ?? systemDefaultMicrophoneSelection
+    }
+
+    /// Resolve the stored bookmark to a display path.
+    private static func resolveAutoSaveFolderPath(defaults: UserDefaults, scope: AutoSaveScope = .transcription) -> String? {
+        AutoSaveService.resolveFolder(scope: scope, defaults: defaults)?.path
+    }
+
+    public func chooseAutoSaveFolder(url: URL) {
+        if let path = AutoSaveService.storeFolder(url, scope: .transcription, defaults: defaults) {
+            autoSaveFolderPath = path
+        }
+    }
+
+    /// Reset the auto-save destination to the default location
+    /// (`~/Documents/MacParakeet/Transcriptions`). The toggle is left in
+    /// whatever state the user had it — folder is *always* set, so the
+    /// toggle is a pure on/off feature flag. This replaces the older
+    /// "Clear" semantic (which was a footgun: ON + no folder silently
+    /// no-op'd every save).
+    public func resetAutoSaveFolder() {
+        if let url = AutoSaveService.resetFolderToDefault(scope: .transcription, defaults: defaults) {
+            autoSaveFolderPath = url.path
+        }
+    }
+
+    public func chooseMeetingAutoSaveFolder(url: URL) {
+        if let path = AutoSaveService.storeFolder(url, scope: .meeting, defaults: defaults) {
+            meetingAutoSaveFolderPath = path
+        }
+    }
+
+    public func resetMeetingAutoSaveFolder() {
+        if let url = AutoSaveService.resetFolderToDefault(scope: .meeting, defaults: defaults) {
+            meetingAutoSaveFolderPath = url.path
+        }
+    }
+
+    private static func resolveMeetingHotkeyTrigger(defaults: UserDefaults) -> HotkeyTrigger {
+        HotkeyTrigger.current(
+            defaults: defaults,
+            defaultsKey: HotkeyTrigger.meetingDefaultsKey,
+            fallback: .defaultMeetingRecording
+        )
+    }
+
+    private static func resolveDictationHotkeyTriggers(defaults: UserDefaults) -> (
+        handsFree: HotkeyTrigger,
+        pushToTalk: HotkeyTrigger,
+        shouldPersistHandsFree: Bool,
+        shouldPersistPushToTalk: Bool
+    ) {
+        let hasHandsFreeTrigger = defaults.object(forKey: HotkeyTrigger.defaultsKey) != nil
+        let hasDedicatedPushToTalkTrigger = defaults.object(forKey: HotkeyTrigger.pushToTalkDefaultsKey) != nil
+
+        if !hasHandsFreeTrigger {
+            let pushToTalk = hasDedicatedPushToTalkTrigger
+                ? HotkeyTrigger.current(
+                    defaults: defaults,
+                    defaultsKey: HotkeyTrigger.pushToTalkDefaultsKey,
+                    fallback: .defaultPushToTalk
+                )
+                : .defaultPushToTalk
+            return (
+                defaultHandsFreeTrigger(avoiding: pushToTalk),
+                pushToTalk,
+                true,
+                !hasDedicatedPushToTalkTrigger
+            )
+        }
+
+        let storedHandsFree = HotkeyTrigger.current(defaults: defaults, fallback: .defaultDictation)
+        if !hasDedicatedPushToTalkTrigger {
+            if storedHandsFree.isDisabled {
+                return (.disabled, .disabled, false, true)
+            }
+            if storedHandsFree == .fnSpace {
+                return (.defaultDictation, .defaultPushToTalk, true, true)
+            }
+            let handsFree = defaultHandsFreeTrigger(avoiding: storedHandsFree)
+            return (
+                handsFree,
+                storedHandsFree,
+                handsFree != storedHandsFree,
+                true
+            )
+        }
+
+        let pushToTalk = HotkeyTrigger.current(
+            defaults: defaults,
+            defaultsKey: HotkeyTrigger.pushToTalkDefaultsKey,
+            fallback: .defaultPushToTalk
+        )
+        if storedHandsFree == .fnSpace,
+           pushToTalk == .defaultPushToTalk {
+            return (.defaultDictation, .defaultPushToTalk, true, false)
+        }
+        if !storedHandsFree.isDisabled,
+           !pushToTalk.isDisabled,
+           storedHandsFree == pushToTalk {
+            return (storedHandsFree, pushToTalk, false, false)
+        }
+        if !storedHandsFree.isDisabled,
+           !pushToTalk.isDisabled,
+           storedHandsFree != pushToTalk,
+           storedHandsFree.overlaps(with: pushToTalk) {
+            return (defaultHandsFreeTrigger(avoiding: pushToTalk), pushToTalk, true, false)
+        }
+        return (storedHandsFree, pushToTalk, false, false)
+    }
+
+    private static func defaultHandsFreeTrigger(avoiding pushToTalk: HotkeyTrigger) -> HotkeyTrigger {
+        if pushToTalk == .defaultPushToTalk {
+            return .defaultDictation
+        }
+        guard !pushToTalk.isDisabled,
+              HotkeyTrigger.defaultDictation.overlaps(with: pushToTalk) else {
+            return .defaultDictation
+        }
+        return .disabled
+    }
+
+    /// Transcription hotkeys (file / YouTube) default to `.disabled` — users opt in.
+    private static func resolveTranscriptionHotkeyTrigger(
+        defaults: UserDefaults,
+        defaultsKey: String
+    ) -> HotkeyTrigger {
+        HotkeyTrigger.current(
+            defaults: defaults,
+            defaultsKey: defaultsKey,
+            fallback: .disabled
+        )
+    }
+
+    public func configure(
+        permissionService: PermissionServiceProtocol,
+        dictationRepo: DictationRepositoryProtocol,
+        transcriptionRepo: TranscriptionRepositoryProtocol? = nil,
+        transformHistoryRepo: TransformHistoryRepositoryProtocol? = nil,
+        entitlementsService: EntitlementsService,
+        launchAtLoginService: LaunchAtLoginControlling? = nil,
+        checkoutURL: URL?,
+        customWordRepo: CustomWordRepositoryProtocol? = nil,
+        snippetRepo: TextSnippetRepositoryProtocol? = nil,
+        sttClient: STTClientProtocol? = nil,
+        speechEngineSwitcher: SpeechEngineSwitching? = nil,
+        speechEngineSwitchAvailabilityProvider: SpeechEngineSwitchAvailabilityProviding? = nil,
+        meetingRecoveryService: MeetingRecordingRecoveryServicing? = nil,
+        sharedMicStream: SharedMicrophoneStream? = nil
+    ) {
+        self.permissionService = permissionService
+        self.dictationRepo = dictationRepo
+        self.transcriptionRepo = transcriptionRepo
+        self.transformHistoryRepo = transformHistoryRepo
+        self.entitlementsService = entitlementsService
+        self.launchAtLoginService = launchAtLoginService
+        self.checkoutURL = checkoutURL
+        self.customWordRepo = customWordRepo
+        self.snippetRepo = snippetRepo
+        self.sttClient = sttClient
+        self.speechEngineSwitcher = speechEngineSwitcher
+        self.speechEngineSwitchAvailabilityProvider = speechEngineSwitchAvailabilityProvider
+            ?? (speechEngineSwitcher as? SpeechEngineSwitchAvailabilityProviding)
+            ?? (sttClient as? SpeechEngineSwitchAvailabilityProviding)
+        self.meetingRecoveryService = meetingRecoveryService
+        self.sharedMicStream = sharedMicStream
+        refreshLaunchAtLoginStatus()
+        refreshPermissions()
+        refreshStats()
+        refreshEntitlements()
+        refreshModelStatus()
+        refreshSpeechEngineSwitchAvailability()
+        refreshPendingMeetingRecoveries()
+    }
+
+    public func refreshPendingMeetingRecoveries() {
+        guard let meetingRecoveryService else {
+            pendingMeetingRecoveryCount = 0
+            return
+        }
+
+        Task {
+            do {
+                let recoveries = try await meetingRecoveryService.discoverPendingRecoveries()
+                pendingMeetingRecoveryCount = recoveries.count
+            } catch {
+                logger.error("Failed to load pending meeting recoveries: \(error.localizedDescription)")
+                pendingMeetingRecoveryCount = 0
+            }
+        }
+    }
+
+    public func requestPendingMeetingRecovery() {
+        onRecoverPendingMeetingRecordings?()
+    }
+
+    public func refreshLaunchAtLoginStatus() {
+        guard let service = launchAtLoginService else {
+            launchAtLoginDetail = ""
+            launchAtLoginError = nil
+            return
+        }
+
+        applyLaunchAtLoginStatus(service.currentStatus())
+        launchAtLoginError = nil
+    }
+
+    public func refreshPermissions() {
+        refreshMicrophoneDevices()
+        Task {
+            if let service = permissionService {
+                let micStatus = await service.checkMicrophonePermission()
+                let accStatus = service.checkAccessibilityPermission()
+                let screenRecordingStatus = service.checkScreenRecordingPermission()
+                microphoneGranted = micStatus == .granted
+                accessibilityGranted = accStatus
+                screenRecordingGranted = screenRecordingStatus
+            }
+            refreshCalendarPermission()
+        }
+    }
+
+    public func refreshMicrophoneDevices() {
+        let defaultUID = defaultInputDeviceUIDProvider()
+        microphoneDeviceOptions = inputDevicesProvider().map { device in
+            MicrophoneDeviceOption(
+                id: device.uid,
+                uid: device.uid,
+                name: device.name,
+                transportLabel: device.transportLabel,
+                isDefault: device.uid == defaultUID,
+                isAvailable: true
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.isDefault != rhs.isDefault { return lhs.isDefault && !rhs.isDefault }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+        if selectedMicrophoneDeviceUID != Self.systemDefaultMicrophoneSelection,
+           !microphoneDeviceOptions.contains(where: { $0.uid == selectedMicrophoneDeviceUID }) {
+            microphoneDeviceOptions.append(
+                MicrophoneDeviceOption(
+                    id: selectedMicrophoneDeviceUID,
+                    uid: selectedMicrophoneDeviceUID,
+                    name: "Selected microphone",
+                    transportLabel: "unavailable",
+                    isDefault: false,
+                    isAvailable: false
+                )
+            )
+        }
+    }
+
+    public func testSelectedMicrophone() {
+        microphoneTestTask?.cancel()
+        microphoneTestTask = nil
+        microphoneTestLevel = 0
+        microphoneTestState = .testing
+
+        guard let sharedMicStream else {
+            microphoneTestState = .failed("Microphone test is unavailable until audio services are ready.")
+            return
+        }
+
+        let levelBox = MicrophoneLevelBox()
+
+        microphoneTestTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let capture = MicrophoneCapture(sharedStream: sharedMicStream)
+            do {
+                _ = try await capture.start(processingMode: .raw) { buffer, _ in
+                    levelBox.record(buffer.rmsLevel)
+                }
+                for _ in 0..<40 {
+                    try await Task.sleep(for: .milliseconds(50))
+                    microphoneTestLevel = levelBox.latestLevel
+                }
+                capture.stop()
+                guard !Task.isCancelled else { return }
+                microphoneTestState = levelBox.maxLevel > Self.microphoneTestSilenceThreshold
+                    ? .succeeded
+                    : .failed("No input detected. Check the selected microphone and try again.")
+            } catch {
+                capture.stop()
+                guard !Task.isCancelled else { return }
+                microphoneTestState = .failed(error.localizedDescription)
+            }
+            microphoneTestTask = nil
+        }
+    }
+
+    public func cancelMicrophoneTest() {
+        microphoneTestTask?.cancel()
+        microphoneTestTask = nil
+        microphoneTestLevel = 0
+        microphoneTestState = .idle
+    }
+
+    public func requestScreenRecordingAccess() {
+        guard let permissionService else { return }
+        Telemetry.send(.permissionPrompted(permission: .screenRecording))
+        _ = permissionService.requestScreenRecordingPermission()
+        refreshPermissions()
+    }
+
+    public func openScreenRecordingSystemSettings() {
+        permissionService?.openScreenRecordingSettings()
+    }
+
+    /// Refresh calendar permission via the shared service. Cheap — no
+    /// network or disk; just reads `EKEventStore.authorizationStatus` (which
+    /// is `nonisolated` on the actor, so no await needed).
+    public func refreshCalendarPermission() {
+        calendarPermissionStatus = CalendarService.shared.permissionStatus
+    }
+
+    /// Trigger the EventKit permission prompt if not yet decided. Returns the
+    /// granted state. On grant, also requests notification authorization so
+    /// the eventual reminder isn't silently dropped by macOS — this single
+    /// async hop pairs the two permissions the feature actually needs.
+    @discardableResult
+    public func requestCalendarPermission() async -> Bool {
+        Telemetry.send(.permissionPrompted(permission: .calendar))
+        let granted = await CalendarService.shared.requestPermission()
+        // Re-read the status (rather than just assigning .granted/.denied
+        // from the bool) so `.restricted` from MDM-managed Macs is reflected
+        // accurately — the service maps it to `.denied` so callers don't
+        // need a fourth case, but a fresh read is the source of truth.
+        calendarPermissionStatus = CalendarService.shared.permissionStatus
+        Telemetry.send(granted ? .permissionGranted(permission: .calendar) : .permissionDenied(permission: .calendar))
+        if granted {
+            await CalendarNotificationAuthorization.requestIfNeeded()
+            // Match the onboarding grant flow (OnboardingViewModel applies
+            // .notify on grant): a user who explicitly grants Calendar access
+            // from Settings intends to use the feature, so default them into
+            // the safe .notify mode. Only when still .off — never clobber an
+            // existing .autoStart choice.
+            if calendarAutoStartMode == .off {
+                calendarAutoStartMode = .notify
+            }
+        }
+        return granted
+    }
+
+    public func openCalendarSystemSettings() {
+        if NSWorkspace.shared.open(CalendarService.settingsURL) { return }
+    }
+
+    /// Refresh the cached notification-authorization state. Cheap async read
+    /// of `UNUserNotificationCenter` settings; the view calls this on appear
+    /// and when the calendar mode changes.
+    public func refreshCalendarNotificationAuthorization() async {
+        calendarNotificationsAuthorized = await CalendarNotificationAuthorization.isAuthorized()
+    }
+
+    /// Deep-link to the Notifications pane in System Settings. The pane id
+    /// changed across macOS versions, so try the modern one first.
+    public func openNotificationSystemSettings() {
+        let candidates = [
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+            "x-apple.systempreferences:com.apple.preference.notifications",
+        ]
+        for string in candidates {
+            if let url = URL(string: string), NSWorkspace.shared.open(url) { return }
+        }
+    }
+
+    public func startPermissionPolling() {
+        guard permissionPollingTask == nil else { return }
+        refreshPermissions()
+        refreshSpeechEngineSwitchAvailability()
+        permissionPollingTask = Task { [weak self] in
+            guard let self else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: self.permissionPollingInterval)
+                guard !Task.isCancelled else { break }
+                self.refreshPermissions()
+                self.refreshSpeechEngineSwitchAvailability()
+            }
+        }
+    }
+
+    public func stopPermissionPolling() {
+        permissionPollingTask?.cancel()
+        permissionPollingTask = nil
+    }
+
+    public func refreshStats() {
+        guard let repo = dictationRepo else { return }
+        do { dictationCount = try repo.stats().visibleCount }
+        catch { logger.error("Failed to load dictation stats: \(error.localizedDescription)") }
+        do { customWordCount = try customWordRepo?.fetchAll().count ?? 0 }
+        catch { logger.error("Failed to load custom word count: \(error.localizedDescription)") }
+        do { snippetCount = try snippetRepo?.fetchAll().count ?? 0 }
+        catch { logger.error("Failed to load snippet count: \(error.localizedDescription)") }
+
+        let (count, sizeBytes) = youtubeDownloadStats()
+        youtubeDownloadCount = count
+        youtubeDownloadStorageMB = Double(sizeBytes) / (1024.0 * 1024.0)
+    }
+
+    public func refreshSpeechEngineSwitchAvailability() {
+        Task { @MainActor [weak self] in
+            _ = await self?.refreshSpeechEngineSwitchAvailabilityNow()
+        }
+    }
+
+    @discardableResult
+    public func refreshSpeechEngineSwitchAvailabilityNow() async -> SpeechEngineSwitchAvailability {
+        guard let speechEngineSwitchAvailabilityProvider else {
+            speechEngineSwitchAvailability = .available
+            return .available
+        }
+        let availability = await speechEngineSwitchAvailabilityProvider.engineSwitchAvailability()
+        speechEngineSwitchAvailability = availability
+        return availability
+    }
+
+    public var speechEngineSwitchUnavailableMessage: String? {
+        Self.speechEngineSwitchUnavailableMessage(for: speechEngineSwitchAvailability)
+    }
+
+    public static func speechEngineSwitchUnavailableMessage(
+        for availability: SpeechEngineSwitchAvailability
+    ) -> String? {
+        switch availability {
+        case .available:
+            return nil
+        case .meetingActive:
+            return "Stop the meeting recording to switch engines"
+        case .transcribing:
+            return "Finishing transcription — switch when it completes"
+        case .switchInProgress:
+            return "Finishing engine switch — try again in a moment"
+        case .unavailable:
+            return "Speech engine is temporarily unavailable"
+        }
+    }
+
+    public func refreshEntitlements() {
+        guard let service = entitlementsService else { return }
+        licensingError = nil
+        Task {
+            let state = await service.currentState(now: Date())
+            await MainActor.run {
+                self.applyEntitlementsState(state)
+            }
+        }
+    }
+
+    public func refreshModelStatus() {
+        modelStatusRefreshGeneration += 1
+        let refreshGeneration = modelStatusRefreshGeneration
+        let activeEngine = speechEnginePreference
+        let activeVariant = parakeetModelVariant
+        let whisperModelVariant = SpeechEnginePreference.whisperModelVariant(defaults: defaults)
+
+        let parakeetModelVariantCached = self.parakeetModelVariantCached
+
+        guard let sttClient else {
+            parakeetStatus = .unknown
+            parakeetStatusDetail = "Unavailable in this runtime."
+            whisperModelStatus = .checking
+            whisperModelStatusDetail = "Checking model state..."
+            Task { @MainActor [weak self] in
+                let disk = await Task.detached(priority: .userInitiated) {
+                    (
+                        parakeetDownloaded: Set(ParakeetModelVariant.allCases.filter(parakeetModelVariantCached)),
+                        whisperDownloaded: WhisperEngine.isModelDownloaded(model: whisperModelVariant)
+                    )
+                }.value
+                guard let self,
+                      self.modelStatusRefreshGeneration == refreshGeneration,
+                      self.speechEnginePreference == activeEngine,
+                      self.parakeetModelVariant == activeVariant else {
+                    return
+                }
+                self.downloadedParakeetVariants = disk.parakeetDownloaded
+                self.applyWhisperDownloadedStatus(disk.whisperDownloaded)
+            }
+            return
+        }
+
+        parakeetStatus = .checking
+        parakeetStatusDetail = "Checking model state..."
+        whisperModelStatus = .checking
+        whisperModelStatusDetail = "Checking model state..."
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // `sttClient.isReady()` returns the *active* engine's loaded state
+            // (see STTRuntime.isReady), so we apply it to whichever engine is
+            // currently selected and keep the inactive engine on its disk-cache
+            // status. Without this branch, switching to Whisper left the
+            // Whisper badge stuck at "Not Loaded" forever.
+            //
+            // Use the selection snapshot captured before the async work so a
+            // mid-suspension toggle can't pair a new preference with old
+            // readiness.
+            async let activeEngineLoaded = sttClient.isReady()
+            async let diskState = Task.detached(priority: .userInitiated) {
+                (
+                    parakeetDownloaded: Set(ParakeetModelVariant.allCases.filter(parakeetModelVariantCached)),
+                    whisperDownloaded: WhisperEngine.isModelDownloaded(model: whisperModelVariant)
+                )
+            }.value
+
+            let (activeEngineIsLoaded, modelDiskState) = await (activeEngineLoaded, diskState)
+            guard self.modelStatusRefreshGeneration == refreshGeneration,
+                  self.speechEnginePreference == activeEngine,
+                  self.parakeetModelVariant == activeVariant else {
+                return
+            }
+
+            self.downloadedParakeetVariants = modelDiskState.parakeetDownloaded
+            let parakeetName = activeVariant.modelName
+            if activeEngine == .parakeet, activeEngineIsLoaded {
+                self.parakeetStatus = .ready
+                self.parakeetStatusDetail = "\(parakeetName) · Loaded on Neural Engine."
+            } else if modelDiskState.parakeetDownloaded.contains(activeVariant) {
+                self.parakeetStatus = .notLoaded
+                self.parakeetStatusDetail = "\(parakeetName) · Installed locally, loads when selected."
+            } else {
+                self.parakeetStatus = .notDownloaded
+                self.parakeetStatusDetail = "\(parakeetName) · Needs model setup before use."
+            }
+
+            if activeEngine == .whisper, activeEngineIsLoaded {
+                self.whisperModelStatus = .ready
+                self.whisperModelStatusDetail = "\(self.whisperVariantFriendlyName) · Loaded in memory."
+            } else {
+                self.applyWhisperDownloadedStatus(modelDiskState.whisperDownloaded)
+            }
+        }
+    }
+
+    public func refreshWhisperModelStatus() {
+        applyWhisperDownloadedStatus(
+            WhisperEngine.isModelDownloaded(model: SpeechEnginePreference.whisperModelVariant(defaults: defaults))
+        )
+    }
+
+    private func applyWhisperDownloadedStatus(_ isDownloaded: Bool) {
+        let friendly = whisperVariantFriendlyName
+        if isDownloaded {
+            // Optimistic file-based check; `refreshModelStatus()` will upgrade
+            // to `.ready` after asking the runtime if Whisper is the active
+            // engine and currently loaded.
+            whisperModelStatus = .notLoaded
+            if whisperHasBeenOptimized {
+                whisperModelStatusDetail = "\(friendly) · Installed locally, loads in seconds."
+            } else {
+                whisperModelStatusDetail = "\(friendly) · Installed locally. First switch can take 3-5 minutes while Core ML optimizes it."
+            }
+        } else {
+            whisperModelStatus = .notDownloaded
+            whisperModelStatusDetail = "\(friendly) · Needs download before use."
+        }
+    }
+
+    private var whisperVariantFriendlyName: String {
+        SpeechEnginePreference.friendlyVariantName(
+            SpeechEnginePreference.whisperModelVariant(defaults: defaults)
+        )
+    }
+
+    public func downloadWhisperModel() {
+        guard !speechEngineSwitching else { return }
+        guard !whisperDownloading else { return }
+        // The user has taken the action that resolves any pending
+        // "Whisper isn't ready" error, so clear it. Otherwise the red
+        // banner persists through a successful download (the engine
+        // preference setter — the only other place that clears it —
+        // never fires for the same-state assignment).
+        speechEngineError = nil
+        whisperDownloading = true
+        whisperModelStatus = .repairing
+        let modelVariant = SpeechEnginePreference.whisperModelVariant(defaults: defaults)
+        let friendly = SpeechEnginePreference.friendlyVariantName(modelVariant)
+        let operationContext = Observability.childOperationContext()
+        whisperModelStatusDetail = "Downloading Whisper \(friendly)..."
+        Telemetry.send(.modelDownloadStarted(
+            modelKind: .whisperSTT,
+            speechEngine: .whisper,
+            engineVariant: modelVariant
+        ))
+
+        Task {
+            do {
+                _ = try await WhisperEngine.downloadModel(
+                    model: modelVariant
+                ) { completed, total in
+                    let percent = total > 0 ? Int((Double(completed) / Double(total) * 100).rounded()) : 0
+                    Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        self.whisperModelStatusDetail = "Downloading Whisper \(friendly)... \(min(max(percent, 0), 100))%"
+                    }
+                }
+                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
+                Telemetry.send(.modelDownloadCompleted(
+                    durationSeconds: durationSeconds,
+                    modelKind: .whisperSTT,
+                    speechEngine: .whisper,
+                    engineVariant: modelVariant
+                ))
+                Telemetry.send(.modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .download,
+                    outcome: .success,
+                    stage: .download,
+                    modelKind: .whisperSTT,
+                    speechEngine: .whisper,
+                    engineVariant: modelVariant,
+                    durationSeconds: durationSeconds,
+                    errorType: nil
+                ))
+                await MainActor.run {
+                    self.whisperDownloading = false
+                    self.refreshWhisperModelStatus()
+                }
+            } catch is CancellationError {
+                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
+                Telemetry.send(.modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .download,
+                    outcome: .cancelled,
+                    stage: .download,
+                    modelKind: .whisperSTT,
+                    speechEngine: .whisper,
+                    engineVariant: modelVariant,
+                    durationSeconds: durationSeconds,
+                    errorType: "CancellationError"
+                ))
+                await MainActor.run {
+                    self.whisperDownloading = false
+                    self.refreshWhisperModelStatus()
+                }
+            } catch {
+                let durationSeconds = Observability.durationSeconds(since: operationContext.startedAt)
+                let errorType = TelemetryErrorClassifier.classify(error)
+                Telemetry.send(.modelDownloadFailed(
+                    errorType: errorType,
+                    errorDetail: TelemetryErrorClassifier.errorDetail(error),
+                    modelKind: .whisperSTT,
+                    speechEngine: .whisper,
+                    engineVariant: modelVariant
+                ))
+                Telemetry.send(.modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .download,
+                    outcome: .failure,
+                    stage: .download,
+                    modelKind: .whisperSTT,
+                    speechEngine: .whisper,
+                    engineVariant: modelVariant,
+                    durationSeconds: durationSeconds,
+                    errorType: errorType
+                ))
+                await MainActor.run {
+                    self.whisperDownloading = false
+                    self.whisperModelStatus = .failed
+                    self.whisperModelStatusDetail = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func applySpeechEngineChange(_ preference: SpeechEnginePreference) {
+        speechEngineError = nil
+        let previousPreference = SpeechEnginePreference.current(defaults: defaults)
+        let operationContext = Observability.childOperationContext()
+        let switchWasCold = SpeechEnginePreference.isColdSwitch(to: preference, defaults: defaults)
+
+        if preference == .whisper && !isWhisperModelDownloaded {
+            speechEngineError = "Download the Whisper model before switching engines."
+            Telemetry.send(.speechEngineSwitchOperation(
+                operationID: operationContext.operationID,
+                operationContext: operationContext,
+                fromEngine: previousPreference,
+                toEngine: preference,
+                outcome: .unavailable,
+                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                blockedReason: .modelNotDownloaded,
+                errorType: "model_not_downloaded",
+                wasCold: switchWasCold
+            ))
+            isApplyingSpeechEngineState = true
+            speechEnginePreference = .parakeet
+            isApplyingSpeechEngineState = false
+            return
+        }
+
+        guard let speechEngineSwitcher else {
+            preference.save(to: defaults)
+            Telemetry.send(.speechEngineSwitchOperation(
+                operationID: operationContext.operationID,
+                operationContext: operationContext,
+                fromEngine: previousPreference,
+                toEngine: preference,
+                outcome: .success,
+                durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                blockedReason: nil,
+                errorType: nil,
+                wasCold: switchWasCold
+            ))
+            return
+        }
+
+        speechEngineSwitching = true
+        speechEngineSwitchTarget = preference
+        speechEngineSwitchDetail = Self.initialSpeechEngineSwitchDetail(for: preference)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // `defer` fires even on cancellation or unexpected early exit, so
+            // the segmented Picker can never get pinned in the disabled
+            // "Switching..." state.
+            defer {
+                self.speechEngineSwitching = false
+                self.speechEngineSwitchTarget = nil
+                self.speechEngineSwitchDetail = nil
+                self.refreshModelStatus()
+            }
+            let availability = await self.refreshSpeechEngineSwitchAvailabilityNow()
+            guard availability == .available else {
+                let blockedReason = Self.telemetrySpeechEngineSwitchBlockedReason(for: availability)
+                self.speechEngineError = Self.speechEngineSwitchUnavailableMessage(for: availability)
+                Telemetry.send(.speechEngineSwitchOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    fromEngine: previousPreference,
+                    toEngine: preference,
+                    outcome: .unavailable,
+                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                    blockedReason: blockedReason,
+                    errorType: blockedReason?.rawValue,
+                    wasCold: switchWasCold
+                ))
+                self.isApplyingSpeechEngineState = true
+                self.speechEnginePreference = SpeechEnginePreference.current(defaults: self.defaults)
+                self.isApplyingSpeechEngineState = false
+                return
+            }
+            do {
+                try await Observability.withOperationContext(operationContext) {
+                    try await speechEngineSwitcher.setSpeechEngine(preference) { [weak self] message in
+                        Task { @MainActor [weak self] in
+                            self?.speechEngineSwitchDetail = message
+                        }
+                    }
+                }
+                preference.save(to: self.defaults)
+                Telemetry.send(.speechEngineSwitchOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    fromEngine: previousPreference,
+                    toEngine: preference,
+                    outcome: .success,
+                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                    blockedReason: nil,
+                    errorType: nil,
+                    wasCold: switchWasCold
+                ))
+            } catch is CancellationError {
+                Telemetry.send(.speechEngineSwitchOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    fromEngine: previousPreference,
+                    toEngine: preference,
+                    outcome: .cancelled,
+                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                    blockedReason: nil,
+                    errorType: "CancellationError",
+                    wasCold: switchWasCold
+                ))
+                self.isApplyingSpeechEngineState = true
+                self.speechEnginePreference = SpeechEnginePreference.current(defaults: self.defaults)
+                self.isApplyingSpeechEngineState = false
+            } catch {
+                let errorType = TelemetryErrorClassifier.classify(error)
+                self.speechEngineError = error.localizedDescription
+                Telemetry.send(.speechEngineSwitchOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    fromEngine: previousPreference,
+                    toEngine: preference,
+                    outcome: .failure,
+                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                    blockedReason: Self.telemetrySpeechEngineSwitchBlockedReason(for: error),
+                    errorType: errorType,
+                    wasCold: switchWasCold
+                ))
+                self.isApplyingSpeechEngineState = true
+                self.speechEnginePreference = SpeechEnginePreference.current(defaults: self.defaults)
+                self.isApplyingSpeechEngineState = false
+            }
+        }
+    }
+
+    /// Applies a Parakeet variant toggle (multilingual `v3` ↔ English-only
+    /// `v2`). Mirrors `applySpeechEngineChange`: validates switch availability,
+    /// drives the shared switch banner, persists only after the runtime reload
+    /// succeeds, and reverts the published value on block/cancel/failure.
+    private func applyParakeetModelVariantChange(_ variant: ParakeetModelVariant) {
+        speechEngineError = nil
+        let previousVariant = SpeechEnginePreference.parakeetModelVariant(defaults: defaults)
+        guard variant != previousVariant else { return }
+
+        guard let speechEngineSwitcher else {
+            // No runtime wired (previews/tests): just persist the choice.
+            SpeechEnginePreference.saveParakeetModelVariant(variant, defaults: defaults)
+            Telemetry.send(.settingChanged(setting: .parakeetModelVariant))
+            return
+        }
+
+        speechEngineSwitching = true
+        speechEngineSwitchTarget = .parakeet
+        isParakeetVariantSwitch = true
+        speechEngineSwitchDetail = "Preparing \(variant.modelName)..."
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.speechEngineSwitching = false
+                self.speechEngineSwitchTarget = nil
+                self.isParakeetVariantSwitch = false
+                self.speechEngineSwitchDetail = nil
+                self.refreshModelStatus()
+            }
+            let availability = await self.refreshSpeechEngineSwitchAvailabilityNow()
+            guard availability == .available else {
+                self.speechEngineError = Self.speechEngineSwitchUnavailableMessage(for: availability)
+                self.revertParakeetModelVariant()
+                return
+            }
+            do {
+                try await speechEngineSwitcher.setParakeetModelVariant(variant) { [weak self] message in
+                    Task { @MainActor [weak self] in
+                        self?.speechEngineSwitchDetail = message
+                    }
+                }
+                SpeechEnginePreference.saveParakeetModelVariant(variant, defaults: self.defaults)
+                Telemetry.send(.settingChanged(setting: .parakeetModelVariant))
+            } catch is CancellationError {
+                self.revertParakeetModelVariant()
+            } catch {
+                self.speechEngineError = error.localizedDescription
+                self.revertParakeetModelVariant()
+            }
+        }
+    }
+
+    /// Snaps the published variant back to the persisted value without
+    /// re-triggering a switch (the `isApplyingParakeetVariantState` guard).
+    private func revertParakeetModelVariant() {
+        isApplyingParakeetVariantState = true
+        parakeetModelVariant = SpeechEnginePreference.parakeetModelVariant(defaults: defaults)
+        isApplyingParakeetVariantState = false
+    }
+
+    public func repairParakeetModel() {
+        guard let sttClient else { return }
+        guard !speechEngineSwitching else { return }
+        guard !parakeetRepairing else { return }
+        speechEngineError = nil
+        parakeetRepairing = true
+        parakeetStatus = .repairing
+        parakeetStatusDetail = "Preparing speech model..."
+        let operationContext = Observability.childOperationContext()
+
+        parakeetSetupTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.parakeetSetupTask = nil }
+            do {
+                try await Observability.withOperationContext(operationContext) {
+                    try await self.runWithRetry(maxAttempts: 3, onRetry: { [weak self] attempt in
+                        guard let self else { return }
+                        self.parakeetStatusDetail = "Retrying speech model setup (attempt \(attempt)/3)..."
+                    }) {
+                        try await sttClient.warmUp { [weak self] progressMessage in
+                            Task { @MainActor [weak self] in
+                                guard let self else { return }
+                                self.parakeetStatusDetail = progressMessage
+                            }
+                        }
+                    }
+                }
+                Telemetry.send(.modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .repair,
+                    outcome: .success,
+                    stage: .warmUp,
+                    modelKind: .parakeetSTT,
+                    speechEngine: .parakeet,
+                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                    errorType: nil
+                ))
+
+                await MainActor.run {
+                    self.parakeetRepairing = false
+                    self.refreshModelStatus()
+                }
+            } catch is CancellationError {
+                Telemetry.send(.modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .repair,
+                    outcome: .cancelled,
+                    stage: .warmUp,
+                    modelKind: .parakeetSTT,
+                    speechEngine: .parakeet,
+                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                    errorType: "CancellationError"
+                ))
+                await MainActor.run {
+                    self.parakeetRepairing = false
+                    self.refreshModelStatus()
+                }
+            } catch {
+                let errorType = TelemetryErrorClassifier.classify(error)
+                Telemetry.send(.modelOperation(
+                    operationID: operationContext.operationID,
+                    operationContext: operationContext,
+                    action: .repair,
+                    outcome: .failure,
+                    stage: .warmUp,
+                    modelKind: .parakeetSTT,
+                    speechEngine: .parakeet,
+                    durationSeconds: Observability.durationSeconds(since: operationContext.startedAt),
+                    errorType: errorType
+                ))
+                await MainActor.run {
+                    self.parakeetRepairing = false
+                    self.parakeetStatus = .failed
+                    self.parakeetStatusDetail = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    /// Starts the default local-model setup from the island. Selecting
+    /// Parakeet is persisted through the existing engine preference; the
+    /// runtime then performs its own verified download/warm-up path.
+    public func beginIslandModelSetup() {
+        if speechEnginePreference != .parakeet {
+            speechEnginePreference = .parakeet
+        } else {
+            repairParakeetModel()
+        }
+    }
+
+    public func cancelIslandModelSetup() {
+        parakeetSetupTask?.cancel()
+    }
+
+    /// Removes a downloaded Parakeet build, freeing ~465 MB. The selected
+    /// Parakeet build is protected — the UI only offers delete for the other,
+    /// downloaded build, and the guards here enforce that even if a stale tap
+    /// slips through. The "Downloaded" badge drops immediately; a disk refresh
+    /// then confirms.
+    public func deleteParakeetVariant(_ variant: ParakeetModelVariant) {
+        guard !speechEngineSwitching else { return }
+        // Never delete the selected Parakeet build. Even while Whisper is the
+        // active engine, this is the build Parakeet would load after a switch.
+        guard parakeetModelVariant != variant else { return }
+        guard downloadedParakeetVariants.contains(variant) else { return }
+
+        // Invalidate any in-flight status refresh so it can't re-add the badge
+        // we're about to drop (the files linger on disk until the detached
+        // delete runs).
+        modelStatusRefreshGeneration += 1
+        // Optimistic: drop the badge now so the row can't be tapped twice; the
+        // refresh below reconciles against disk.
+        downloadedParakeetVariants.remove(variant)
+
+        let deleter = deleteParakeetModelOnDisk
+        Task { @MainActor [weak self] in
+            await Task.detached(priority: .userInitiated) {
+                _ = deleter(variant)
+            }.value
+            guard let self else { return }
+            self.refreshModelStatus()
+        }
+    }
+
+    /// Removes the downloaded Whisper variant, freeing ~632 MB. Only callable
+    /// while Parakeet is the active engine — deleting the model behind the
+    /// active engine would force a silent re-download. State flips to
+    /// "Not Downloaded" immediately; a disk refresh then confirms.
+    public func deleteWhisperModel() {
+        guard !speechEngineSwitching, !whisperDownloading else { return }
+        // Protect the in-use engine's model.
+        guard speechEnginePreference != .whisper else { return }
+        guard isWhisperModelDownloaded else { return }
+
+        let variant = SpeechEnginePreference.whisperModelVariant(defaults: defaults)
+        let deleter = deleteWhisperModelOnDisk
+        // Invalidate any in-flight status refresh so it can't flip the badge
+        // back to "Installed" (the file lingers until the detached delete runs)
+        // and re-expose the delete action for a ghost second tap.
+        modelStatusRefreshGeneration += 1
+        // Optimistic: render the not-downloaded state now so the delete action
+        // disappears before the async file work finishes.
+        applyWhisperDownloadedStatus(false)
+        Task { @MainActor [weak self] in
+            await Task.detached(priority: .userInitiated) {
+                _ = deleter(variant)
+            }.value
+            guard let self else { return }
+            self.refreshModelStatus()
+        }
+    }
+
+    private static func telemetrySpeechEngineSwitchBlockedReason(
+        for error: Error
+    ) -> TelemetrySpeechEngineSwitchBlockedReason? {
+        guard let sttError = error as? STTError else { return nil }
+        switch sttError {
+        case .engineBusy:
+            return .engineBusy
+        case .modelDownloadFailed, .modelNotLoaded:
+            return .modelNotDownloaded
+        case .engineNotRunning,
+             .engineStartFailed,
+             .transcriptionFailed,
+             .timeout,
+             .outOfMemory,
+             .invalidResponse:
+            return nil
+        }
+    }
+
+    private static func telemetrySpeechEngineSwitchBlockedReason(
+        for availability: SpeechEngineSwitchAvailability
+    ) -> TelemetrySpeechEngineSwitchBlockedReason? {
+        switch availability {
+        case .available:
+            return nil
+        case .meetingActive:
+            return .meetingActive
+        case .transcribing:
+            return .transcribing
+        case .switchInProgress:
+            return .switchInProgress
+        case .unavailable:
+            return .unavailable
+        }
+    }
+
+    private static func initialSpeechEngineSwitchDetail(
+        for preference: SpeechEnginePreference
+    ) -> String {
+        switch preference {
+        case .parakeet:
+            "Loading Parakeet model on Neural Engine..."
+        case .whisper:
+            "Optimizing Whisper for this Mac..."
+        }
+    }
+
+    public func activateLicense() {
+        guard let service = entitlementsService else { return }
+        let key = licenseKeyInput
+        licensingBusy = true
+        licensingError = nil
+        Task {
+            do {
+                let state = try await service.activate(licenseKey: key, now: Date())
+                await MainActor.run {
+                    self.licensingBusy = false
+                    self.applyEntitlementsState(state)
+                    self.licenseKeyInput = ""
+                    Telemetry.send(.licenseActivated)
+                }
+            } catch {
+                await MainActor.run {
+                    self.licensingBusy = false
+                    self.licensingError = error.localizedDescription
+                    Telemetry.send(.licenseActivationFailed(errorType: TelemetryErrorClassifier.classify(error), errorDetail: TelemetryErrorClassifier.errorDetail(error)))
+                }
+            }
+        }
+    }
+
+    public func deactivateLicense() {
+        guard let service = entitlementsService else { return }
+        licensingBusy = true
+        licensingError = nil
+        Task {
+            do {
+                let state = try await service.deactivate(now: Date())
+                await MainActor.run {
+                    self.licensingBusy = false
+                    self.applyEntitlementsState(state)
+                }
+            } catch {
+                await MainActor.run {
+                    self.licensingBusy = false
+                    self.licensingError = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func applyEntitlementsState(_ state: EntitlementsState) {
+        switch state.access {
+        case .unlocked:
+            isUnlocked = true
+            entitlementsSummary = "Unlocked"
+            if let masked = state.licenseKeyMasked {
+                entitlementsDetail = "License: \(masked)"
+            } else {
+                entitlementsDetail = ""
+            }
+        case .trialActive(let daysRemaining, let endsAt):
+            isUnlocked = false
+            entitlementsSummary = "Trial: \(daysRemaining) day(s) left"
+            entitlementsDetail = "Ends \(endsAt.formatted(date: .abbreviated, time: .omitted))"
+        case .trialExpired(let endedAt):
+            isUnlocked = false
+            entitlementsSummary = "Trial ended"
+            entitlementsDetail = "Ended \(endedAt.formatted(date: .abbreviated, time: .omitted))"
+        }
+
+        if let lv = state.lastValidatedAt, isUnlocked {
+            entitlementsDetail += entitlementsDetail.isEmpty ? "" : "  "
+            entitlementsDetail += "Validated \(lv.formatted(date: .abbreviated, time: .omitted))"
+        }
+    }
+
+    /// Fired after a dictation-state change (rows deleted or lifetime counters reset)
+    /// so other VMs (e.g. the history view) can reload their derived data.
+    public var onDictationStateChanged: (() -> Void)?
+    public var onTransformHistoryChanged: (() -> Void)?
+
+    public func clearAllDictations() {
+        guard let repo = dictationRepo else { return }
+        // `deleteAll()` only removes visible (hidden = 0) rows; `deleteHidden()`
+        // covers the metric-only entries created when "Save dictation history" was
+        // off. Together they truly clear all dictation rows. Each runs in its own
+        // GRDB write transaction; partial failure is logged but never silently
+        // corrupts state because the row counts are independent.
+        do {
+            try repo.deleteAll()
+            try repo.deleteHidden()
+        } catch {
+            logger.error("Failed to clear dictations error=\(error.localizedDescription, privacy: .public)")
+        }
+        // Also remove any saved audio files (best effort).
+        let dir = AppPaths.dictationsDir
+        if FileManager.default.fileExists(atPath: dir) {
+            try? FileManager.default.removeItem(atPath: dir)
+            try? FileManager.default.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        }
+        refreshStats()
+        onDictationStateChanged?()
+    }
+
+    /// Zero the lifetime stats counters. Symmetric to `clearAllDictations()` —
+    /// dictation rows are preserved; only the lifetime totals (total words,
+    /// total time, total count, longest dictation) are reset.
+    public func resetLifetimeStats() {
+        guard let repo = dictationRepo else { return }
+        do {
+            try repo.resetLifetimeStats()
+        } catch {
+            logger.error("Failed to reset lifetime stats error=\(error.localizedDescription, privacy: .public)")
+        }
+        refreshStats()
+        onDictationStateChanged?()
+    }
+
+    public func clearTransformHistory() {
+        guard let repo = transformHistoryRepo else { return }
+        Task { @MainActor [repo, weak self] in
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try repo.deleteAll()
+                }.value
+                self?.onTransformHistoryChanged?()
+            } catch {
+                self?.logger.error("Failed to clear transform history error=\(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    public func clearDownloadedYouTubeAudio() {
+        let dir = youtubeDownloadsDirPath()
+        let fm = FileManager.default
+
+        if fm.fileExists(atPath: dir) {
+            try? fm.removeItem(atPath: dir)
+        }
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+
+        do {
+            try transcriptionRepo?.clearStoredAudioPathsForURLTranscriptions()
+        } catch {
+            logger.error("Failed to clear stored audio paths error=\(error.localizedDescription, privacy: .public)")
+        }
+        refreshStats()
+    }
+
+    private func youtubeDownloadStats() -> (count: Int, sizeBytes: Int64) {
+        let dirURL = URL(fileURLWithPath: youtubeDownloadsDirPath(), isDirectory: true)
+        let fm = FileManager.default
+
+        guard let enumerator = fm.enumerator(
+            at: dirURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            return (0, 0)
+        }
+
+        var count = 0
+        var sizeBytes: Int64 = 0
+
+        for case let fileURL as URL in enumerator {
+            guard
+                let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                values.isRegularFile == true
+            else { continue }
+
+            count += 1
+            sizeBytes += Int64(values.fileSize ?? 0)
+        }
+
+        return (count, sizeBytes)
+    }
+
+    private static func normalizedProcessingMode(_ rawValue: String?) -> String {
+        guard let rawValue, Dictation.ProcessingMode(rawValue: rawValue) != nil else {
+            return Dictation.ProcessingMode.raw.rawValue
+        }
+        return rawValue
+    }
+
+    private func applyLaunchAtLoginChange(_ enabled: Bool) {
+        defaults.set(enabled, forKey: "launchAtLogin")
+        launchAtLoginError = nil
+        Telemetry.send(.settingChanged(setting: .launchAtLogin))
+
+        guard let service = launchAtLoginService else { return }
+
+        do {
+            let updatedStatus = try service.setEnabled(enabled)
+            applyLaunchAtLoginStatus(updatedStatus)
+        } catch {
+            let fallbackStatus = service.currentStatus()
+            applyLaunchAtLoginStatus(fallbackStatus)
+            launchAtLoginError = error.localizedDescription
+        }
+    }
+
+    private func applyLaunchAtLoginStatus(_ status: LaunchAtLoginStatus) {
+        isApplyingLaunchAtLoginState = true
+        launchAtLogin = status.isEnabled
+        defaults.set(status.isEnabled, forKey: "launchAtLogin")
+        isApplyingLaunchAtLoginState = false
+        launchAtLoginDetail = status.detailText
+    }
+
+    private func runWithRetry(
+        maxAttempts: Int,
+        onRetry: @escaping @MainActor (_ nextAttempt: Int) -> Void,
+        operation: @escaping @Sendable () async throws -> Void
+    ) async throws {
+        var delayNs: UInt64 = 250_000_000
+        var lastError: Error?
+
+        for attempt in 1...maxAttempts {
+            do {
+                try await operation()
+                return
+            } catch {
+                lastError = error
+                guard attempt < maxAttempts else { break }
+                onRetry(attempt + 1)
+                try await Task.sleep(nanoseconds: delayNs)
+                delayNs *= 2
+            }
+        }
+
+        throw lastError ?? STTError.engineStartFailed("Model setup failed.")
+    }
+}
+
+private final class MicrophoneLevelBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var latestValue: Float = 0
+    private var peakValue: Float = 0
+
+    var latestLevel: Float {
+        lock.withLock { latestValue }
+    }
+
+    var maxLevel: Float {
+        lock.withLock { peakValue }
+    }
+
+    func record(_ level: Float) {
+        lock.withLock {
+            latestValue = level
+            peakValue = max(peakValue, level)
+        }
+    }
+}

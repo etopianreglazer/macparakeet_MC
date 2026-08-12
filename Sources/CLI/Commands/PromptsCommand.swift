@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 /// `macparakeet-cli prompts` — manage the prompt library and run prompts
 /// against saved transcriptions. Built so an agent or CI run can verify

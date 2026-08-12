@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 struct LLMTransformCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

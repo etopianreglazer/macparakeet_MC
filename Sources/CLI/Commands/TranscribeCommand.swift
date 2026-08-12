@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 import os
 
 enum TranscribeMode: String, ExpressibleByArgument {

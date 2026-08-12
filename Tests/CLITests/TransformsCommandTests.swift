@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 import XCTest
 @testable import CLI
-@testable import MacParakeetCore
+@testable import SplayCore
 
 final class TransformsCommandTests: XCTestCase {
 

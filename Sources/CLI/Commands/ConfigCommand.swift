@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 /// `macparakeet-cli config` — read or write app preferences from the CLI.
 ///

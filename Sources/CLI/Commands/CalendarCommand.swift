@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 /// `macparakeet-cli calendar` — agent-friendly access to the EventKit
 /// pipeline that powers calendar auto-start. Lets a developer or a CI agent

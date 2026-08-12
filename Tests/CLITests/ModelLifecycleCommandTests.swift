@@ -1,7 +1,7 @@
 import ArgumentParser
 import CoreAudio
 import XCTest
-@testable import MacParakeetCore
+@testable import SplayCore
 @testable import CLI
 
 final class ModelLifecycleCommandTests: XCTestCase {

@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 enum FeedbackCategoryArg: String, ExpressibleByArgument, CaseIterable {
     case bug

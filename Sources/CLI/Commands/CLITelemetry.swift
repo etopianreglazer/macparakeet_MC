@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 protocol CLITelemetryMetadataProviding {
     var cliTelemetryMetadata: CLITelemetry.OperationMetadata { get }

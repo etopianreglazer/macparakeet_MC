@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 /// `macparakeet-cli quick-prompts` — manage the live meeting Ask tab quick
 /// prompts. Mirrors `prompts` shape for familiarity, adds `export` / `import`

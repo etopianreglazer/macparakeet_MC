@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 /// `macparakeet-cli transforms` — manage and run user-defined Transforms
 /// (ADR-022) headlessly. Built so an agent operator can provision a fresh

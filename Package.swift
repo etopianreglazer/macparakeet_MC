@@ -24,35 +24,35 @@ let packageDependencies: [Package.Dependency] = [
 let coreDependencies: [Target.Dependency] = [
     .product(name: "GRDB", package: "GRDB.swift"),
     .product(name: "FluidAudio", package: "FluidAudio"),
-    "MacParakeetObjCShims"
+    "SplayObjCShims"
 ] + (skipWhisperKit ? [] : [
     .product(name: "WhisperKit", package: "argmax-oss-swift")
 ])
 
 let package = Package(
-    name: "MacParakeet",
+    name: "Splay",
     platforms: [
         // Note: SPM doesn't support patch-level versions for macOS 14, but the app
         // documents macOS 14.2+ and enforces it at runtime.
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "MacParakeet", targets: ["MacParakeet"]),
+        .executable(name: "Splay", targets: ["Splay"]),
         .executable(name: "macparakeet-cli", targets: ["CLI"]),
-        .library(name: "MacParakeetCore", targets: ["MacParakeetCore"]),
-        .library(name: "MacParakeetViewModels", targets: ["MacParakeetViewModels"])
+        .library(name: "SplayCore", targets: ["SplayCore"]),
+        .library(name: "SplayViewModels", targets: ["SplayViewModels"])
     ],
     dependencies: packageDependencies,
     targets: [
         // Main GUI app
         .executableTarget(
-            name: "MacParakeet",
+            name: "Splay",
             dependencies: [
-                "MacParakeetCore",
-                "MacParakeetViewModels",
+                "SplayCore",
+                "SplayViewModels",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            path: "Sources/MacParakeet",
+            path: "Sources/Splay",
             resources: [.process("Resources")]
         ),
         // macparakeet-cli — versioned public surface (semver, Sources/CLI/CHANGELOG.md).
@@ -61,7 +61,7 @@ let package = Package(
         .executableTarget(
             name: "CLI",
             dependencies: [
-                "MacParakeetCore",
+                "SplayCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/CLI",
@@ -72,15 +72,15 @@ let package = Package(
         // AppKit / AVFoundation / Core Audio — we need an @try/@catch trampoline
         // to convert them into Swift-throwable NSError values. See issue #91.
         .target(
-            name: "MacParakeetObjCShims",
-            path: "Sources/MacParakeetObjCShims",
+            name: "SplayObjCShims",
+            path: "Sources/SplayObjCShims",
             publicHeadersPath: "include"
         ),
         // Shared core library (no UI dependencies)
         .target(
-            name: "MacParakeetCore",
+            name: "SplayCore",
             dependencies: coreDependencies,
-            path: "Sources/MacParakeetCore",
+            path: "Sources/SplayCore",
             exclude: [
                 "Audio/README.md",
                 "Database/README.md",
@@ -92,19 +92,19 @@ let package = Package(
         ),
         // ViewModels library (testable, depends on Core + AppKit/SwiftUI)
         .target(
-            name: "MacParakeetViewModels",
-            dependencies: ["MacParakeetCore"],
-            path: "Sources/MacParakeetViewModels"
+            name: "SplayViewModels",
+            dependencies: ["SplayCore"],
+            path: "Sources/SplayViewModels"
         ),
         // Tests
         .testTarget(
-            name: "MacParakeetTests",
-            dependencies: ["MacParakeet", "MacParakeetCore", "MacParakeetViewModels", "MacParakeetObjCShims"],
-            path: "Tests/MacParakeetTests"
+            name: "SplayTests",
+            dependencies: ["Splay", "SplayCore", "SplayViewModels", "SplayObjCShims"],
+            path: "Tests/SplayTests"
         ),
         .testTarget(
             name: "CLITests",
-            dependencies: ["CLI", "MacParakeetCore"],
+            dependencies: ["CLI", "SplayCore"],
             path: "Tests/CLITests"
         )
     ]

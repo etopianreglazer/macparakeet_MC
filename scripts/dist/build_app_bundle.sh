@@ -4,7 +4,7 @@ set -euo pipefail
 # Build a distributable MacParakeet.app bundle from release executables.
 #
 # This script:
-# - builds the `MacParakeet` app and `macparakeet-cli` products in Release
+# - builds the `Splay` app and `macparakeet-cli` products in Release
 # - assembles a minimal .app bundle (Info.plist + executables + bundled helper binaries)
 # - bundles FFmpeg and yt-dlp into Resources and optionally bundles `node` for yt-dlp JS runtime support
 #
@@ -83,10 +83,10 @@ build_swiftpm() {
 
   pushd "$ROOT_DIR" >/dev/null
   if [[ "$UNIVERSAL" == "1" ]]; then
-    swift build -c release --arch arm64 --arch x86_64 --product MacParakeet
+    swift build -c release --arch arm64 --arch x86_64 --product Splay
     swift build -c release --arch arm64 --arch x86_64 --product macparakeet-cli
   else
-    swift build -c release --product MacParakeet
+    swift build -c release --product Splay
     swift build -c release --product macparakeet-cli
   fi
   popd >/dev/null
@@ -118,13 +118,13 @@ build_xcodebuild() {
     local dd_arm="$XCODE_DERIVED_DATA-arm64"
     local dd_x86="$XCODE_DERIVED_DATA-x86_64"
 
-    xcodebuild build -scheme MacParakeet -configuration Release -destination "platform=OS X,arch=arm64" \
+    xcodebuild build -scheme Splay -configuration Release -destination "platform=OS X,arch=arm64" \
       -derivedDataPath "$dd_arm" CODE_SIGNING_ALLOWED=NO >/dev/null
-    xcodebuild build -scheme MacParakeet -configuration Release -destination "platform=OS X,arch=x86_64" \
+    xcodebuild build -scheme Splay -configuration Release -destination "platform=OS X,arch=x86_64" \
       -derivedDataPath "$dd_x86" CODE_SIGNING_ALLOWED=NO >/dev/null
 
-    local bin_arm="$dd_arm/Build/Products/Release/MacParakeet"
-    local bin_x86="$dd_x86/Build/Products/Release/MacParakeet"
+    local bin_arm="$dd_arm/Build/Products/Release/Splay"
+    local bin_x86="$dd_x86/Build/Products/Release/Splay"
     if [[ ! -f "$bin_arm" || ! -f "$bin_x86" ]]; then
       echo "Failed to locate xcodebuild Release binaries." >&2
       exit 1
@@ -140,11 +140,11 @@ build_xcodebuild() {
     echo "[1/4] Building via xcodebuild (Release)…"
     local dd="$XCODE_DERIVED_DATA"
     # Apple Silicon is the supported shipping target; lock to arm64 to avoid ambiguous destinations.
-    xcodebuild build -scheme MacParakeet -configuration Release -destination "platform=OS X,arch=arm64" \
+    xcodebuild build -scheme Splay -configuration Release -destination "platform=OS X,arch=arm64" \
       -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO >/dev/null
 
     local product_dir="$dd/Build/Products/Release"
-    local bin="$product_dir/MacParakeet"
+    local bin="$product_dir/Splay"
     if [[ ! -f "$bin" ]]; then
       echo "Failed to locate xcodebuild Release binary at: $bin" >&2
       exit 1
@@ -199,8 +199,8 @@ copy_cli_binary() {
 if [[ "$BUILD_SYSTEM" == "swiftpm" ]]; then
   build_swiftpm
   # Locate the release binary produced by SwiftPM.
-  BIN_DIR="$(swiftpm_release_bin_dir MacParakeet)"
-  BIN_PATH="$BIN_DIR/MacParakeet"
+  BIN_DIR="$(swiftpm_release_bin_dir Splay)"
+  BIN_PATH="$BIN_DIR/Splay"
   if [[ ! -f "$BIN_PATH" ]]; then
     echo "Failed to locate Release binary at: $BIN_PATH" >&2
     exit 1
@@ -611,24 +611,24 @@ EOF
 # cannot be mapped back to function names and line numbers. The dSYM is overwritten
 # on every build, so we archive it into dist/ alongside the .app.
 #
-# Usage:  atos -o dist/MacParakeet.dSYM -arch arm64 -l <slide> <address>
+# Usage:  atos -o dist/Splay.dSYM -arch arm64 -l <slide> <address>
 echo "Archiving dSYM for crash symbolication…"
 DSYM_ARCHIVED=0
 if [[ "$BUILD_SYSTEM" == "xcodebuild" ]]; then
   if [[ "$UNIVERSAL" == "1" ]]; then
-    DSYM_SRC="$XCODE_DERIVED_DATA-arm64/Build/Products/Release/MacParakeet.dSYM"
+    DSYM_SRC="$XCODE_DERIVED_DATA-arm64/Build/Products/Release/Splay.dSYM"
   else
-    DSYM_SRC="$XCODE_DERIVED_DATA/Build/Products/Release/MacParakeet.dSYM"
+    DSYM_SRC="$XCODE_DERIVED_DATA/Build/Products/Release/Splay.dSYM"
   fi
 else
-  DSYM_SRC="$BIN_DIR/MacParakeet.dSYM"
+  DSYM_SRC="$BIN_DIR/Splay.dSYM"
 fi
 
 if [[ -d "$DSYM_SRC" ]]; then
-  rm -rf "$DIST_DIR/MacParakeet.dSYM"
-  cp -R "$DSYM_SRC" "$DIST_DIR/MacParakeet.dSYM"
-  DSYM_UUID="$(dwarfdump --uuid "$DIST_DIR/MacParakeet.dSYM" 2>/dev/null | awk '{print $2}' | paste -sd, -)"
-  echo "Archived dSYM: $DIST_DIR/MacParakeet.dSYM (UUID: ${DSYM_UUID:-unknown})"
+  rm -rf "$DIST_DIR/Splay.dSYM"
+  cp -R "$DSYM_SRC" "$DIST_DIR/Splay.dSYM"
+  DSYM_UUID="$(dwarfdump --uuid "$DIST_DIR/Splay.dSYM" 2>/dev/null | awk '{print $2}' | paste -sd, -)"
+  echo "Archived dSYM: $DIST_DIR/Splay.dSYM (UUID: ${DSYM_UUID:-unknown})"
   DSYM_ARCHIVED=1
 else
   echo "Warning: dSYM not found at $DSYM_SRC — crash reports from this build cannot be symbolicated." >&2
@@ -637,5 +637,5 @@ fi
 echo "[4/4] Done: $APP_DIR"
 echo "Metadata: version=$VERSION build=$BUILD_NUMBER commit=$BUILD_GIT_COMMIT built=$BUILD_DATE_UTC source=$BUILD_SOURCE"
 if [[ "$DSYM_ARCHIVED" == "1" ]]; then
-  echo "dSYM: $DIST_DIR/MacParakeet.dSYM (UUID: ${DSYM_UUID:-unknown})"
+  echo "dSYM: $DIST_DIR/Splay.dSYM (UUID: ${DSYM_UUID:-unknown})"
 fi

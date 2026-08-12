@@ -1,7 +1,7 @@
 import ArgumentParser
 import AppKit
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 struct VocabProcessCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

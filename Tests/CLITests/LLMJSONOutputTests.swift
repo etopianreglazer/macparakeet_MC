@@ -1,10 +1,10 @@
 import ArgumentParser
 import XCTest
 @testable import CLI
-@testable import MacParakeetCore
+@testable import SplayCore
 
 /// Schema and validation tests for the CLI's `--json` output mode.
-/// `LLMResultTests` covers the `MacParakeetCore` envelope; this file
+/// `LLMResultTests` covers the `SplayCore` envelope; this file
 /// covers CLI-only concerns: the test-connection success shape and the
 /// `--json` × `--stream` rejection contract.
 final class LLMJSONOutputTests: XCTestCase {

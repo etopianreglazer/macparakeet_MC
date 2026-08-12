@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 enum ExportFormat: String, ExpressibleByArgument, CaseIterable {
     case txt

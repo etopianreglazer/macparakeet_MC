@@ -1,6 +1,6 @@
 import ArgumentParser
 import Foundation
-import MacParakeetCore
+import SplayCore
 
 struct HealthCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
