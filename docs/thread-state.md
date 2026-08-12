@@ -5,7 +5,27 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-11 **thread 4** — island interaction pass, **committed `9166348c`**
+> **Last updated:** 2026-08-11 **thread 5** — cleared the two queued NEXT-THREAD items (both committed,
+> **NOT pushed**; now **10 ahead of `origin/main`**). **(1) Menu card top-anchored resize** (`7958953c`):
+> `SplayCardController.refit` pins the panel's current top edge (`panel.frame.maxY`) and grows *downward*
+> instead of re-centring on `screen.midY`, so flipping Recents/Settings/About no longer makes the top hop.
+> **(2) Identity + code rename** (`4b5acbad`): SwiftPM package + modules `MacParakeet*`→`Splay*`
+> (`Sources/Splay`, `SplayCore`, `SplayViewModels`, `SplayObjCShims`, `Tests/SplayTests`; every `import`;
+> `Package.swift`; `build_app_bundle.sh` SwiftPM product/bin/dSYM/`-scheme` refs → `Splay`; the colocated
+> `Sources/SplayCore/**` subsystem READMEs; `docs/BRANDING.md` rewritten). **KEPT** (data/permission/CLI/
+> plist contracts): bundle id `com.macparakeet.mc`, defaults domain `com.macparakeet.MacParakeet`, data
+> namespace `MacParakeet-MC` (`AppPaths.appFolderName`), `macparakeet-cli` (target `CLI`), and the
+> `MacParakeet*` Info.plist keys. **Validation:** `swift build` clean; `swift test` = 3160 tests, only the
+> **7 pre-existing/environmental** fork-debt failures (AppPaths + 3× SettingsViewModel assert the pre-`-MC`
+> namespace; MainWindowState expects the pre-trim nav; 2 AppHotkeyCoordinator are `AXIsProcessTrusted`-gated)
+> — verified **rename-invariant** by reading each assertion against the kept `MacParakeet-MC` value + full-
+> suite enumeration; the rename introduced **zero** new failures (thread-4's "green" was loose — these were
+> already failing per thread-1's note). **Intentionally left** (optional follow-up polish): `run_app.sh`
+> (xcodebuild dev-runner, broken/unused here) and the `MacParakeetApp` / `Sources/CLI/MacParakeetCLI.swift`
+> type+filenames (not module identity; the CLI keeps its name). **Only item 3 (transcribing amber dot)
+> remains open.**
+>
+> **Last updated (prior):** 2026-08-11 **thread 4** — island interaction pass, **committed `9166348c`**
 > ("Splay: island interaction pass…"; 8 ahead of `origin/main`, **NOT pushed**). Reworked the record dot
 > into ONE persistent **light-red status LED** — base is full `recordRed` now (the dimmed 0.5-opacity
 > version read as a dark/muddy red over the black pill), glows **only while recording**, hit region
@@ -22,16 +42,11 @@
 > green; **3 Vet passes clean of logic issues** (only doc-hygiene findings, all fixed).
 >
 > **★ NEXT-THREAD NOTES (user-requested, 2026-08-11):**
-> 1. **Menu card tab-switch resize re-centres** → the *top edge jumps* when switching tabs, which is
->    annoying for quickly flipping between settings. Make it **top-anchored**: pin the top y and grow
->    *downward* instead of re-centring on screen (`SplayCardController.refit` currently centres via
->    `screen.frame.midY - size.height/2`; keep the panel's current top constant instead).
-> 2. **Rename slice — QUEUED + APPROVED.** User chose **"Identity + code rename"**: rename the SwiftPM
->    package + modules `MacParakeet*`→`Splay*` (dirs under `Sources/`+`Tests/`, every `import`, target/
->    product names, `Package.swift`, build/install scripts) **but KEEP** the bundle id `com.macparakeet.mc`,
->    the `MacParakeet-MC` data namespace, AND the `macparakeet-cli` executable name (data/permission/CLI-
->    contract preservation). Update `docs/BRANDING.md` (it currently says module names stay unchanged).
->    Do it as its own slice, validated by `swift build` + `swift test` (no eyeball needed).
+> 1. ✅ **DONE (thread 5, `7958953c`).** Menu card tab-switch resize is now **top-anchored** —
+>    `SplayCardController.refit` pins `panel.frame.maxY` and grows downward, so the top no longer hops.
+> 2. ✅ **DONE (thread 5, `4b5acbad`).** Identity + code rename `MacParakeet*`→`Splay*` shipped — see the
+>    thread-5 "Last updated" block above for exact scope + the KEEP list. Optional follow-up only: the
+>    `MacParakeetApp` / `Sources/CLI/MacParakeetCLI.swift` type+filenames and `run_app.sh` were left as-is.
 > 3. **Open (undecided):** should the **transcribing** state show an amber dot ("yellow = processing")
 >    instead of the spinner? User floated "yellow or red" but hasn't decided; left as the spinner.
 >
