@@ -165,10 +165,15 @@ final class SplayCardController: NSObject {
         content.layoutSubtreeIfNeeded()
         let size = content.fittingSize
         guard size.width > 100, size.height > 100 else { return }
-        let screen = panel.screen ?? NSScreen.main
+        // Top-anchored resize: pin the panel's current top edge and grow/shrink
+        // *downward*, rather than re-centring on the screen's midY. Re-centring made
+        // the top edge hop up/down on every tab switch — annoying when flipping
+        // quickly between Recents/Settings/About. Horizontal centre stays where the
+        // panel currently sits (tab widths match, so x rarely moves).
+        let currentTop = panel.frame.maxY
         let origin = NSPoint(
-            x: (screen?.frame.midX ?? panel.frame.midX) - size.width / 2,
-            y: (screen?.frame.midY ?? panel.frame.midY) - size.height / 2
+            x: panel.frame.midX - size.width / 2,
+            y: currentTop - size.height
         )
         let frame = NSRect(origin: origin, size: size)
         guard frame != panel.frame else { return }
