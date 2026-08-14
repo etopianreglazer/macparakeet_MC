@@ -5,7 +5,41 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-11 **thread 5** — cleared the two queued NEXT-THREAD items (both committed,
+> **Last updated:** 2026-08-14 **thread 6** — recording/transcribing island light; **committed `83410f57`**
+> (now **12 ahead of `origin/main`**; the docs commit makes 13; **NOT pushed**).
+> **(A) Transcribing = semantic amber (item 3 — DONE, user-confirmed "color scheme works").** `.transcribing`
+> left the brand/themed bucket for a semantic "processing" amber (`#F6C86B`) in `SplayIslandLight.palette`;
+> spinner arc + mark + fiber + desktop bloom all go amber, so the lifecycle reads red→amber→green. Spinner
+> takes its colour from the transcribing palette (`SplayIslandSpinner(color:)`).
+> **(B) Voice-reactive recording glow — the "moving-head wash" (IMPLEMENTED + builds clean; live-test still
+> PENDING — see ⚠️).** A smoothed mic envelope drives the recording glow: sweep amplitude+speed grow with
+> voice (`SplayMotion.talkVector`), a secondary "gobo" wobble adds texture, and wash/pill-halo/fiber-rim
+> brighten. Values dialed in a live HTML tuner (`[[visual-tuning-with-live-tuner]]`) → `SplayTalkGlowTuning`
+> (baseSway 7, swayGain 7, speedGain 0.3, goboAmount 0.45, brightGain 0.5, smoothing 0.95). Master strength =
+> persisted **Settings "Talking glow" slider** (`SplayGlowSettings.shared.talkIntensity`, default 0.8;
+> **0 = full revert** to the calm sway). `TalkEnvelope` is a frame-rate-independent follower (quick attack,
+> calm release).
+> **★ ROOT-CAUSE FIX (why the first talk-glow build "didn't change much"):** the island read mic level off the
+> shared `pillViewModel`, updated only at **1 Hz** by `startPillPolling`; the **fast ~30 fps**
+> `startPillGlowPolling` deliberately bypasses that VM (the Transcribe tile reads `pillViewModel.micLevel`, so
+> 30 fps writes would relayout it) and feeds the floating pill (CALayer) + panel orbs via *isolated* channels
+> — the **island was never on the fast path**. Added its own isolated channel:
+> `MeetingRecordingFlowCoordinator.onLiveAudioLevel` (pushed each fast tick) → `IslandController
+> .updateLiveAudioLevel` → `IslandChromeModel.liveLevel`, read by `IslandView` + `SplayGlowView` (only island
+> surfaces observe that model, already re-rendering per-frame while recording → no tile churn).
+> **⚠️ LIVE-TEST BLOCKED, NOT A CODE BUG:** the last AirPods-from-start recording captured **ZERO buffers**
+> (`mic_first_buffer=false mic_frames=0`, CoreAudio **-10868** on the bluetooth route) — the wedged-CoreAudio
+> state after **146** test sessions today. **No crash occurred** (no crash/hang/jetsam report anywhere; the
+> process stayed alive; the "vanish" the user saw was `install_local.sh`'s `osascript quit` swapping the
+> bundle mid-use). Built-in-mic recordings on these *same* builds captured audio fine (`mic_first_buffer=true`,
+> 10⁵–10⁶ frames), so the glow feed works — there was just no signal. **NEXT THREAD:** un-wedge CoreAudio
+> (`sudo killall coreaudiod`, needs the user's password) **or** test with the **built-in mic**; record + speak,
+> confirm the wash/rim react (offer to tail `~/Library/Logs/MacParakeet/dictation-audio.log` for `mic_frames`
+> climbing + non-zero level), then dial the feel via the Settings slider or the `SplayTalkGlowTuning`
+> constants. Installed build = talk-glow fast-channel fix (`/Applications/Splay.app`, 15:46). **Still unpushed;
+> user has not asked to push.**
+>
+> **Last updated (prior):** 2026-08-11 **thread 5** — cleared the two queued NEXT-THREAD items (both committed,
 > **NOT pushed**; now **10 ahead of `origin/main`**). **(1) Menu card top-anchored resize** (`7958953c`):
 > `SplayCardController.refit` pins the panel's current top edge (`panel.frame.maxY`) and grows *downward*
 > instead of re-centring on `screen.midY`, so flipping Recents/Settings/About no longer makes the top hop.
@@ -47,8 +81,12 @@
 > 2. ✅ **DONE (thread 5, `4b5acbad`).** Identity + code rename `MacParakeet*`→`Splay*` shipped — see the
 >    thread-5 "Last updated" block above for exact scope + the KEEP list. Optional follow-up only: the
 >    `MacParakeetApp` / `Sources/CLI/MacParakeetCLI.swift` type+filenames and `run_app.sh` were left as-is.
-> 3. **Open (undecided):** should the **transcribing** state show an amber dot ("yellow = processing")
->    instead of the spinner? User floated "yellow or red" but hasn't decided; left as the spinner.
+> 3. ✅ **DONE (thread 6, `83410f57`).** Transcribing is now semantic **amber**. User picked "amber spinner
+>    + amber light" (kept the spinner form, recolored accent→amber; the whole transcribing light goes amber).
+> 4. **OPEN — talk-glow live-test + tune (thread 6, code committed):** the voice-reactive recording glow is
+>    built but never validated with real audio (AirPods gave zero buffers, -10868). Un-wedge CoreAudio or use
+>    built-in mic, record + speak, confirm the wash/rim react, then dial the Settings "Talking glow" slider or
+>    `SplayTalkGlowTuning`. If too subtle even with audio: bump `swayGain`/`brightGain` or raise the slider.
 >
 > **thread 3** — installed Imbue **Vet** as a Claude Code skill (see
 > `[[vet-code-review-tool]]` memory / `~/.claude/skills/vet/`; run via `vet "goal" --agentic --agent-harness
