@@ -546,4 +546,16 @@ final class IslandController: NSObject {
     func setHeldOpen(_ open: Bool) {
         chrome.heldOpen = open
     }
+
+    /// Push the live audio level (0…1) into the island's isolated `liveLevel`
+    /// channel at recording rate (~30 fps). This is the island's equivalent of the
+    /// floating pill's CALayer feed — only the island surfaces observe
+    /// `IslandChromeModel`, and they already re-render each frame while recording,
+    /// so this avoids 30 fps writes to the shared pill VM (which the Transcribe tile
+    /// reads). Change-gated so an unchanged level never invalidates the view.
+    func updateLiveAudioLevel(_ level: Float) {
+        let v = Double(min(1, max(0, level)))
+        guard chrome.liveLevel != v else { return }
+        chrome.liveLevel = v
+    }
 }

@@ -11,7 +11,8 @@ import SwiftUI
 /// it still reads as alive on top, even when the desktop bloom is behind a window.
 struct SplayIslandIndicator: View {
     let state: SplayIslandState
-    /// Retained for call-site symmetry; the live level now drives the glow panel.
+    /// The live mic level (0…1, max of mic/system). Envelope-smoothed here to drive
+    /// the talk-reactive recording glow (sweep + rim brightness); unused otherwise.
     var level: Double = 0
     /// On a notched built-in display the pill straddles the camera housing, so a
     /// central dead zone is reserved. External displays render a centred row.
@@ -24,6 +25,8 @@ struct SplayIslandIndicator: View {
     var pressedControl: IslandControl = .none
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Smooths the live mic level into the talk-reactive recording glow.
+    @State private var env = TalkEnvelope()
 
     private var isActive: Bool {
         switch state {
@@ -41,17 +44,28 @@ struct SplayIslandIndicator: View {
         let animated = isActive && !reduceMotion
         TimelineView(.animation(minimumInterval: nil, paused: !animated)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            let m = animated ? motion(at: t) : Motion(fiberOpacity: staticFiberOpacity, markBreathe: (1, 1))
-            let sway = animated ? SplayMotion.lightVector(t) : .zero
-            pill(fiberOpacity: m.fiberOpacity, markBreathe: m.markBreathe, live: animated, sway: sway)
+            // Talk-reactive recording level: the smoothed mic envelope × the master
+            // intensity. Only recording reacts; 0 elsewhere and when the Settings
+            // slider is at 0 (which reverts to the original calm sway).
+            let intensity = SplayGlowSettings.shared.talkIntensity
+            let reactive = animated && state == .recording && intensity > 0
+            let talk = reactive ? env.advance(to: min(1, max(0, level)), at: t) * intensity : 0
+            let m = animated ? motion(at: t, talk: talk) : Motion(fiberOpacity: staticFiberOpacity, markBreathe: (1, 1))
+            let sway = reactive ? SplayMotion.talkVector(t, level: talk)
+                                : (animated ? SplayMotion.lightVector(t) : .zero)
+            pill(fiberOpacity: m.fiberOpacity, markBreathe: m.markBreathe, live: animated, sway: sway, talk: talk)
         }
     }
 
     // MARK: Pill
 
-    private func pill(fiberOpacity: Double, markBreathe: (Double, Double), live: Bool, sway: CGSize) -> some View {
+    private func pill(fiberOpacity: Double, markBreathe: (Double, Double), live: Bool, sway: CGSize, talk: Double = 0) -> some View {
         let size = SplayGeometry.size(for: state)
         let radius = SplayGeometry.bottomRadius(for: state)
+        // Talk reaction: the pill's own halo brightens + grows a touch as you speak,
+        // so the "I'm talking" light reads even when the desktop wash is occluded.
+        let haloOpacity = min(1, SplayGlowTuning.haloOpacity * (1 + SplayTalkGlowTuning.brightGain * talk))
+        let haloRadius = SplayGlowTuning.haloRadius * CGFloat(1 + SplayTalkGlowTuning.brightGain * talk * 0.3)
         return ZStack(alignment: .bottom) {
             UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: radius,
                                    bottomTrailingRadius: radius, topTrailingRadius: 0,
@@ -61,10 +75,9 @@ struct SplayIslandIndicator: View {
                 // The pill's own soft halo carries the island's visible light (the
                 // desktop bloom is faint + often behind a window). It *leans* with
                 // the light vector — the halo shifts toward the current lighting
-                // direction, so the island's edge lighting travels without any
-                // visible moving source.
-                .shadow(color: SplayLight.palette(for: state).bloomHue.opacity(SplayGlowTuning.haloOpacity),
-                        radius: SplayGlowTuning.haloRadius,
+                // direction — and (while recording) brightens with your voice.
+                .shadow(color: SplayLight.palette(for: state).bloomHue.opacity(haloOpacity),
+                        radius: haloRadius,
                         x: sway.width * 0.16, y: 7 + sway.height * 0.12)
                 .overlay(SplayFiberStripe(state: state, opacity: fiberOpacity))
             face(markBreathe: markBreathe, live: live)
@@ -140,7 +153,9 @@ struct SplayIslandIndicator: View {
             // The same dot, now lit red + glowing = "recording". Clicking it stops.
             hoverPop(statusDot, control: .stop, scale: 1.2).transition(spawn)
         case .transcribing:
-            SplayIslandSpinner().frame(width: 14, height: 14).transition(spawn)  // "wrapping up" — no button
+            // "wrapping up" — no button. Amber arc (markColor is the transcribing
+            // palette's amber) so the spinner reads as semantic "processing".
+            SplayIslandSpinner(color: markColor).frame(width: 14, height: 14).transition(spawn)
         case .done:
             // One icon only. At the 280 max width the two-button cluster spilled
             // into the 180px camera dead zone and disappeared behind the housing
@@ -248,11 +263,19 @@ struct SplayIslandIndicator: View {
 
     private struct Motion { let fiberOpacity: Double; let markBreathe: (Double, Double) }
 
-    private func motion(at t: Double) -> Motion {
+    private func motion(at t: Double, talk: Double = 0) -> Motion {
         switch state {
         case .recording:
-            let (voiceOp, _) = SplayMotion.voice(t)
-            let rim = 0.45 + 0.55 * ((voiceOp - 0.5) / 0.5)   // rimlive on the voice beat
+            // Rim brightness = your actual voice (talk > 0): the pill's edge lights
+            // up as you speak — the clearest "I'm talking" cue on the pill itself.
+            // With the talk glow off (talk == 0), fall back to the decorative beat.
+            let rim: Double
+            if talk > 0 {
+                rim = 0.45 + 0.55 * min(1, talk)
+            } else {
+                let (voiceOp, _) = SplayMotion.voice(t)
+                rim = 0.45 + 0.55 * ((voiceOp - 0.5) / 0.5)
+            }
             return Motion(fiberOpacity: rim, markBreathe: SplayMotion.breathe(t, period: 1.9))
         case .transcribing, .dropped:
             let rimsoft = 0.4 + 0.4 * (0.5 - 0.5 * cos(t.truncatingRemainder(dividingBy: 2.2) / 2.2 * 2 * .pi))
@@ -265,9 +288,13 @@ struct SplayIslandIndicator: View {
     private var staticFiberOpacity: Double { state == .dormant ? 0.55 : 1 }
 }
 
-// MARK: - Transcribing spinner (2px ring, accent top edge, per handoff)
+// MARK: - Transcribing spinner (2px ring, amber top edge = semantic "processing")
 
 private struct SplayIslandSpinner: View {
+    /// The rotating arc's colour — the transcribing palette's "processing" amber
+    /// (see `SplayLight.palette(for: .transcribing)`), passed in so the spinner
+    /// stays a status colour rather than the themed accent.
+    var color: Color
     var body: some View {
         TimelineView(.animation) { context in
             let t = context.date.timeIntervalSinceReferenceDate
@@ -276,7 +303,7 @@ private struct SplayIslandSpinner: View {
                 .overlay(
                     Circle()
                         .trim(from: 0, to: 0.25)
-                        .stroke(SplayTheme.shared.accent.islandBright, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                         .rotationEffect(.degrees((t / 0.8).truncatingRemainder(dividingBy: 1) * 360))
                 )
         }

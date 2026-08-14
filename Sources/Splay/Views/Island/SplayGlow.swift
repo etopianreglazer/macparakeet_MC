@@ -26,6 +26,8 @@ struct SplayGlowView: View {
     @Bindable var pill: MeetingRecordingPillViewModel
     @Bindable var chrome: IslandChromeModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Smooths the live mic level into the talk-reactive wash (recording only).
+    @State private var env = TalkEnvelope()
 
     private var state: SplayIslandState? {
         SplayIslandState.resolve(pillState: pill.state, hovered: chrome.isHovered,
@@ -58,8 +60,25 @@ struct SplayGlowView: View {
         let isActive = state == .recording || state == .transcribing || state == .dropped
         if isActive && !reduceMotion {
             TimelineView(.animation) { context in
-                let v = SplayMotion.lightVector(context.date.timeIntervalSinceReferenceDate)
-                SplayAmbientBloom(state: state, pillWidth: width, sway: v)
+                let t = context.date.timeIntervalSinceReferenceDate
+                if state == .recording {
+                    // Voice-reactive "moving-head wash": a smoothed mic envelope,
+                    // scaled by the master intensity, widens/speeds the sweep and
+                    // brightens the wash. Intensity 0 = the original calm sway.
+                    let intensity = SplayGlowSettings.shared.talkIntensity
+                    // Fast (~30 fps) level via the island's isolated channel, not the
+                    // 1 s pill-poll — this is what lets the wash track your voice.
+                    let raw = chrome.liveLevel
+                    let level = env.advance(to: raw, at: t) * intensity
+                    let reactive = intensity > 0
+                    SplayAmbientBloom(
+                        state: state, pillWidth: width,
+                        sway: reactive ? SplayMotion.talkVector(t, level: level) : SplayMotion.lightVector(t),
+                        talk: reactive ? level : 0
+                    )
+                } else {
+                    SplayAmbientBloom(state: state, pillWidth: width, sway: SplayMotion.lightVector(t))
+                }
             }
         } else {
             SplayAmbientBloom(state: state, pillWidth: width)

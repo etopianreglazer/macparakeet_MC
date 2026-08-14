@@ -198,10 +198,45 @@ struct SplayMenuCard: View {
                             .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.5))
                         SplayAccentPicker()
                     }
+                    SplayGlowIntensityControl()
                 }
             )
         case .about:
             return AnyView(SplayAboutBlock(appVersion: appVersion, onOpenRepo: onOpenRepo))
+        }
+    }
+}
+
+// MARK: - Talking-glow intensity slider
+
+/// The "Talking glow" control in Settings — the master strength of the recording
+/// glow's reaction to your voice (0 = off, the calm non-reactive wash). Persists
+/// via `SplayGlowSettings`, so dragging it updates a live recording immediately and
+/// the choice survives relaunch.
+private struct SplayGlowIntensityControl: View {
+    var body: some View {
+        let intensity = SplayGlowSettings.shared.talkIntensity
+        let binding = Binding(
+            get: { SplayGlowSettings.shared.talkIntensity },
+            set: { SplayGlowSettings.shared.talkIntensity = $0 }
+        )
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("Talking glow")
+                    .font(.system(size: 11.5, weight: .medium))
+                    .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.5))
+                Spacer()
+                Text(intensity <= 0.001 ? "Off" : "\(Int((intensity * 100).rounded()))%")
+                    .font(.system(size: 11, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(SplayCardPalette.brandTint(0.85))
+            }
+            Slider(value: binding, in: 0...1.5)
+                .controlSize(.small)
+                .tint(SplayCardPalette.brand)
+            Text("How much the recording light sweeps and brightens with your voice.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.4))
         }
     }
 }

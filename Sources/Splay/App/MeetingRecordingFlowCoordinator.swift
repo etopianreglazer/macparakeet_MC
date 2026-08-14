@@ -50,6 +50,12 @@ final class MeetingRecordingFlowCoordinator {
 
     private var stateMachine = MeetingRecordingFlowStateMachine()
     private var pillController: MeetingRecordingPillController?
+    /// Pushes the fast (~30 fps) live audio level to the ambient island's isolated
+    /// glow channel while recording (wired to `IslandController.updateLiveAudioLevel`
+    /// in `AppEnvironmentConfigurer`). Kept separate from the 1 s `pillViewModel`
+    /// poll so the island's talk-reactive wash tracks your voice without relayout-
+    /// churning the Transcribe tile that reads `pillViewModel.micLevel`.
+    var onLiveAudioLevel: ((Float) -> Void)?
     /// Long-lived view model shared with the Transcribe-tab tile so the tile
     /// can render live recording state. Owned by `AppEnvironmentConfigurer`,
     /// passed in via init. Reset to `.idle` (not nilled) on flow teardown.
@@ -954,6 +960,9 @@ final class MeetingRecordingFlowCoordinator {
                     guard !Task.isCancelled else { break }
                     // Floating pill rosette: straight to CALayer opacity.
                     pillController?.updateLiveAudioLevel(max(mic, system))
+                    // Ambient island: the same fast level via its isolated glow
+                    // channel, so the recording wash tracks your voice in real time.
+                    onLiveAudioLevel?(max(mic, system))
                     // Panel orbs: quantized + change-gated, so a write (and the
                     // leaf re-render it triggers) fires only on a visible step.
                     if let panelViewModel {
@@ -966,6 +975,9 @@ final class MeetingRecordingFlowCoordinator {
                             panelViewModel.systemLevel = systemQ
                         }
                     }
+                } else {
+                    // Not actively recording: settle the island glow to silence.
+                    onLiveAudioLevel?(0)
                 }
                 try? await Task.sleep(for: .milliseconds(33))
             }

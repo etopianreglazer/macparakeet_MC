@@ -2,9 +2,9 @@ import SwiftUI
 
 // The user-selectable accent (design: "Wind Palette Export" / SevenAccentsColorVariations).
 // Seven accents, each a full role set. Only the BRAND surfaces are themed — the
-// island's idle/ready/transcribing glow + mark, and the card's brand (buttons,
-// glyph tile, toggles, selection). The status colours (recording red, done green,
-// warning amber) are semantic and never themed, per the export's
+// island's idle/ready glow + mark, and the card's brand (buttons, glyph tile,
+// toggles, selection). The status colours (recording red, transcribing amber,
+// done green, warning amber) are semantic and never themed, per the export's
 // `--state-record / --state-done / --state-warn` note.
 
 struct SplayAccent: Identifiable, Equatable, Sendable {

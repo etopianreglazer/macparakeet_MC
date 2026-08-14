@@ -42,10 +42,12 @@ enum SplayLight {
     /// Active-state bloom is deliberately dim (`SplayGlowTuning.peak`): the wide
     /// wash is a faint haze and the pill's own leaning halo carries the presence.
     ///
-    /// The **brand** states (dormant / ready / transcribing / dropped) wear the
-    /// user's chosen accent (`SplayTheme` — the seven-accent palette). The
-    /// **status** states (recording / done / warning / failed) are semantic and
-    /// never themed, per the palette export's `--state-*` note.
+    /// The **brand** states (dormant / ready / dropped) wear the user's chosen
+    /// accent (`SplayTheme` — the seven-accent palette). The **status** states
+    /// (recording / transcribing / done / warning / failed) are semantic and never
+    /// themed, per the palette export's `--state-*` note — transcribing joined the
+    /// status set (2026-08-11) as the "processing" amber, completing the island's
+    /// status-light lifecycle (recording red → transcribing amber → done green).
     @MainActor
     static func palette(for state: SplayIslandState) -> Palette {
         let peak = SplayGlowTuning.peak
@@ -55,7 +57,14 @@ enum SplayLight {
             return brandPalette(accent, bloomAlpha: 0.30, fiberSoftAlpha: 0.5)
         case .ready:
             return brandPalette(accent, bloomAlpha: peak, fiberSoftAlpha: 0.7)
-        case .transcribing, .dropped:
+        case .transcribing:
+            // "Processing" amber — a semantic status colour (not themed) that reads
+            // as the middle of the status-light lifecycle: recording red →
+            // transcribing amber → done green. Same amber family as `.warning`
+            // (they never co-occur). Red is reserved for recording, so amber is the
+            // unambiguous "working" hue. The spinner arc uses this same colour.
+            return Palette(bloom: rgba(246, 200, 107, peak), bloomHue: rgb(246, 200, 107), fiber: rgb(0xF6, 0xC8, 0x6B), fiberSoft: rgba(246, 200, 107, 0.7))
+        case .dropped:
             return brandPalette(accent, bloomAlpha: peak, fiberSoftAlpha: 0.7)
         case .recording:
             // Light-vector model (2026-08-07): one soft, dim, contained light whose
@@ -103,6 +112,80 @@ enum SplayGlowTuning {
     static let haloRadius: CGFloat = 26   // the soft glow hugging the pill
     static let haloOpacity: Double = 0.64
     static let rimOpacity: Double = 0.40
+}
+
+// MARK: - Talk-reactive recording glow (voice-driven "moving-head wash")
+
+/// The *character* of the recording glow's reaction to your voice, dialed in the
+/// live tuner (2026-08-13). Think of a moving-head stage light: louder speech
+/// widens and speeds up the wash's sweep, adds a little textured "gobo" wobble,
+/// and brightens it — a level-meter you can feel. These constants are fixed; the
+/// **overall strength** is the runtime `SplayGlowSettings.shared.talkIntensity`
+/// (the Settings slider). Set that to 0 to fully revert to the calm, non-reactive
+/// wash (which then uses the original `SplayGlowTuning.sway`).
+enum SplayTalkGlowTuning {
+    static let brightGain: Double = 0.5     // louder → brighter + slightly larger wash
+    static let baseSway: CGFloat = 7        // calm directional sway while silent (pt)
+    static let swayGain: CGFloat = 7        // louder → wider sweep (added pt)
+    static let speedGain: Double = 0.3      // louder → faster sweep
+    static let goboAmount: Double = 0.45    // secondary textured wobble (the "gobo")
+    static let smoothing: Double = 0.95     // 0.4 snappy … 0.95 calm follow
+    static let defaultIntensity: Double = 0.8
+
+    /// Attack/release time constants (seconds) derived from `smoothing`, so the
+    /// envelope follower is frame-rate independent. Attack is quicker than release
+    /// — the light lifts fast as you speak and eases down like a VU meter.
+    static var releaseTau: Double { 0.05 + (smoothing - 0.4) / (0.95 - 0.4) * 0.55 }
+    static var attackTau: Double { max(0.05, releaseTau * 0.28) }
+}
+
+/// Runtime master strength of the talk-reactive glow — the Settings "Talking
+/// glow" slider (0…1.5, 0 = off/revert). `@Observable` + persisted, mirroring
+/// `SplayTheme`, so moving the slider updates a live recording immediately and
+/// the choice survives relaunch.
+@MainActor
+@Observable
+final class SplayGlowSettings {
+    static let shared = SplayGlowSettings()
+    static let defaultsKey = "splay.talkGlowIntensity"
+
+    var talkIntensity: Double {
+        didSet {
+            guard talkIntensity != oldValue else { return }
+            UserDefaults.standard.set(talkIntensity, forKey: Self.defaultsKey)
+        }
+    }
+
+    private init() {
+        // Distinguish "never set" from a deliberate 0 (off): `double(forKey:)`
+        // returns 0 for a missing key, which would masquerade as the off value.
+        if UserDefaults.standard.object(forKey: Self.defaultsKey) != nil {
+            talkIntensity = UserDefaults.standard.double(forKey: Self.defaultsKey)
+        } else {
+            talkIntensity = SplayTalkGlowTuning.defaultIntensity
+        }
+    }
+}
+
+/// A frame-rate-independent attack/release envelope follower for the live audio
+/// level. Held as SwiftUI `@State` (a reference type), so it can be advanced
+/// inside a `TimelineView` body without invalidating the view — mutating a
+/// stored class property doesn't change the `@State` reference, so there's no
+/// "modifying state during view update" churn.
+@MainActor
+final class TalkEnvelope {
+    private var level: Double = 0
+    private var lastT: Double = 0
+
+    /// Advance toward `target` (0…1) at absolute time `t` (seconds); returns the
+    /// smoothed level. Rising uses the quick attack τ, falling the slower release τ.
+    func advance(to target: Double, at t: Double) -> Double {
+        let dt = lastT == 0 ? 1.0 / 60 : min(0.1, max(0, t - lastT))
+        lastT = t
+        let tau = target > level ? SplayTalkGlowTuning.attackTau : SplayTalkGlowTuning.releaseTau
+        level += (target - level) * (1 - exp(-dt / tau))
+        return level
+    }
 }
 
 // MARK: - Geometry (handoff tables)
@@ -170,15 +253,19 @@ enum SplayGeometry {
 
 /// The colour never touches the pill's face — it radiates outward into the
 /// wallpaper. Layer 1 is a broad soft halo; layer 2 a tighter, brighter core.
-/// `intensity` (0…1) modulates opacity/scale: for recording it is fed by the
-/// live audio level + the irregular `voice` beat so it reads as a level meter;
-/// otherwise a slow `latent` breath.
+/// `sway` leans the whole wash directionally (the light's *direction* shifts with
+/// no visible moving source); `talk` (the live recording voice level) brightens +
+/// enlarges it so it reads as a level meter. Both are 0 for static states, leaving
+/// the base look unchanged.
 struct SplayAmbientBloom: View {
     let state: SplayIslandState
     let pillWidth: CGFloat
     /// The light "vector": a small directional offset that leans the whole light,
     /// so the island's lighting *direction* shifts with no visible moving source.
     var sway: CGSize = .zero
+    /// Live voice level (smoothed envelope × master intensity, ~0…1.2) for the
+    /// recording state — brightens + enlarges the wash. 0 leaves the base look.
+    var talk: Double = 0
 
     var body: some View {
         let color = SplayLight.palette(for: state).bloom
@@ -192,12 +279,16 @@ struct SplayAmbientBloom: View {
         let b1: CGFloat = dormant ? 62 : SplayGlowTuning.blurL1
         let b2: CGFloat = dormant ? 30 : SplayGlowTuning.blurL2
         let l2Height: CGFloat = dormant ? 110 : l2Width * 0.66
+        // Talk reaction: louder speech brightens + enlarges the wash (the "moving
+        // head" getting brighter as it sweeps). `talk` is 0 for every other state.
+        let bright = 1 + SplayTalkGlowTuning.brightGain * talk
+        let sizeMul = CGFloat(1 + SplayTalkGlowTuning.brightGain * talk * 0.35)
         ZStack(alignment: .top) {
-            bloom(color: color, size: l1Size, endFraction: 0.92, blur: b1)
-                .opacity(l1Op)
+            bloom(color: color, size: CGSize(width: l1Size.width * sizeMul, height: l1Size.height * sizeMul), endFraction: 0.92, blur: b1)
+                .opacity(min(1, l1Op * bright))
                 .offset(x: sway.width, y: center + sway.height)
-            bloom(color: color, size: CGSize(width: l2Width, height: l2Height), endFraction: 0.90, blur: b2)
-                .opacity(l2Op)
+            bloom(color: color, size: CGSize(width: l2Width * sizeMul, height: l2Height * sizeMul), endFraction: 0.90, blur: b2)
+                .opacity(min(1, l2Op * bright))
                 .offset(x: sway.width, y: center + sway.height)
         }
         .frame(width: pillWidth, height: 0, alignment: .top)   // anchor to pill top-centre
@@ -365,6 +456,26 @@ enum SplayMotion {
             width: SplayGlowTuning.sway * cos(a),
             height: SplayGlowTuning.sway * 0.5 * sin(a * SplayGlowTuning.swirl)
         )
+    }
+
+    /// The recording light vector when talk-reactivity is on: the same organic
+    /// Lissajous sway as `lightVector`, but its amplitude + speed are lifted by
+    /// the live voice `level` (already the smoothed envelope × the master
+    /// intensity), plus a faster secondary "gobo" wobble scaled by the same level
+    /// — so speaking makes the wash sweep wider, quicker, and more textured, like
+    /// a moving head, and silence lets it settle. `level == 0` reduces to the calm
+    /// base sway with no wobble. Ported from the live tuner (2026-08-13).
+    static func talkVector(_ time: Double, level: Double) -> CGSize {
+        let L = CGFloat(level)
+        let speed = SplayGlowTuning.speed * (1 + SplayTalkGlowTuning.speedGain * level)
+        let a = time * speed * 2
+        let amp = SplayTalkGlowTuning.baseSway + SplayTalkGlowTuning.swayGain * L
+        var sx = amp * cos(a)
+        var sy = amp * 0.5 * sin(a * SplayGlowTuning.swirl)
+        let g = CGFloat(SplayTalkGlowTuning.goboAmount) * L * amp * 0.6
+        sx += g * cos(a * 3.7 + 1.3)
+        sy += g * sin(a * 4.9)
+        return CGSize(width: sx, height: sy)
     }
 }
 

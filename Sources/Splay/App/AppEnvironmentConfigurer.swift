@@ -402,6 +402,15 @@ final class AppEnvironmentConfigurer {
             island = nil
         }
 
+        // Feed the island's talk-reactive recording glow the fast (~30 fps) live
+        // audio level through its own isolated channel — the recording fast-poll
+        // pushes here (see MeetingRecordingFlowCoordinator.onLiveAudioLevel →
+        // IslandController.updateLiveAudioLevel → IslandChromeModel.liveLevel), so
+        // the wash tracks your voice in real time instead of the 1 s pill cadence.
+        meetingCoordinator.onLiveAudioLevel = { [weak island] level in
+            island?.updateLiveAudioLevel(level)
+        }
+
         // Calendar auto-start (ADR-017 Phases 1 + 2 — reminders +
         // pre-meeting countdown toast). The coordinator is a no-op when
         // `calendarAutoStartMode == .off` so it's safe to start

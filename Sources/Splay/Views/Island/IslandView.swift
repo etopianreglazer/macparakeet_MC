@@ -215,6 +215,11 @@ final class IslandChromeModel {
     var pressedControl: IslandControl = .none
     /// Distance from the panel's physically hidden top to the housing's lower edge.
     var notchCueInset: CGFloat = 0
+    /// Live audio level (0…1), pushed at ~30 fps while recording via
+    /// `IslandController.updateLiveAudioLevel` — the island's own isolated channel
+    /// so the talk-reactive glow tracks your voice in real time, without 30 fps
+    /// writes to the shared pill VM. Only the island surfaces observe this model.
+    var liveLevel: Double = 0
     init() {}
 }
 
@@ -252,7 +257,7 @@ struct IslandView: View {
             if let splayState = mappedState {
                 SplayIslandIndicator(
                     state: splayState,
-                    level: Double(max(pill.micLevel, pill.systemLevel)),
+                    level: chrome.liveLevel,
                     notchAttached: chrome.isNotchResting,
                     hoveredControl: chrome.hoveredControl,
                     pressedControl: chrome.pressedControl
