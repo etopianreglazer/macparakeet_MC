@@ -455,6 +455,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onOpenRecentCard: { [weak self] in
                     self?.presentRecentCard()
                 },
+                onOpenErrorCard: { [weak self] message in
+                    self?.presentErrorCard(message: message)
+                },
                 onToggleMeetingRecordingFromHotkey: { [weak self] in
                     guard let self, !self.onboardingWindowController.isVisible else { return }
                     self.toggleMeetingRecording(originatesFromWindow: false, trigger: .hotkey)
@@ -748,6 +751,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Present the menu card opened to the recents tab (the last five recordings).
     private func presentRecentCard() { presentMenuCard(startingTab: .recents) }
+
+    /// Present a small card carrying a recording failure's actual message. The
+    /// island's failed light is wordless, so this card is the one place the app
+    /// says *why* — a failure must never be a silent vanish. Opened by clicking
+    /// the failed island (which also clears the held failure state).
+    private func presentErrorCard(message: String) {
+        splayCardController.onDismiss = { [weak self] in self?.islandController?.setHeldOpen(false) }
+        islandController?.setHeldOpen(true)
+        splayCardController.present { dismiss, _ in
+            AnyView(SplayCardView(
+                chrome: SplayCardChrome(
+                    glyph: "",
+                    title: "Recording failed",
+                    message: message,
+                    width: 320,
+                    danger: true,
+                    primaryLabel: "OK"
+                ),
+                // Custom header: the shell's glyph tile renders `Text`, so an SF
+                // Symbol name would appear as its literal string — draw the
+                // warning symbol as an `Image` in the same tile styling instead.
+                header: AnyView(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(SplayCardPalette.tileFill(danger: true))
+                        .frame(width: 46, height: 46)
+                        .overlay(
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 19, weight: .semibold))
+                                .foregroundStyle(SplayCardPalette.tint(danger: true))
+                        )
+                ),
+                onPrimary: { dismiss() }
+            ))
+        }
+    }
 
     /// Present the menu card opened to the settings tab.
     private func presentSettingsCard() { presentMenuCard(startingTab: .settings) }

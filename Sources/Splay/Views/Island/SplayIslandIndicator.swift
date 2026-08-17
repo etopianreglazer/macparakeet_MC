@@ -14,6 +14,12 @@ struct SplayIslandIndicator: View {
     /// The live mic level (0…1, max of mic/system). Envelope-smoothed here to drive
     /// the talk-reactive recording glow (sweep + rim brightness); unused otherwise.
     var level: Double = 0
+    /// Whether audio frames are actually arriving (1 Hz writer-health signal).
+    /// While recording, false renders the "waiting" register: the recording
+    /// light holds a motionless warning amber instead of the breathing red —
+    /// dead ≠ silent (Talkify's doctrine). Geometry, face, and controls stay
+    /// the recording ones (the stop click still works); only the light changes.
+    var audioAlive: Bool = true
     /// On a notched built-in display the pill straddles the camera housing, so a
     /// central dead zone is reserved. External displays render a centred row.
     var notchAttached: Bool = true
@@ -35,6 +41,14 @@ struct SplayIslandIndicator: View {
         }
     }
 
+    /// Recording with no frames arriving — the amber waiting register.
+    private var waiting: Bool { state == .recording && !audioAlive }
+
+    /// The state whose *palette* paints the light. Only diverges from `state`
+    /// in the waiting register, where the recording geometry keeps the warning
+    /// amber (`.warning` and live recording never co-occur).
+    private var lightState: SplayIslandState { waiting ? .warning : state }
+
     var body: some View {
         // ONE stable render path (not an if/else that swaps view identity), so the
         // pill's width / height / bottom-radius / colour *interpolate* between
@@ -48,12 +62,18 @@ struct SplayIslandIndicator: View {
             // intensity. Only recording reacts; 0 elsewhere and when the Settings
             // slider is at 0 (which reverts to the original calm sway).
             let intensity = SplayGlowSettings.shared.talkIntensity
-            let reactive = animated && state == .recording && intensity > 0
+            let reactive = animated && state == .recording && intensity > 0 && audioAlive
             let talk = reactive ? env.advance(to: min(1, max(0, level)), at: t) * intensity : 0
-            let m = animated ? motion(at: t, talk: talk) : Motion(fiberOpacity: staticFiberOpacity, markBreathe: (1, 1))
-            let sway = reactive ? SplayMotion.talkVector(t, level: talk)
-                                : (animated ? SplayMotion.lightVector(t) : .zero)
+            // The waiting register is deliberately *motionless* — a still amber
+            // is what makes a dead mic legible against ordinary quiet speech.
+            let m = (animated && !waiting) ? motion(at: t, talk: talk) : Motion(fiberOpacity: staticFiberOpacity, markBreathe: (1, 1))
+            let sway = waiting ? .zero
+                : (reactive ? SplayMotion.talkVector(t, level: talk)
+                            : (animated ? SplayMotion.lightVector(t) : .zero))
             pill(fiberOpacity: m.fiberOpacity, markBreathe: m.markBreathe, live: animated, sway: sway, talk: talk)
+                // Ease the red ↔ amber light swap (dead-mic waiting register)
+                // instead of snapping it mid-frame.
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.42), value: audioAlive)
         }
     }
 
@@ -76,10 +96,10 @@ struct SplayIslandIndicator: View {
                 // desktop bloom is faint + often behind a window). It *leans* with
                 // the light vector — the halo shifts toward the current lighting
                 // direction — and (while recording) brightens with your voice.
-                .shadow(color: SplayLight.palette(for: state).bloomHue.opacity(haloOpacity),
+                .shadow(color: SplayLight.palette(for: lightState).bloomHue.opacity(haloOpacity),
                         radius: haloRadius,
                         x: sway.width * 0.16, y: 7 + sway.height * 0.12)
-                .overlay(SplayFiberStripe(state: state, opacity: fiberOpacity))
+                .overlay(SplayFiberStripe(state: lightState, opacity: fiberOpacity))
             face(markBreathe: markBreathe, live: live)
                 .frame(width: size.width, height: size.height, alignment: .bottom)
         }
@@ -122,7 +142,7 @@ struct SplayIslandIndicator: View {
     /// The mark/glyph colour tracks the state's light (recording → coral, done →
     /// green, transcribing → lavender). Live feedback (2026-08-07): the logo used
     /// to stay lavender in every state; it should change colour to match the state.
-    private var markColor: Color { SplayLight.palette(for: state).fiber }
+    private var markColor: Color { SplayLight.palette(for: lightState).fiber }
 
     @ViewBuilder private func leftCluster(markBreathe: (Double, Double), live: Bool) -> some View {
         switch state {
@@ -221,7 +241,7 @@ struct SplayIslandIndicator: View {
             .frame(width: 8, height: 8)   // small — a status light, not a button
             .overlay(Circle().strokeBorder(.white.opacity(recording ? 0.3 : 0.12), lineWidth: 0.5))
             // Glow ONLY while recording (design brief): the resting bar stays quiet.
-            .shadow(color: recording ? SplayLight.recordRed.opacity(0.85) : .clear,
+            .shadow(color: recording ? statusDotColor.opacity(0.85) : .clear,
                     radius: recording ? 5 : 0)
     }
 
@@ -229,8 +249,11 @@ struct SplayIslandIndicator: View {
     /// (Dimming this to 50% opacity over the near-black pill produced a dark, muddy
     /// red, which read as an odd colour.) Recording doesn't darken or lighten the
     /// hue — it just adds the glow below, so rest = light red, recording = the same
-    /// light red, lit.
-    private var statusDotColor: Color { SplayLight.recordRed }
+    /// light red, lit. In the waiting register (recording, no frames arriving)
+    /// the LED joins the rest of the light on warning amber.
+    private var statusDotColor: Color {
+        waiting ? SplayLight.palette(for: .warning).fiber : SplayLight.recordRed
+    }
 
     @ViewBuilder private func mark(markBreathe: (Double, Double), live: Bool) -> some View {
         // Give the mark its own soft, breathing glow in the state's colour, so the

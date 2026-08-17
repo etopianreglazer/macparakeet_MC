@@ -30,8 +30,15 @@ struct SplayGlowView: View {
     @State private var env = TalkEnvelope()
 
     private var state: SplayIslandState? {
-        SplayIslandState.resolve(pillState: pill.state, hovered: chrome.isHovered,
-                                 idleVisible: chrome.idleVisible, heldOpen: chrome.heldOpen)
+        let resolved = SplayIslandState.resolve(pillState: pill.state, hovered: chrome.isHovered,
+                                                idleVisible: chrome.idleVisible, heldOpen: chrome.heldOpen)
+        // Waiting register (dead ≠ silent): recording with no frames arriving
+        // shows the *warning* light — a motionless amber bloom (the static
+        // branch below) in place of the voice-reactive red wash. Same max
+        // geometry, so only the colour and the motion change. Self-healing:
+        // the moment frames flow the resolve returns to `.recording`.
+        if resolved == .recording, !chrome.audioAlive { return .warning }
+        return resolved
     }
 
     var body: some View {
@@ -81,8 +88,12 @@ struct SplayGlowView: View {
                 }
             }
         } else {
+            // The waiting register (`.warning` while recording) is deliberately
+            // *motionless* — no breathe — so a dead mic reads as "stuck", clearly
+            // distinct from every alive state's gentle life.
             SplayAmbientBloom(state: state, pillWidth: width)
-                .modifier(Breathe(period: 7, scaleRange: 1...1, opacityRange: 0.7...1, animate: !reduceMotion))
+                .modifier(Breathe(period: 7, scaleRange: 1...1, opacityRange: 0.7...1,
+                                  animate: !reduceMotion && state != .warning))
         }
     }
 }

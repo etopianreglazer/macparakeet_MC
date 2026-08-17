@@ -220,6 +220,12 @@ final class IslandChromeModel {
     /// so the talk-reactive glow tracks your voice in real time, without 30 fps
     /// writes to the shared pill VM. Only the island surfaces observe this model.
     var liveLevel: Double = 0
+    /// Whether audio frames are actually being written while recording (pushed
+    /// at 1 Hz from the coordinator's writer-health poll). False turns the
+    /// recording light into a motionless warning amber — dead ≠ silent: a mic
+    /// that delivers nothing is *shown*, the recording is never failed for it.
+    /// Self-healing: flips back the moment frames flow.
+    var audioAlive = true
     init() {}
 }
 
@@ -258,6 +264,7 @@ struct IslandView: View {
                 SplayIslandIndicator(
                     state: splayState,
                     level: chrome.liveLevel,
+                    audioAlive: chrome.audioAlive,
                     notchAttached: chrome.isNotchResting,
                     hoveredControl: chrome.hoveredControl,
                     pressedControl: chrome.pressedControl

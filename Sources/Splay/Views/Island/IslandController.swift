@@ -558,4 +558,12 @@ final class IslandController: NSObject {
         guard chrome.liveLevel != v else { return }
         chrome.liveLevel = v
     }
+
+    /// Push whether audio frames are actually arriving (1 Hz, from the
+    /// coordinator's writer-health poll). While recording, false swaps the
+    /// island's light for the motionless warning amber (dead ≠ silent).
+    func updateAudioAlive(_ alive: Bool) {
+        guard chrome.audioAlive != alive else { return }
+        chrome.audioAlive = alive
+    }
 }

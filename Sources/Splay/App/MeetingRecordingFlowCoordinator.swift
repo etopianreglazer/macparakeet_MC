@@ -56,6 +56,12 @@ final class MeetingRecordingFlowCoordinator {
     /// poll so the island's talk-reactive wash tracks your voice without relayout-
     /// churning the Transcribe tile that reads `pillViewModel.micLevel`.
     var onLiveAudioLevel: ((Float) -> Void)?
+    /// Pushes "is audio actually arriving" (from the 1 s writer-health poll) to
+    /// the island so a dead input shows as a motionless amber waiting light
+    /// while recording — dead ≠ silent; the recording itself is never failed
+    /// for silence. Wired to `IslandController.updateAudioAlive` in
+    /// `AppEnvironmentConfigurer`.
+    var onAudioAlive: ((Bool) -> Void)?
     /// Long-lived view model shared with the Transcribe-tab tile so the tile
     /// can render live recording state. Owned by `AppEnvironmentConfigurer`,
     /// passed in via init. Reset to `.idle` (not nilled) on flow teardown.
@@ -70,7 +76,11 @@ final class MeetingRecordingFlowCoordinator {
     private var pillGlowPollingTask: Task<Void, Never>?
     private var transcriptObservationTask: Task<Void, Never>?
     private var speechWarmUpObservationTask: Task<Void, Never>?
-    private var lastCaptureHealthSample: (frames: Int64, bytes: Int64, at: Date)?
+    private var lastPushedAudioAlive = true
+    /// The full text of the failure the island is currently holding (see
+    /// `isAwaitingFailureDismissal`), so the click that clears it can show the
+    /// *why* in a card instead of discarding the message.
+    private(set) var heldFailureMessage: String?
     private var activeFlowSettlementWaiters: [CheckedContinuation<Void, Never>] = []
     private var completedTranscription: Transcription?
     private var currentMeetingOperationContext: ObservabilityOperationContext?
@@ -220,6 +230,7 @@ final class MeetingRecordingFlowCoordinator {
     /// island to idle so the next recording can start.
     func dismissFailure() {
         guard isAwaitingFailureDismissal else { return }
+        heldFailureMessage = nil
         sendEvent(.dismissRequested)
     }
 
@@ -681,6 +692,9 @@ final class MeetingRecordingFlowCoordinator {
             }
 
         case .showError(let message):
+            // Hold the full text: the island's failed light is wordless, so the
+            // click that dismisses it opens a card carrying this message.
+            heldFailureMessage = message
             // Real-time audible cue so a recording failure is never silent —
             // the user is often away from the screen (walking-around dictation)
             // when a cold Bluetooth mic yields nothing. Separate from the
@@ -882,49 +896,58 @@ final class MeetingRecordingFlowCoordinator {
                     break
                 }
 
-                // A capture engine can occasionally remain marked `.full`
-                // after an input/device route has stopped delivering buffers.
-                // Validate both writer progress and the on-disk byte snapshot
-                // every second. Asset writers may buffer file bytes, so only a
-                // stale successful append triggers failure; byte movement is
-                // recorded alongside it to avoid false positives.
-                if captureMode == .full,
-                   stateMachine.state == .recording,
-                   pillViewModel.state == .recording,
-                   isCaptureStalled(captureHealth) {
-                    failActiveCapture(message: "Meeting recording stalled: no audio was written for 10 seconds. Check the selected input and permissions; this recording was not marked complete.")
-                    break
-                }
+                // Dead ≠ silent (Talkify's doctrine, adopted 2026-08-17): a mic
+                // that stops delivering buffers is *shown* — the island's light
+                // holds a motionless warning amber — never killed. The old 10 s
+                // "stall" guillotine lived here; it raced cold-Bluetooth mics
+                // (AirPods take ~10 s of HFP warm-up before the first buffer)
+                // and deleted the very session it claimed to protect. Recovery
+                // is automatic: the moment frames flow again the light goes red.
+                updateAudioAliveness(
+                    captureHealth,
+                    isActivelyRecording: captureMode == .full
+                        && stateMachine.state == .recording
+                        && pillViewModel.state == .recording
+                )
 
                 try? await Task.sleep(for: .seconds(1))
             }
         }
     }
 
-    private func isCaptureStalled(_ health: MeetingCaptureHealth, now: Date = Date()) -> Bool {
-        guard health.mode == .full, let startedAt = health.startedAt else {
-            lastCaptureHealthSample = nil
-            return false
-        }
-        let sample = (frames: health.writtenFrameCount, bytes: health.persistedByteCount, at: now)
-        defer { lastCaptureHealthSample = sample }
+    /// Startup grace before silence can read as "dead": a healthy engine lands
+    /// its first buffer well under a second, so a 2 s grace never ambers a
+    /// normal start, while a cold Bluetooth route goes amber quickly enough to
+    /// explain itself live.
+    private static let audioAliveStartupGrace: TimeInterval = 2
+    /// How stale the last successful append may be before the audio counts as
+    /// dead. The poll runs at 1 Hz, so 2 s tolerates one missed tick.
+    private static let audioAliveStaleAfter: TimeInterval = 2
 
-        // Startup and an intentional resume need a little time for the first
-        // AVFoundation buffer. Ten seconds is long enough to avoid noisy
-        // device-route transitions, short enough to avoid a silent meeting.
-        guard now.timeIntervalSince(startedAt) >= 10 else { return false }
-        guard let lastWrite = health.lastSuccessfulWriteAt else { return true }
-        guard now.timeIntervalSince(lastWrite) >= 10 else { return false }
-
-        // File growth is useful evidence, but AVAssetWriter is permitted to
-        // buffer it. Writer-frame stagnation plus a stale successful append is
-        // the reliable failure signal.
-        if let previous = lastCaptureHealthSample,
-           previous.frames == sample.frames,
-           previous.bytes == sample.bytes {
-            return true
+    /// Derive "is audio actually arriving" from writer health and push changes
+    /// to the island's amber waiting light. Purely visual — never fails the
+    /// recording; silence is not a failure (see the poll comment above).
+    private func updateAudioAliveness(_ health: MeetingCaptureHealth, isActivelyRecording: Bool, now: Date = Date()) {
+        let alive: Bool
+        if !isActivelyRecording {
+            // Paused / stopping / transcribing: settle back to the normal light.
+            alive = true
+        } else if let startedAt = health.startedAt,
+                  now.timeIntervalSince(startedAt) < Self.audioAliveStartupGrace {
+            alive = true
+        } else if let lastWrite = health.lastSuccessfulWriteAt,
+                  now.timeIntervalSince(lastWrite) < Self.audioAliveStaleAfter {
+            alive = true
+        } else if health.startedAt == nil {
+            // No session baseline to judge against — don't amber on unknowns.
+            alive = true
+        } else {
+            alive = false
         }
-        return true
+        guard alive != lastPushedAudioAlive else { return }
+        lastPushedAudioAlive = alive
+        AudioCaptureDiagnostics.append("meeting_audio_alive=\(alive)")
+        onAudioAlive?(alive)
     }
 
     private func failActiveCapture(message: String) {
@@ -993,6 +1016,12 @@ final class MeetingRecordingFlowCoordinator {
         pillPollingTask?.cancel()
         pillPollingTask = nil
         stopPillGlowPolling()
+        // The health poll is what maintains the amber waiting light; once it
+        // stops, settle the island back to alive so amber can't stick around.
+        if !lastPushedAudioAlive {
+            lastPushedAudioAlive = true
+            onAudioAlive?(true)
+        }
     }
 
     private func startTranscriptObservation() {

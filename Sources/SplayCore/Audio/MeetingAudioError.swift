@@ -36,7 +36,7 @@ public enum MeetingAudioError: Error, LocalizedError, Sendable {
         case .notRunning:
             return "Meeting recording is not running."
         case .noAudioCaptured:
-            return "No meeting audio was captured."
+            return "No audio ever arrived from the microphone, so nothing was captured. Check the selected input — a cold Bluetooth mic can take ~10 seconds to wake — and try again."
         case .storageFailed(let message):
             return "Failed to store meeting audio: \(message)"
         case .mixFailed(let message):

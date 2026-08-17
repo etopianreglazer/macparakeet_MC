@@ -29,6 +29,9 @@ final class AppEnvironmentConfigurer {
         /// The island mark click and the menu-bar "Open Splay" item present the
         /// menu card (the second surface), opened to its recents tab.
         let onOpenRecentCard: () -> Void
+        /// Clicking the failed island clears the held failure and presents a
+        /// card carrying the failure message — the error text's one visible home.
+        let onOpenErrorCard: (String) -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
         let onTriggerYouTubeTranscriptionFromHotkey: () -> Void
@@ -387,10 +390,15 @@ final class AppEnvironmentConfigurer {
             }
             // The mark (and the done pill) opens the menu card (the second surface)
             // — except when the island is holding a failed-recording state, where
-            // the click is the dismiss gesture that clears it back to idle.
+            // the click clears it back to idle AND opens a card carrying the
+            // failure's actual text (the island's light is wordless; the card is
+            // where the app says *why* — a failure must never be a silent vanish).
             controller.onOpenCard = {
-                if coordinatorRefs.meeting?.isAwaitingFailureDismissal == true {
-                    coordinatorRefs.meeting?.dismissFailure()
+                if let meeting = coordinatorRefs.meeting, meeting.isAwaitingFailureDismissal {
+                    let message = meeting.heldFailureMessage
+                        ?? "The last recording failed. Check the selected microphone and try again."
+                    meeting.dismissFailure()
+                    callbacks.onOpenErrorCard(message)
                 } else {
                     callbacks.onOpenRecentCard()
                 }
@@ -409,6 +417,14 @@ final class AppEnvironmentConfigurer {
         // the wash tracks your voice in real time instead of the 1 s pill cadence.
         meetingCoordinator.onLiveAudioLevel = { [weak island] level in
             island?.updateLiveAudioLevel(level)
+        }
+
+        // Dead ≠ silent: the coordinator's 1 s writer-health poll pushes whether
+        // frames are actually arriving; while recording with a dead input the
+        // island holds a motionless warning amber instead of failing (the old
+        // 10 s stall guillotine is gone — silence never kills a recording).
+        meetingCoordinator.onAudioAlive = { [weak island] alive in
+            island?.updateAudioAlive(alive)
         }
 
         // Calendar auto-start (ADR-017 Phases 1 + 2 — reminders +
