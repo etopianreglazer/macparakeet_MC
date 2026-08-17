@@ -5,7 +5,39 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-14 **thread 6** — recording/transcribing island light; **committed `83410f57`**
+> **Last updated:** 2026-08-17 **thread 7** — "dead ≠ silent": stall guillotine removed + amber waiting
+> light + error card; **committed `79567ad0`** (+ this docs commit; **NOT pushed**).
+> **THE INCIDENT (what "crashed again mid recording" actually was):** no crash — two events. (1) The app
+> quit at 15:28:04 on 08-14 via a Quit AppleEvent = **the user's own quit/relaunch** (confirmed); zero
+> crash reports, clean `NSTerminateNow` exit. (2) The recording after relaunch got **zero buffers** from
+> freshly-reconnected AirPods (cold A2DP→HFP, ~10s warm-up; no `-10868` this time — CoreAudio was fine)
+> and the coordinator's **10s stall guillotine** killed it at 10.2s → `noAudioCaptured` → session folder
+> deleted, no DB row, no visible explanation. The guillotine was **fork-added** (`55be635d`), NOT
+> upstream — upstream never kills silent recordings and shows `.showError` text in its panel/pill, both
+> surfaces the fork deleted. User verdict: "we tried to be accurate but that made things worse."
+> **WHAT SHIPPED (`79567ad0`):** (a) guillotine **removed** — silence never fails a recording (genuine
+> engine-death check kept); (b) **dead ≠ silent** (doctrine adopted from **Talkify**, MIT,
+> tornikegomareli/Talkify — a sibling notch-island dictation app; clone in this session's scratchpad):
+> the 1 Hz health poll derives "frames arriving?" (2s startup grace / 2s stale) → new `onAudioAlive`
+> channel → `IslandChromeModel.audioAlive` → while recording with a dead input the whole light (bloom,
+> fiber, halo, status LED, mark) holds a **motionless `.warning` amber** (Breathe suppressed), easing
+> 0.42s back to breathing red when buffers flow; self-healing; log marker `meeting_audio_alive=`;
+> (c) **failures now speak**: `.showError` retains `heldFailureMessage`; clicking the failed island
+> clears it AND opens a danger card ("Recording failed") with the actual text
+> (`AppDelegate.presentErrorCard`; card header draws the SF Symbol as `Image` — the shell's glyph tile
+> renders `Text`, a Vet catch); `noAudioCaptured` copy now explains cold-Bluetooth. **Validation:** build
+> clean; 3160 tests → 8 failures = the same 7 known environmental fork-debt cases, zero new; agentic Vet
+> run, both findings fixed. **Installed + running:** `/Applications/Splay.app` build 20260817220049
+> commit `79567ad0` (note: `install_local.sh` does NOT auto-relaunch — `open` it after).
+> **⚠️ LOG GOTCHA:** an unrelated build (version 0.7.3, commit `d6321f87`, dist-xcodebuild) also writes
+> `~/Library/Logs/MacParakeet/dictation-audio.log` (sessions 08-15/16) — the log dir is shared across
+> MacParakeet-family apps; match `pid`/`commit` before trusting lines. **STILL OPEN:** the thread-6
+> **talk-glow live-test** (item 4) — now much easier to run: AirPods-from-cold survives (watch amber →
+> red as HFP wakes), then speak and check the wash/rim react; dial `SplayTalkGlowTuning` / the Settings
+> "Talking glow" slider. Also verify live: amber waiting register look, the failure card, error-card
+> copy.
+>
+> **Last updated (prior):** 2026-08-14 **thread 6** — recording/transcribing island light; **committed `83410f57`**
 > (now **12 ahead of `origin/main`**; the docs commit makes 13; **NOT pushed**).
 > **(A) Transcribing = semantic amber (item 3 — DONE, user-confirmed "color scheme works").** `.transcribing`
 > left the brand/themed bucket for a semantic "processing" amber (`#F6C86B`) in `SplayIslandLight.palette`;
