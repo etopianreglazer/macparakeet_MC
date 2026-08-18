@@ -32,7 +32,18 @@ private final class IslandTrackingView: NSView {
     var onControlPress: ((IslandControl) -> Void)?
 
     /// Cursor is over the idle nub's hover zone (grows the pill to the hint).
-    private var hovering = false
+    private var hovering = false {
+        didSet { if oldValue && !hovering { hoverDroppedAt = Date() } }
+    }
+    /// When hover last dropped — the click router and the active-rect gate treat
+    /// a click within `IslandLayout.hoverRaceGrace` of it (or while still
+    /// hovering) as aimed at the *revealed* pill, so a `mouseDown` that outruns
+    /// the tracker's hover flip still reaches the mark. A cold dormant nub
+    /// (no recent hover) keeps its narrow gate and pass-through pixels.
+    private var hoverDroppedAt: Date?
+    private var recentlyRevealed: Bool {
+        hovering || hoverDroppedAt.map { Date().timeIntervalSince($0) < IslandLayout.hoverRaceGrace } ?? false
+    }
     /// Last control the cursor was over, so we only signal on change.
     private var lastControl: IslandControl = .none
 
@@ -58,7 +69,16 @@ private final class IslandTrackingView: NSView {
     }
 
     func currentActiveRect() -> CGRect {
-        IslandLayout.hitRect(for: currentVisual(), notchAttached: notchProvider())
+        let visual = currentVisual()
+        // During the hover race the gate must admit the *revealed* geometry —
+        // otherwise the mark region that pokes outside the narrower nub is
+        // dropped here and `dispatchClick`'s re-resolution never runs. A cold
+        // dormant nub (no recent hover) keeps the narrow rect so the pixels
+        // around the hidden bar stay click-through.
+        if visual == .idleCollapsed, recentlyRevealed {
+            return IslandLayout.hitRect(for: .idleHover, notchAttached: notchProvider())
+        }
+        return IslandLayout.hitRect(for: visual, notchAttached: notchProvider())
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -107,7 +127,14 @@ private final class IslandTrackingView: NSView {
     /// Dispatch a click at `point` (this view's coordinates). Shared by the
     /// AppKit `mouseDown` path and the controller's event monitors.
     func dispatchClick(at point: CGPoint) {
-        let visual = currentVisual()
+        // Hover-race tolerance lives in `clickVisual`: an idle click lands on
+        // the revealed geometry only if hover is (or was just) active, so a
+        // racing click reaches the mark while a cold dormant click keeps the
+        // nub's plain click-records behavior.
+        let visual = IslandLayout.clickVisual(
+            for: currentVisual(), at: point,
+            notchAttached: notchProvider(), recentlyRevealed: recentlyRevealed
+        )
         guard IslandLayout.hitRect(for: visual, notchAttached: notchProvider()).contains(point) else { return }
         let control = IslandLayout.control(at: point, visual: visual, notchAttached: notchProvider())
 

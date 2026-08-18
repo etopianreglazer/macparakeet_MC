@@ -130,6 +130,30 @@ enum IslandLayout {
         return CGRect(x: pill.minX, y: pill.minY, width: max(0, w), height: pill.height)
     }
 
+    /// Grace window after hover drops during which an idle click is still
+    /// treated as aimed at the *revealed* pill (the hover race: `mouseDown`
+    /// outrunning the tracker's hover flip, or the shallow stay-margin dropping
+    /// hover between aim and click).
+    static let hoverRaceGrace: TimeInterval = 0.7
+
+    /// The visual a *click* should be resolved against. During the hover race
+    /// the model reads dormant while the user clicks the *revealed* pill they
+    /// saw drawn — which would swallow the mark region (it pokes outside the
+    /// narrower nub's hit rect) or misroute it to record. So while hover is (or
+    /// was just, within `hoverRaceGrace`) active, idle clicks inside the
+    /// revealed geometry resolve against the revealed visual. A cold dormant
+    /// click (`recentlyRevealed == false`) is never rerouted — the resting
+    /// nub's click-anywhere-records behavior stays intact.
+    static func clickVisual(
+        for visual: IslandVisual, at point: CGPoint,
+        notchAttached: Bool, recentlyRevealed: Bool
+    ) -> IslandVisual {
+        guard visual == .idleCollapsed, recentlyRevealed,
+              hitRect(for: .idleHover, notchAttached: notchAttached).contains(point)
+        else { return visual }
+        return .idleHover
+    }
+
     /// Which interactive control (if any) sits under `point` for the current
     /// visual. Shared by the click router and the hover-feedback path so the two
     /// never disagree about where a control is. The right-cluster control (record /
@@ -142,6 +166,8 @@ enum IslandLayout {
             return .none
         case .idleCollapsed:
             // The dormant nub draws no mark or dot — any click just records.
+            // (A click during the hover race never reaches this case: the
+            // router re-resolves it to `.idleHover` via `clickVisual` first.)
             return .none
         case .recording:
             if controlRect(for: .recording, notchAttached: notchAttached).contains(point) { return .stop }
