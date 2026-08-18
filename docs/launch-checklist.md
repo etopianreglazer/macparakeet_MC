@@ -46,19 +46,25 @@ card, without framing the project as a fork.
 
 ## A. Blockers — must be fixed before any publish
 
-### A1. Sparkle points at upstream's appcast 🚨
+### A1. Sparkle points at upstream's appcast 🚨 — ✅ RESOLVED 2026-08-18
 The shipped bundle carries `SUFeedURL = https://macparakeet.com/appcast.xml`,
 `SUEnableAutomaticChecks = true`, and upstream's `SUPublicEDKey`. Live evidence on the
 owner's machine: `SULastCheckTime = 2026-08-16` and a stored `NSWindow Frame SUUpdateAlert2`
 — Splay has been polling Daniel Moon's appcast and has already shown an update prompt.
 Accepting one downloads `MacParakeet.dmg` **over `/Applications/Splay.app`**.
 
-- [ ] Decide: **remove Sparkle** (simplest — GitHub Releases has no auto-update) **or**
-      stand up Splay's own appcast + a **newly generated EdDSA keypair** (never reuse
-      upstream's public key — we do not hold its private half).
-- [ ] Clear the stale Sparkle state from the owner's defaults domain
-      (`com.macparakeet.MacParakeet`) so no queued update can fire.
-- [ ] Verify a built bundle no longer resolves any upstream feed.
+- [x] Kept Sparkle, with Splay's **own** appcast + a freshly generated EdDSA keypair.
+      Public key `UjG8RmU9eOGL2ZNFdfc72QUhFH5z6KgYWTYBgmRJ6no=`; private half in the
+      login keychain (service `https://sparkle-project.org`, account `ed25519`).
+      Upstream's key was never usable — we do not hold its private half.
+- [x] `scripts/dist/build_app_bundle.sh` now emits
+      `SUFeedURL = https://etopianreglazer.github.io/splay/appcast.xml`.
+- [x] Cleared the stale Sparkle state (`SULastCheckTime`, `SUUpdateGroupIdentifier`,
+      `SUUpdateAlert2` frame, `SUHasLaunchedBefore`) from `com.macparakeet.MacParakeet`.
+- [ ] **Back up the private key** — it exists in exactly one place. Losing it means no
+      existing install can ever be updated. See `docs/releasing.md` Part 4.
+- [ ] Stand up GitHub Pages so the feed URL actually resolves (see `docs/releasing.md` 2.2).
+- [ ] Verify a freshly built bundle resolves no upstream URL.
 
 ### A2. The build is not distributable
 - [ ] Signed with **Developer ID Application**, not `Apple Development` (today's install
@@ -77,10 +83,34 @@ Accepting one downloads `MacParakeet.dmg` **over `/Applications/Splay.app`**.
       were deliberately kept for migration-free local rebranding
       (`docs/BRANDING.md`); changing them **moves the user's existing data**. Either keep
       them and document why, or write a migration.
-- [ ] `docs/distribution.md` documents upstream's R2/appcast path — mark **HISTORICAL**
-      or replace with Splay's GitHub Releases flow.
+- [x] `docs/distribution.md` (upstream R2/appcast) is superseded by **`docs/releasing.md`**,
+      the GitHub Releases + Pages flow. Mark the old file HISTORICAL.
 - [ ] Repo-level docs (`CLAUDE.md`, `spec/`, `AGENTS.md`) describe MacParakeet. Decide
       what a public Splay repo should carry vs. what stays internal.
+
+### A4. Telemetry reported to upstream's server 🚨 — ⚠️ MITIGATED 2026-08-18
+Same class of bug as A1. `TelemetryService` defaulted to **enabled** (`?? true`) and posts
+to `https://macparakeet.com/api` — upstream MacParakeet's infrastructure. Every Splay
+install was reporting anonymous usage and crash events into another project's backend
+without its agreement, and `README` privacy claims could not have been made truthfully.
+
+- [x] Telemetry is now **opt-in** (`?? false`) in both `AppPreferences.isTelemetryEnabled`
+      and `TelemetryService.init` — nothing is sent unless the user turns it on.
+- [ ] **Decide the endgame:** remove the reporting entirely (simplest, and honest for a
+      project this size), or point `baseURL` at infrastructure you own. Leaving an
+      upstream URL in the binary is not acceptable at publish, even unreachable.
+- [ ] Same check for `CrashReporter`.
+- [ ] Confirm the Settings toggle reflects the new default sensibly.
+
+### A5. Attribution and identity draft — 🟡 IN PROGRESS
+- [x] `README.md` rewritten as Splay's own (`docs/README-macparakeet-original.md` keeps
+      the original for reference). Presents Splay as its own product, names MacParakeet
+      and Daniel Moon, points users who want the broader feature set back upstream.
+- [ ] Owner review of the README draft — particularly the Status section, which states
+      the no-onboarding gap plainly.
+- [ ] `LICENSE`: add Splay's copyright line **alongside** Daniel Moon's, do not replace.
+- [ ] Add a change-marking note (GPL-3.0 §5(a)) — the README's "Built on MacParakeet"
+      section is most of it; make sure it is dated.
 
 ---
 
@@ -181,10 +211,14 @@ Run against a **freshly installed, Developer-ID-signed** build.
 
 ## Order of work
 
-1. **A1** — kill the upstream Sparkle feed (do this first; it is live on the owner's machine).
-2. **B** — Phase 6, the cut.
-3. **A3** — identity: README, version, usage strings, docs.
-4. **C4** — visual pass in the tuner.
-5. **A2** — Developer ID sign + notarize.
-6. **C** — the full check on the notarized build.
-7. Publish.
+1. ~~**A1** — kill the upstream Sparkle feed.~~ ✅ done 2026-08-18.
+2. ~~**A4** — stop telemetry reporting to upstream.~~ ✅ mitigated (endgame decision open).
+3. **A2 Part 1** — Apple setup: Developer ID cert + notarytool credentials. *Owner's own
+   steps* — see `docs/releasing.md` Part 1. Start this early; it is the only step with an
+   external dependency (Apple issuing a certificate).
+4. **B** — Phase 6, the cut.
+5. **A3** — finish identity: LICENSE line, version, usage strings, repo name/detach.
+6. **C4** — visual pass in the tuner.
+7. **A2** — build, sign, notarize.
+8. **C** — the full check on the notarized build, including a **second Mac**.
+9. Publish (`docs/releasing.md` Part 3).

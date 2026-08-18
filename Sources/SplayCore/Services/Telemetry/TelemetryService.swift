@@ -98,8 +98,11 @@ public final class TelemetryService: TelemetryServiceProtocol, @unchecked Sendab
         requestTimeoutInterval: TimeInterval = 10,
         surface: String = "gui",
         appVersionOverride: String? = nil,
+        // Opt-in, not opt-out — see `AppPreferences.isTelemetryEnabled`. The default
+        // endpoint below is still upstream MacParakeet's, so silence is the only
+        // defensible default until it is Splay's own or the reporting is removed.
         isEnabled: @escaping () -> Bool = {
-            UserDefaults.standard.object(forKey: "telemetryEnabled") as? Bool ?? true
+            UserDefaults.standard.object(forKey: "telemetryEnabled") as? Bool ?? false
         }
     ) {
         if let baseURL {

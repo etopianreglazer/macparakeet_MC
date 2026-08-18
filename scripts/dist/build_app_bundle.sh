@@ -593,12 +593,17 @@ cat >"$INFO_PLIST" <<EOF
   <string>Splay needs system-audio recording access for meetings.</string>
   <key>NSCalendarsFullAccessUsageDescription</key>
   <string>Splay reads your calendar to remind you before a meeting and, if you choose, begin recording. Events stay on your Mac.</string>
+  <!-- Splay's own update feed and signing key. These MUST NOT point at upstream
+       MacParakeet: its appcast serves MacParakeet.dmg, so an update accepted against
+       it would replace Splay with upstream. The private half of SUPublicEDKey lives in
+       the maintainer's login keychain (service "https://sparkle-project.org", account
+       "ed25519") and is what scripts/dist sign_update signs releases with. -->
   <key>SUFeedURL</key>
-  <string>https://macparakeet.com/appcast.xml</string>
+  <string>https://etopianreglazer.github.io/splay/appcast.xml</string>
   <key>SUEnableAutomaticChecks</key>
   <true/>
   <key>SUPublicEDKey</key>
-  <string>2aqRU0Agz+xxZwt0kLybmKz/SAvZUsyn+z9fU0I6ynY=</string>
+  <string>UjG8RmU9eOGL2ZNFdfc72QUhFH5z6KgYWTYBgmRJ6no=</string>
 $(printf "%b" "$LICENSING_PLIST")
 </dict>
 </plist>

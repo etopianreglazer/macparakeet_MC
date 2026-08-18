@@ -13,8 +13,14 @@ public enum AppPreferences {
         defaults.object(forKey: menuBarOnlyModeKey) as? Bool ?? false
     }
 
+    /// Telemetry is **opt-in** in Splay, not opt-out as it is upstream. The reporting
+    /// endpoint this code still targets is upstream MacParakeet's server, so a default
+    /// of `true` would have every Splay install report into another project's
+    /// infrastructure. Nothing is sent unless the user explicitly turns this on — and
+    /// before it can be turned on meaningfully, the endpoint has to become Splay's own
+    /// or the reporting has to be removed. See docs/launch-checklist.md (A4).
     public static func isTelemetryEnabled(defaults: UserDefaults = .standard) -> Bool {
-        defaults.object(forKey: telemetryEnabledKey) as? Bool ?? true
+        defaults.object(forKey: telemetryEnabledKey) as? Bool ?? false
     }
 }
 
