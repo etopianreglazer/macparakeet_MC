@@ -6,7 +6,24 @@
 > the "you are here" pin.
 >
 > **Last updated:** 2026-08-17 **thread 7** — "dead ≠ silent": stall guillotine removed + amber waiting
-> light + error card; **committed `79567ad0`** (+ this docs commit; **NOT pushed**).
+> light + error card; **committed `79567ad0`** (+ docs commit; **NOT pushed**).
+> **thread 7b (same day): mark-click hover-race fix, committed `ecf912af`.** User: "the splay icon button
+> does not always pick up a click." Root cause: the mark only resolves in `.idleHover`, but `mouseDown`
+> can outrun the tracker's hover flip (or the 28pt stay-margin drops hover between aim and click) — the
+> click then hit the *dormant* geometry: partly swallowed by the hit-rect gates (the revealed mark pokes
+> outside the nub rect), partly misrouted to record. **Fix = recency-gated reveal resolution:**
+> `hoverDroppedAt`/`recentlyRevealed` (`IslandLayout.hoverRaceGrace` 0.7s) gates BOTH
+> `currentActiveRect()` (the one source for the container hitTest + both click monitors) AND the new pure
+> `IslandLayout.clickVisual(...)` in `dispatchClick` — a racing idle click resolves against the revealed
+> pill; a **cold dormant click is never rerouted** (click-anywhere-records + pass-through pixels stay; the
+> old "dormant click opened the card" bug stays fixed). ⚠️ Vet earned its keep: revision 1 (no recency
+> gate) was BOTH unreachable for the swallowed region (gates filtered first) AND reintroduced the
+> dormant-card bug — both caught by Vet, fixed in rev 2, re-review clean. New
+> `IslandClickRoutingTests` (6). Full suite: baseline-identical (the known 7 environmental). **Live-test
+> pending:** quick aim-and-click on the mark should now open the menu card every time.
+> **Also from the live test:** recording with warm AirPods worked (2 clean saves, first buffer ~100ms) —
+> the amber never showed because the mic was never dead (correct); user: seeing amber "doesn't really
+> matter". **Talk-glow visual verdict still not confirmed** (user wasn't watching for it).
 > **THE INCIDENT (what "crashed again mid recording" actually was):** no crash — two events. (1) The app
 > quit at 15:28:04 on 08-14 via a Quit AppleEvent = **the user's own quit/relaunch** (confirmed); zero
 > crash reports, clean `NSTerminateNow` exit. (2) The recording after relaunch got **zero buffers** from
