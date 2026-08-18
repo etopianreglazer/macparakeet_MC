@@ -5,7 +5,44 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-17 **thread 7** — "dead ≠ silent": stall guillotine removed + amber waiting
+> **Last updated:** 2026-08-17/18 **thread 7c** — ⭐ **OPEN BUG, START HERE NEXT THREAD: menu card opens
+> only once per activation.** Repro (user-confirmed, 100%): click mark → menu opens → close with the
+> **Close button** (staying in Splay) → further mark clicks do NOTHING until Splay is deactivated (click
+> any other window/screen), then it works once again. Dismissing by clicking *away* (resign-key path)
+> never breaks. **Evidence (TEMP diagnostics committed `f125f21d`, still in tree + installed build —
+> read `~/Library/Logs/MacParakeet/dictation-audio.log`):**
+> (1) every open that fires logs the full healthy chain `splay_island click → splay_card menu_requested
+> → menu_loaded → present → post_present visible=true key=true frame=(586,260,556,597) entry_flag=true`
+> — so when the chain runs at all, the card IS visible/correct (invisible-card + wrong-screen theories
+> dead; user has ONE screen 1728×1117);
+> (2) in the broken phase **hover still works** (`hover=enter/exit` logged, island reveals, user
+> confirmed) but a mark click logs **NOTHING** — no dispatch, no `click_rejected`, no
+> `monitor_rejected src=local` and no `src=global` → the mouseDown reaches NEITHER our local monitor
+> (app-delivered events) NOR the global monitor (other-app events); it is swallowed below our code;
+> (3) dismiss reasons are tagged — Close button = `reason=card_button_or_margin`, click-away =
+> `reason=resign_key`;
+> (4) **app-active alone is NOT the trigger**: externally activating Splay (`open /Applications/
+> Splay.app`) then clicking the mark WORKED once — then Close → broken. The wedge is created by the
+> **card-dismiss-while-active** path specifically, not by activation;
+> (5) ruled out: competing local mouseDown monitors (none), `acceptsFirstMouse` (already true on the
+> tracker), window-stack occlusion while healthy (probe: island layer 101 frontmost in its strip; the
+> layer-25 Splay anchor is `ignoresMouseEvents`); the thread-7b hover-race fix (`ecf912af`) is a
+> different, fixed bug (geometry-level swallow — this one is event-delivery-level).
+> **HYPOTHESES + NEXT EXPERIMENTS:** (a) in the BROKEN state (never probed yet!) run a CGWindowList
+> stack probe over the island strip (trivial ~30-line swift tool; last thread's lived in the session
+> scratchpad — rebuild it) + log `NSApp.keyWindow`/`mainWindow` — the dead card panel (delegate'd,
+> orderOut'd in `dismiss()`'s +0.34s work item) may still be referenced as key, wedging event routing;
+> (b) log from a `NSApplication.sendEvent` override or an in-app event tap whether the mouseDown even
+> reaches the app; (c) ⭐ **cheap likely fix to try FIRST: `NSApp.deactivate()` (or
+> `NSApp.hide`/yield) after the card's teardown completes in `SplayCardController.dismiss`** — it
+> restores exactly the app-inactive state in which island clicks always work (and matches the user's
+> manual workaround); decide if the UX is acceptable (two-surface design has no other windows open, so
+> deactivating after the card closes should be invisible); (d) also compare `makeKeyAndOrderFront` vs
+> `orderFrontRegardless` + never-key for the card. **Strip the TEMP `f125f21d` markers once closed.**
+> **Installed build:** diagnostic build 20260818022223 (tree = `f125f21d` content). `install_local.sh`
+> does not relaunch and `open` right after the swap can fail with `-600` — wait ~2s and `open` again.
+>
+> **Last updated (prior):** 2026-08-17 **thread 7** — "dead ≠ silent": stall guillotine removed + amber waiting
 > light + error card; **committed `79567ad0`** (+ docs commit; **NOT pushed**).
 > **thread 7b (same day): mark-click hover-race fix, committed `ecf912af`.** User: "the splay icon button
 > does not always pick up a click." Root cause: the mark only resolves in `.idleHover`, but `mouseDown`
