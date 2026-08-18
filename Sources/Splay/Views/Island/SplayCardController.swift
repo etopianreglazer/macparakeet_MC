@@ -166,13 +166,35 @@ final class SplayCardController: NSObject {
         presentation.visible = false
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.panel?.orderOut(nil)
-            self.panel?.contentView = nil
+            let dead = self.panel
+            dead?.orderOut(nil)
+            dead?.contentView = nil
+            dead?.delegate = nil
             self.panel = nil
             self.isDismissing = false
+            self.yieldActivationIfIdle(excluding: dead)
         }
         removalWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.34, execute: work)
+    }
+
+    /// Hand the foreground back when the card was Splay's only reason to hold it.
+    ///
+    /// `present` activates the app so the card can take key (Esc, the Settings
+    /// controls). Dismissing via a card button leaves the app active with nothing to
+    /// focus, which is not a state an accessory app should rest in: Splay's resting
+    /// posture is inactive, with only its ambient panels on screen. Yielding here
+    /// restores that. Skipped whenever another Splay window can still hold focus
+    /// (onboarding, settings, the main window), so it never pulls the foreground out
+    /// from under a window the user is working in.
+    private func yieldActivationIfIdle(excluding dead: NSWindow?) {
+        guard NSApp.isActive else { return }
+        let hasFocusableWindow = NSApp.windows.contains { window in
+            window !== dead && window.isVisible && window.canBecomeKey
+        }
+        guard !hasFocusableWindow else { return }
+        AudioCaptureDiagnostics.append("splay_card yield_activation")
+        NSApp.deactivate()
     }
 
     /// Re-measure the hosted card and resize + re-centre the panel to fit it. Used

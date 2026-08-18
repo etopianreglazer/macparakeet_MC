@@ -126,12 +126,14 @@ private final class IslandTrackingView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        dispatchClick(at: convert(event.locationInWindow, from: nil))
+        dispatchClick(at: convert(event.locationInWindow, from: nil), source: "mouseDown")
     }
 
     /// Dispatch a click at `point` (this view's coordinates). Shared by the
-    /// AppKit `mouseDown` path and the controller's event monitors.
-    func dispatchClick(at point: CGPoint) {
+    /// AppKit `mouseDown` path and the controller's event monitors; `source`
+    /// records which of the three actually delivered it (the local monitor is the
+    /// only one that can fire while Splay itself is the active app).
+    func dispatchClick(at point: CGPoint, source: String = "direct") {
         // Hover-race tolerance lives in `clickVisual`: an idle click lands on
         // the revealed geometry only if hover is (or was just) active, so a
         // racing click reaches the mark while a cold dormant click keeps the
@@ -142,7 +144,7 @@ private final class IslandTrackingView: NSView {
         )
         guard IslandLayout.hitRect(for: visual, notchAttached: notchProvider()).contains(point) else {
             AudioCaptureDiagnostics.append(
-                "splay_island click_rejected point=\(point) visual=\(visual) hovering=\(hovering) "
+                "splay_island click_rejected src=\(source) point=\(point) visual=\(visual) hovering=\(hovering) "
                 + "recently_revealed=\(recentlyRevealed) rect=\(IslandLayout.hitRect(for: visual, notchAttached: notchProvider()))"
             )
             return
@@ -158,7 +160,7 @@ private final class IslandTrackingView: NSView {
         // this is the "click the splay icon to reach the menu" affordance. It takes
         // precedence over the pill-body actions below.
         AudioCaptureDiagnostics.append(
-            "splay_island click control=\(control) visual=\(visual) has_open=\(onOpenCard != nil)"
+            "splay_island click src=\(source) control=\(control) visual=\(visual) has_open=\(onOpenCard != nil)"
         )
         if control == .menu {
             hovering = false
@@ -347,7 +349,12 @@ final class IslandController: NSObject {
 
         let panel = IslandPanel(
             contentRect: bounds,
-            styleMask: [.borderless],
+            // `.nonactivatingPanel` is required, not cosmetic: it is what lets an
+            // ambient, never-key companion take a mouse click in *both* activation
+            // states. Splay holds the foreground whenever a card is up, and the
+            // island must stay clickable through that. Matches every other floating
+            // panel in the app (dictation overlay, meeting pill, transform pill).
+            styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
         )
@@ -519,19 +526,42 @@ final class IslandController: NSObject {
 
     /// Catch the click at the event level rather than relying on the panel's view
     /// hit-testing (unreliable for a non-key floating panel).
+    ///
+    /// The two cover disjoint halves of the world and both are load-bearing: AppKit
+    /// never reports our own app's events to a global monitor, so the **global** one
+    /// serves only the window where Splay is *inactive*, and the **local** one is the
+    /// sole path for any click that lands while Splay holds the foreground (which it
+    /// does for as long as a card is up, and briefly after).
+    ///
+    /// Both resolve the click in *screen* space, so the two paths agree by
+    /// construction. The local one accepts a click tagged with this panel or with no
+    /// window at all, and declines one tagged with a different Splay window — the
+    /// card's frame can overlap this panel's, and its clicks are its own. Every
+    /// decline inside the panel frame is logged, so a click that fails to route is
+    /// always visible in the diagnostics rather than vanishing.
     private func installClickMonitors() {
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
             guard let self,
-                  let panel = self.panel, event.window === panel,
+                  let panel = self.panel,
                   let tracker = self.trackingView else { return event }
-            let local = tracker.convert(event.locationInWindow, from: nil)
+            // Never steal a click that belongs to another Splay window (the card
+            // can overlap the island's panel frame while it is up).
+            if let window = event.window, window !== panel { return event }
+            // `locationInWindow` is window-relative when the event has a window and
+            // screen-relative when it doesn't; normalise to screen, then to panel.
+            let screenPoint = event.window.map { $0.convertPoint(toScreen: event.locationInWindow) }
+                ?? event.locationInWindow
+            let local = CGPoint(x: screenPoint.x - panel.frame.minX, y: screenPoint.y - panel.frame.minY)
             if tracker.currentActiveRect().contains(local) {
-                tracker.dispatchClick(at: local)
+                tracker.dispatchClick(at: local, source: "local")
                 return nil
             }
-            AudioCaptureDiagnostics.append(
-                "splay_island monitor_rejected src=local point=\(local) rect=\(tracker.currentActiveRect())"
-            )
+            if panel.frame.contains(NSPoint(x: screenPoint.x, y: screenPoint.y)) {
+                AudioCaptureDiagnostics.append(
+                    "splay_island monitor_rejected src=local point=\(local) rect=\(tracker.currentActiveRect()) "
+                    + "window=\(event.window.map { String(describing: type(of: $0)) } ?? "nil")"
+                )
+            }
             return event
         }
 
@@ -550,7 +580,7 @@ final class IslandController: NSObject {
                 }
                 return
             }
-            tracker.dispatchClick(at: local)
+            tracker.dispatchClick(at: local, source: "global")
         }
     }
 
