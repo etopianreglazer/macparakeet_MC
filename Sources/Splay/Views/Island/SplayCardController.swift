@@ -1,4 +1,5 @@
 import AppKit
+import SplayCore
 import SwiftUI
 
 // Presentation for Splay's second surface (the card). A light **floating window**
@@ -99,8 +100,9 @@ final class SplayCardController: NSObject {
         removalWorkItem = nil
         isDismissing = false
 
+        let reusedLivePanel = self.panel != nil
         let panel = self.panel ?? makePanel()
-        let dismiss: () -> Void = { [weak self] in self?.dismiss() }
+        let dismiss: () -> Void = { [weak self] in self?.dismiss(reason: "card_button_or_margin") }
         let resize: () -> Void = { [weak self] in self?.refit(animated: true) }
 
         // Start small + faded so the first frame is the pre-entry state; the async
@@ -119,6 +121,9 @@ final class SplayCardController: NSObject {
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
 
         self.panel = panel
+        AudioCaptureDiagnostics.append(
+            "splay_card present reused=\(reusedLivePanel) size=\(Int(size.width))x\(Int(size.height)) app_active=\(NSApp.isActive)"
+        )
         panel.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         installEscMonitor()
@@ -133,10 +138,26 @@ final class SplayCardController: NSObject {
         DispatchQueue.main.async { [weak self] in
             self?.presentation.visible = true
         }
+        // TEMP diagnostic: snapshot the panel's real state shortly after the
+        // entrance settles, so an invisible-or-self-dismissed card is
+        // distinguishable in the log (strip once the menu-reopen bug is closed).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self else { return }
+            if let p = self.panel {
+                AudioCaptureDiagnostics.append(
+                    "splay_card post_present visible=\(p.isVisible) key=\(p.isKeyWindow) frame=\(p.frame) "
+                    + "entry_flag=\(self.presentation.visible) app_active=\(NSApp.isActive) "
+                    + "screens=\(NSScreen.screens.map { $0.frame })"
+                )
+            } else {
+                AudioCaptureDiagnostics.append("splay_card post_present panel=nil (torn down within 0.6s)")
+            }
+        }
     }
 
-    func dismiss() {
+    func dismiss(reason: String = "api") {
         guard panel != nil, !isDismissing else { return }
+        AudioCaptureDiagnostics.append("splay_card dismiss reason=\(reason)")
         isDismissing = true
         onDismiss?()
         removeEscMonitor()
@@ -211,7 +232,7 @@ final class SplayCardController: NSObject {
         removeEscMonitor()
         escMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self, event.keyCode == 53 else { return event }  // Escape
-            self.dismiss()
+            self.dismiss(reason: "esc")
             return nil
         }
     }
@@ -228,7 +249,7 @@ extension SplayCardController: NSWindowDelegate {
     nonisolated func windowDidResignKey(_ notification: Notification) {
         Task { @MainActor in
             guard self.dismissOnResignArmed else { return }
-            self.dismiss()
+            self.dismiss(reason: "resign_key")
         }
     }
 }

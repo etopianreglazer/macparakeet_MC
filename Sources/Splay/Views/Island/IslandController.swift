@@ -33,7 +33,12 @@ private final class IslandTrackingView: NSView {
 
     /// Cursor is over the idle nub's hover zone (grows the pill to the hint).
     private var hovering = false {
-        didSet { if oldValue && !hovering { hoverDroppedAt = Date() } }
+        didSet {
+            if oldValue && !hovering { hoverDroppedAt = Date() }
+            if oldValue != hovering {
+                AudioCaptureDiagnostics.append("splay_island hover=\(hovering ? "enter" : "exit")")
+            }
+        }
     }
     /// When hover last dropped — the click router and the active-rect gate treat
     /// a click within `IslandLayout.hoverRaceGrace` of it (or while still
@@ -135,7 +140,13 @@ private final class IslandTrackingView: NSView {
             for: currentVisual(), at: point,
             notchAttached: notchProvider(), recentlyRevealed: recentlyRevealed
         )
-        guard IslandLayout.hitRect(for: visual, notchAttached: notchProvider()).contains(point) else { return }
+        guard IslandLayout.hitRect(for: visual, notchAttached: notchProvider()).contains(point) else {
+            AudioCaptureDiagnostics.append(
+                "splay_island click_rejected point=\(point) visual=\(visual) hovering=\(hovering) "
+                + "recently_revealed=\(recentlyRevealed) rect=\(IslandLayout.hitRect(for: visual, notchAttached: notchProvider()))"
+            )
+            return
+        }
         let control = IslandLayout.control(at: point, visual: visual, notchAttached: notchProvider())
 
         // Depress the touched control like a physical key (a short pulse), before
@@ -146,6 +157,9 @@ private final class IslandTrackingView: NSView {
         // The mark (left cluster) opens the card in every state where it's shown —
         // this is the "click the splay icon to reach the menu" affordance. It takes
         // precedence over the pill-body actions below.
+        AudioCaptureDiagnostics.append(
+            "splay_island click control=\(control) visual=\(visual) has_open=\(onOpenCard != nil)"
+        )
         if control == .menu {
             hovering = false
             onOpenCard?()
@@ -515,6 +529,9 @@ final class IslandController: NSObject {
                 tracker.dispatchClick(at: local)
                 return nil
             }
+            AudioCaptureDiagnostics.append(
+                "splay_island monitor_rejected src=local point=\(local) rect=\(tracker.currentActiveRect())"
+            )
             return event
         }
 
@@ -523,7 +540,16 @@ final class IslandController: NSObject {
                   let panel = self.panel, let tracker = self.trackingView else { return }
             let screenPoint = event.locationInWindow   // screen coords for global events
             let local = CGPoint(x: screenPoint.x - panel.frame.minX, y: screenPoint.y - panel.frame.minY)
-            guard tracker.currentActiveRect().contains(local) else { return }
+            guard tracker.currentActiveRect().contains(local) else {
+                // Log only clicks that land within the panel's bounds — a global
+                // monitor sees every click on the desktop, and those are noise.
+                if panel.frame.insetBy(dx: 0, dy: 0).contains(NSPoint(x: screenPoint.x, y: screenPoint.y)) {
+                    AudioCaptureDiagnostics.append(
+                        "splay_island monitor_rejected src=global point=\(local) rect=\(tracker.currentActiveRect())"
+                    )
+                }
+                return
+            }
             tracker.dispatchClick(at: local)
         }
     }

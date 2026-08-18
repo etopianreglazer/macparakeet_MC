@@ -794,10 +794,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// fresh recents before presenting so the snapshot is current; the About tab
     /// carries the licence + version + the Sparkle updater.
     private func presentMenuCard(startingTab: SplayCardTab) {
+        AudioCaptureDiagnostics.append("splay_card menu_requested tab=\(startingTab)")
         splayCardController.onDismiss = { [weak self] in self?.islandController?.setHeldOpen(false) }
         islandController?.setHeldOpen(true)
         Task { @MainActor in
             await libraryViewModel.loadTranscriptions().value
+            AudioCaptureDiagnostics.append("splay_card menu_loaded")
             let now = Date()
             let all = libraryViewModel.transcriptions
             let rows = all.prefix(5).map { SplayRecordingRow.from($0, now: now) }
