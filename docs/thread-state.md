@@ -5,7 +5,45 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-17/18 **thread 7c** — ⭐ **OPEN BUG, START HERE NEXT THREAD: menu card opens
+> **Last updated:** 2026-08-18 **thread 7d** — ⭐ **MENU-REOPEN BUG: ROOT-CAUSED + FIXED, committed
+> `59101f91` (NOT pushed). LIVE TEST PENDING — that is the one thing to do next.**
+> **The cause was not event-routing exotica; it was that the island had exactly one working click path
+> and that path is off whenever Splay is active.** Proof from `~/Library/Logs/MacParakeet/dictation-audio.log`
+> (the `f125f21d` diagnostics): `monitor_rejected src=local` occurs **0** times in the whole 1.4 MB log while
+> `src=global` occurs **35**; and all **14** logged `splay_island click` lines are followed by
+> `splay_card present … app_active=false` — **zero** island clicks have ever succeeded while Splay was the
+> active app. AppKit never reports an app's own events to a *global* monitor, so that monitor is silent by
+> definition while Splay holds the foreground. `present` calls `NSApp.activate`; the **Close button** leaves
+> the app active; the island then had no live click path at all. Click-*away* dismissal never broke it
+> because the click hands focus to another app, restoring the inactive state the global monitor needs.
+> Hover kept working throughout because tracking areas don't care about activation — which is exactly what
+> made this look like a delivery mystery for two threads.
+> **WHAT SHIPPED (`59101f91`, 3 parts):** (1) `IslandPanel` gains **`.nonactivatingPanel`** — the style mask
+> that lets an ambient never-key companion take a click in *both* activation states; it was the lone
+> `.borderless`-only panel in the app (dictation overlay, meeting pill, transform pill all already had it).
+> (2) The **local monitor became a real path**: resolves the click in *screen* space (so it agrees with the
+> global monitor by construction), accepts a **window-less own-app click** instead of silently returning,
+> still declines clicks tagged with a *different* Splay window (the card frame can overlap the island's), and
+> **logs every decline inside the panel frame** — that silent `guard event.window === panel` early-return is
+> precisely why the log carried no local evidence to reason from. (3) `SplayCardController` **yields
+> activation** (`NSApp.deactivate()`) after teardown when no other Splay window can hold focus — an accessory
+> app should rest inactive with only its ambient panels up. `dispatchClick` now carries **`src=local|global|
+> mouseDown`** so the log states which path delivered.
+> **NEXT THREAD — run the live test (installed build is ready, app relaunched):** click mark → card opens →
+> close with the **Close button** → click the mark again **without touching any other window**. Expected: it
+> opens, every time. Then `grep 'splay_island click src=' ~/Library/Logs/MacParakeet/dictation-audio.log` —
+> **`src=local` lines are the proof the real fix (parts 1+2) works**; if you only ever see `src=global` then
+> only part 3 is carrying it and parts 1+2 need another look (the island would still be dead any time Splay
+> is active for some other reason). Also sanity-check: clicking the mark does **not** steal focus from the
+> app you were typing in, and the card's Settings controls + Esc still work.
+> **THEN:** strip the TEMP `f125f21d` diagnostic markers (the `post_present` snapshot, and decide whether the
+> `src=` tags are worth keeping — they are cheap and genuinely diagnostic, so probably keep).
+> **Validation done:** build clean; `swift test` 3166 tests / 8 failures = the same known 7 environmental
+> fork-debt cases, zero new; agentic Vet clean after two comment-accuracy fixes.
+> **Installed:** `/Applications/Splay.app` built from `59101f91`. `install_local.sh` does not relaunch and
+> `open` right after the swap can fail with `-600` — wait ~2s and `open` again.
+>
+> **Last updated (prior):** 2026-08-17/18 **thread 7c** — ⭐ **OPEN BUG, START HERE NEXT THREAD: menu card opens
 > only once per activation.** Repro (user-confirmed, 100%): click mark → menu opens → close with the
 > **Close button** (staying in Splay) → further mark clicks do NOTHING until Splay is deactivated (click
 > any other window/screen), then it works once again. Dismissing by clicking *away* (resign-key path)
