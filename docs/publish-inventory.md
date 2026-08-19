@@ -21,6 +21,35 @@ Legend: ✅ **SHIP** (correct as-is) · ✏️ **REWRITE** (belongs, still says 
 | `Assets/menubar-icon-preview.png` | 🚫 | Development preview artifact, not shipped, not needed publicly. |
 | `brand-assets/` | ✏️ | Upstream's **MacParakeet** brand kit (parakeet marks, coral "Pop" palette, Warhol grid posters). None of it is Splay's. Either replace with Splay's own or exclude. |
 
+### 🚨 Finding: an unrelated court-complaint PDF ships inside the app
+
+The notarized build contains, inside `Splay_Splay.bundle`:
+
+```
+altman-v-altman-complaint-2025-01-06.pdf   657 KB   UNREFERENCED by any code
+```
+
+Source: `Sources/Splay/Resources/voices/`. An upstream leftover — presumably a test
+fixture — that no code path reads, and which has been shipping to every user. Redistributing
+an unrelated third-party legal document inside a voice recorder is not something to publish
+under your own name, whatever its public-record status.
+
+Full contents of the shipped resource bundle, with reference status:
+
+| File | Size | Referenced? | Verdict |
+|---|---:|---|---|
+| `splay-three-mark.png` | 40 KB | ✅ ×2 | ✅ **SHIP** — the menu bar mark |
+| `discover-fallback.json` | 12 KB | ✅ ×1 | 🚫 Discover is on the cut list |
+| `parakeet-mark.png` | 92 KB | ✅ ×1 | 🚫 Upstream's brand mark |
+| `menubar-icon.png` | 457 B | ✅ ×1 | 📦 Upstream's icon, only a fallback |
+| `menubar-icon@2x.png` | 989 B | ❌ | 🚫 Unreferenced |
+| `altman-v-altman-complaint…pdf` | 657 KB | ❌ | 🚫 **Delete.** Unrelated legal document. |
+
+- [ ] Delete `Sources/Splay/Resources/voices/` entirely.
+- [ ] Delete `menubar-icon@2x.png` (unreferenced) and, with Phase 6, `discover-fallback.json`
+      and `parakeet-mark.png`.
+- [ ] Re-check the bundle contents on the release artifact after Phase 6.
+
 ### ⚠️ Finding: the dev install and the release build load resources differently
 
 `install_local.sh` builds with `BUILD_SYSTEM=swiftpm`, which does **not** emit SwiftPM
@@ -116,6 +145,27 @@ features Splay has cut), drop `spec/*.md`, `plans/`, `integrations/`, `marketing
 | `screenshots/` | ✏️ | Verify these are Splay's UI, not MacParakeet's — the README does not use them, but a public repo folder called `screenshots/` will be looked at. |
 
 ---
+
+## Verified on the first notarized build (2026-08-19)
+
+Dry run `0.0.1` build `20260819211955`, notarized and stapled:
+
+| Check | Result |
+|---|---|
+| `spctl -a -vv -t install` (app) | `accepted` · `source=Notarized Developer ID` |
+| `spctl` (DMG) | `accepted` · `source=Notarized Developer ID` |
+| `stapler validate` (app + DMG) | both worked — offline launch will verify |
+| Signing chain | Developer ID Application → Developer ID CA → Apple Root CA |
+| Hardened runtime | `flags=0x10000(runtime)` |
+| Nested binaries | Sparkle XPC, `yt-dlp`, `ffmpeg`, `node`, CLI — all accepted by Apple |
+| `SUFeedURL` | `https://etopianreglazer.github.io/splay/appcast.xml` ✅ not upstream |
+| `SUPublicEDKey` | `UjG8RmU9eOGL2ZNFdfc72QUhFH5z6KgYWTYBgmRJ6no=` ✅ ours |
+| `Splay_Splay.bundle` present | ✅ menu bar mark ships |
+
+**Bundle size:** 297 MB installed, 136 MB compressed. Composition:
+`node` 113 MB · `ffmpeg` 63 MB · `Splay` 52 MB · `yt-dlp` 36 MB · `macparakeet-cli` 29 MB ·
+Sparkle 3 MB. **Half the download is YouTube support** (`node` + `yt-dlp` = 149 MB) —
+Phase 6's cut roughly halves the app.
 
 ## Open decisions
 
