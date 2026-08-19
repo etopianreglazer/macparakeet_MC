@@ -18,7 +18,6 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
     private let customWordsViewModel: CustomWordsViewModel
     private let textSnippetsViewModel: TextSnippetsViewModel
     private let vocabularyBackupViewModel: VocabularyBackupViewModel
-    private let discoverViewModel: DiscoverViewModel
     private let libraryViewModel: TranscriptionLibraryViewModel
     private let meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel
     private let meetingPillViewModel: MeetingRecordingPillViewModel
@@ -51,7 +50,6 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
         customWordsViewModel: CustomWordsViewModel,
         textSnippetsViewModel: TextSnippetsViewModel,
         vocabularyBackupViewModel: VocabularyBackupViewModel,
-        discoverViewModel: DiscoverViewModel,
         libraryViewModel: TranscriptionLibraryViewModel,
         meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel,
         meetingPillViewModel: MeetingRecordingPillViewModel,
@@ -75,7 +73,6 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
         self.customWordsViewModel = customWordsViewModel
         self.textSnippetsViewModel = textSnippetsViewModel
         self.vocabularyBackupViewModel = vocabularyBackupViewModel
-        self.discoverViewModel = discoverViewModel
         self.libraryViewModel = libraryViewModel
         self.meetingsWorkspaceViewModel = meetingsWorkspaceViewModel
         self.meetingPillViewModel = meetingPillViewModel
@@ -223,7 +220,6 @@ final class AppWindowCoordinator: NSObject, NSWindowDelegate {
             customWordsViewModel: customWordsViewModel,
             textSnippetsViewModel: textSnippetsViewModel,
             vocabularyBackupViewModel: vocabularyBackupViewModel,
-            discoverViewModel: discoverViewModel,
             libraryViewModel: libraryViewModel,
             meetingsWorkspaceViewModel: meetingsWorkspaceViewModel,
             meetingPillViewModel: meetingPillViewModel,

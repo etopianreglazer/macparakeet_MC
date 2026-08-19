@@ -67,7 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let customWordsViewModel = CustomWordsViewModel()
     private let textSnippetsViewModel = TextSnippetsViewModel()
     private let vocabularyBackupViewModel = VocabularyBackupViewModel()
-    private let discoverViewModel = DiscoverViewModel()
     private let libraryViewModel = TranscriptionLibraryViewModel()
     private let meetingsLibraryViewModel = TranscriptionLibraryViewModel(scope: .meetings)
     private let llmSettingsViewModel = LLMSettingsViewModel()
@@ -191,7 +190,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         customWordsViewModel: customWordsViewModel,
         textSnippetsViewModel: textSnippetsViewModel,
         vocabularyBackupViewModel: vocabularyBackupViewModel,
-        discoverViewModel: discoverViewModel,
         libraryViewModel: libraryViewModel,
         meetingsWorkspaceViewModel: meetingsWorkspaceViewModel,
         meetingPillViewModel: meetingPillViewModel,
@@ -354,13 +352,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsObserverCoordinator.startObserving()
         windowCoordinator.applyActivationPolicyFromSettings()
         islandController?.restoreAmbientVisibility()
-        setupDiscoverContent()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        // Telemetry.flushForTermination() is handled by TelemetryService's own
-        // NSApplicationWillTerminateNotification observer — calling it here too
-        // would send duplicate appQuit events and double the termination delay.
+        // Telemetry is a No-Op in Splay (reporting removed), so there is nothing
+        // to flush on termination.
         dictationFlowCoordinator?.releaseMediaPauseForTermination()
         dictationFlowCoordinator?.hideIdlePill()
         islandController?.hide()
@@ -594,16 +590,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         _ = alert.runModal()
 
         NSApp.terminate(nil)
-    }
-
-    private func setupDiscoverContent() {
-        guard let fallbackURL = Bundle.module.url(forResource: "discover-fallback", withExtension: "json"),
-              let data = try? Data(contentsOf: fallbackURL) else { return }
-
-        let service = DiscoverService(fallbackData: data)
-        discoverViewModel.configure(service: service)
-        discoverViewModel.loadCached()
-        discoverViewModel.refreshInBackground()
     }
 
     // MARK: - Disk Image Guard

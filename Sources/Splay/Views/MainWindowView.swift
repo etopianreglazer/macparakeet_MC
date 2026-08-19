@@ -11,7 +11,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case transforms = "Transforms"
     case vocabulary = "Vocabulary"
     case settings = "Settings"
-    case discover = "Discover"
 
     var id: String { rawValue }
 
@@ -32,7 +31,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .transforms: return "wand.and.stars"
         case .vocabulary: return "book.fill"
         case .settings: return "gearshape"
-        case .discover: return "sparkles"
         }
     }
 
@@ -53,10 +51,10 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         return items
     }
 
-    /// Note: `.discover`, `.meetings`, `.dictations`, and `.vocabulary` are
-    /// intentionally excluded from the sidebar arrays above. Their detail routes
-    /// still exist (reachable via menu/deep-link) but they no longer occupy
-    /// permanent sidebar slots.
+    /// Note: `.meetings`, `.dictations`, and `.vocabulary` are intentionally
+    /// excluded from the sidebar arrays above. Their detail routes still exist
+    /// (reachable via menu/deep-link) but they no longer occupy permanent
+    /// sidebar slots.
 }
 
 struct MainWindowView: View {
@@ -74,7 +72,6 @@ struct MainWindowView: View {
     let customWordsViewModel: CustomWordsViewModel
     let textSnippetsViewModel: TextSnippetsViewModel
     let vocabularyBackupViewModel: VocabularyBackupViewModel
-    let discoverViewModel: DiscoverViewModel
     let libraryViewModel: TranscriptionLibraryViewModel
     let meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel
     let meetingPillViewModel: MeetingRecordingPillViewModel
@@ -263,8 +260,6 @@ struct MainWindowView: View {
                             },
                             onHotkeyRecordingStateChanged: onHotkeyRecordingStateChanged
                         )
-                    case .discover:
-                        DiscoverView(viewModel: discoverViewModel, thoughtsService: DiscoverThoughtsService())
                     }
                 }
             }
