@@ -13,6 +13,7 @@ Your values, already confirmed on this machine:
 | Thing | Value |
 |---|---|
 | Apple Team ID | `76K8473JHR` |
+| Signing identity | `Developer ID Application: Mathew Cleveland (76K8473JHR)` (created 2026-08-19, expires 2027-02-01) |
 | GitHub account | `etopianreglazer` |
 | Sparkle public key | `UjG8RmU9eOGL2ZNFdfc72QUhFH5z6KgYWTYBgmRJ6no=` |
 | Sparkle private key | in your login keychain (service `https://sparkle-project.org`, account `ed25519`) |
@@ -24,6 +25,10 @@ Your values, already confirmed on this machine:
 
 **These steps are yours to do — they involve your Apple account and a password, so do them
 yourself rather than having an agent do them.**
+
+> **Steps 1.1–1.3 are DONE** (2026-08-19). The certificate exists, signs cleanly, and
+> obtains an Apple secure timestamp. Kept below for the next time — and for re-issuing
+> when it expires on 2027-02-01.
 
 ### 1.1 Confirm you have the *paid* Developer Program
 
@@ -38,6 +43,12 @@ Check at [developer.apple.com/account](https://developer.apple.com/account) — 
 > certificate, which is a different thing.
 
 ### 1.2 Create a Certificate Signing Request
+
+> **Shortcut, used here:** with full Xcode installed, skip the manual CSR entirely.
+> **Xcode → Settings → Accounts →** select the team **→ Manage Certificates… → + →
+> Developer ID Application.** Xcode makes the keypair, sends the CSR, and installs the
+> certificate with its private key into the login keychain. The manual route below is the
+> fallback when Xcode is not available.
 
 1. Open **Keychain Access**.
 2. Menu: **Keychain Access → Certificate Assistant → Request a Certificate From a
@@ -145,8 +156,6 @@ APP_NAME=Splay BUNDLE_ID=com.macparakeet.mc VERSION=0.1.0 scripts/dist/build_app
 APP_NAME=Splay SIGN_IDENTITY="Developer ID Application: Mathew Cleveland (76K8473JHR)" NOTARYTOOL_PROFILE=splay scripts/dist/sign_notarize.sh
 ```
 
-Use the exact identity string from `security find-identity -v -p codesigning`.
-
 This signs every nested binary, submits to Apple, waits for the verdict, staples the
 ticket, builds the DMG, signs and notarizes that too. Notarization usually takes 2–15
 minutes. A rejection comes back with a log URL that names the offending binary.
@@ -251,7 +260,7 @@ swift test
 APP_NAME=Splay BUNDLE_ID=com.macparakeet.mc VERSION=X.Y.Z scripts/dist/build_app_bundle.sh
 
 # 3. sign + notarize + DMG
-APP_NAME=Splay SIGN_IDENTITY="Developer ID Application: ... (76K8473JHR)" NOTARYTOOL_PROFILE=splay scripts/dist/sign_notarize.sh
+APP_NAME=Splay SIGN_IDENTITY="Developer ID Application: Mathew Cleveland (76K8473JHR)" NOTARYTOOL_PROFILE=splay scripts/dist/sign_notarize.sh
 
 # 4. verify
 spctl -a -vv -t install dist/Splay.app && xcrun stapler validate dist/Splay.app
