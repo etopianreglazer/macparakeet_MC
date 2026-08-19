@@ -304,7 +304,7 @@ private struct SplayAboutBlock: View {
             infoRow(label: "Licence", value: "GPL-3.0 · free & open source")
             SplayRepoRow(onOpenRepo: onOpenRepo)
 
-            Text("Splay is a personal fork of MacParakeet. Free and open source under the GPL-3.0 — you may use, study, share, and modify it.")
+            Text("Splay is built on MacParakeet by Daniel Moon. Free and open source under the GPL-3.0 — you may use, study, share, and modify it.")
                 .font(.system(size: 11))
                 .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.45))
                 .multilineTextAlignment(.center)
