@@ -14,7 +14,7 @@ import Sparkle
 /// 2. **Dev / sentinel build versions.** A locally-built `0.0.0` / `dev` /
 ///    `*pdx*` binary running in release config could otherwise auto-update
 ///    itself to whatever's currently shipped at
-///    `https://macparakeet.com/appcast.xml`, which is the wrong outcome -- a
+///    `https://etopianreglazer.github.io/splay/appcast.xml`, which is the wrong outcome -- a
 ///    developer running their work-in-progress shouldn't suddenly find their
 ///    app replaced with the production build mid-session.
 ///

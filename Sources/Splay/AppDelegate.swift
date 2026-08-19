@@ -808,7 +808,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ?? AutoSaveService.defaultFolder(for: .meeting)
             let display = folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
             let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? ""
-            let repoURL = URL(string: "https://github.com/moona3k/macparakeet")
+            let repoURL = URL(string: "https://github.com/etopianreglazer/splay")
             splayCardController.present { [weak self] dismiss, resize in
                 guard let self else { return AnyView(EmptyView()) }
                 return AnyView(SplayMenuCard(
@@ -999,7 +999,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showAboutPanel() {
-        let repoLink = "https://github.com/moona3k/macparakeet"
+        let repoLink = "https://github.com/etopianreglazer/splay"
         guard let repoURL = URL(string: repoLink) else { return }
         let credits = NSMutableAttributedString()
 

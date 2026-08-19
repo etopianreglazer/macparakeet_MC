@@ -523,11 +523,11 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     }
 
     @objc private func openHelp() {
-        openExternalURL("https://macparakeet.com")
+        openExternalURL("https://github.com/etopianreglazer/splay")
     }
 
     @objc private func openGitHub() {
-        openExternalURL("https://github.com/moona3k/macparakeet")
+        openExternalURL("https://github.com/etopianreglazer/splay")
     }
 
     @objc private func quitApp() {
