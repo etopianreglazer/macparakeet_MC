@@ -251,7 +251,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         if AppFeatures.transformsEnabled {
             goMenu.addItem(makeMenuItem(title: "Transforms", action: #selector(showTransforms), key: ""))
         }
-        goMenu.addItem(makeMenuItem(title: "Feedback", action: #selector(showFeedback), key: ""))
         goMenu.addItem(makeMenuItem(title: "Settings...", action: #selector(showSettingsWindow), key: ""))
         goMenuItem.submenu = goMenu
         mainMenu.addItem(goMenuItem)
@@ -507,10 +506,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
     @objc private func showTransforms() {
         navigate(to: .transforms)
-    }
-
-    @objc private func showFeedback() {
-        navigate(to: .feedback)
     }
 
     @objc private func startDictationFromMenu() {

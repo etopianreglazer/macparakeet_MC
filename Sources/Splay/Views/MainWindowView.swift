@@ -10,7 +10,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case meetings = "Meetings"
     case transforms = "Transforms"
     case vocabulary = "Vocabulary"
-    case feedback = "Feedback"
     case settings = "Settings"
     case discover = "Discover"
 
@@ -32,7 +31,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .dictations: return "clock.arrow.circlepath"
         case .transforms: return "wand.and.stars"
         case .vocabulary: return "book.fill"
-        case .feedback: return "bubble.left.and.text.bubble.right"
         case .settings: return "gearshape"
         case .discover: return "sparkles"
         }
@@ -46,7 +44,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     }
 
     /// Configuration items. Transforms (ADR-022) stays visible when enabled;
-    /// Vocabulary/Feedback fold into Settings (Phase 2) and are not surfaced here.
+    /// Vocabulary folds into Settings (Phase 2) and is not surfaced here.
     static var configItems: [SidebarItem] {
         var items: [SidebarItem] = [.settings]
         if AppFeatures.transformsEnabled {
@@ -55,10 +53,10 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         return items
     }
 
-    /// Note: `.discover`, `.meetings`, `.dictations`, `.vocabulary`, and
-    /// `.feedback` are intentionally excluded from the sidebar arrays above.
-    /// Their detail routes still exist (reachable via menu/deep-link) but they
-    /// no longer occupy permanent sidebar slots.
+    /// Note: `.discover`, `.meetings`, `.dictations`, and `.vocabulary` are
+    /// intentionally excluded from the sidebar arrays above. Their detail routes
+    /// still exist (reachable via menu/deep-link) but they no longer occupy
+    /// permanent sidebar slots.
 }
 
 struct MainWindowView: View {
@@ -76,7 +74,6 @@ struct MainWindowView: View {
     let customWordsViewModel: CustomWordsViewModel
     let textSnippetsViewModel: TextSnippetsViewModel
     let vocabularyBackupViewModel: VocabularyBackupViewModel
-    let feedbackViewModel: FeedbackViewModel
     let discoverViewModel: DiscoverViewModel
     let libraryViewModel: TranscriptionLibraryViewModel
     let meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel
@@ -253,8 +250,6 @@ struct MainWindowView: View {
                             textSnippetsViewModel: textSnippetsViewModel,
                             backupViewModel: vocabularyBackupViewModel
                         )
-                    case .feedback:
-                        FeedbackView(viewModel: feedbackViewModel)
                     case .settings:
                         SettingsView(
                             viewModel: settingsViewModel,
