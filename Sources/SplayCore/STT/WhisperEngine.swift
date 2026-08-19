@@ -295,7 +295,7 @@ public actor WhisperEngine: STTTranscribing {
         if isLoaded, whisperKit != nil { return }
         guard let modelFolder = Self.localModelFolder(model: modelVariant, downloadBase: downloadBase) else {
             throw STTError.engineStartFailed(
-                "Whisper model is not downloaded. Run `macparakeet-cli models download whisper-\(modelVariant)` first."
+                "Whisper model \"\(modelVariant)\" is not downloaded."
             )
         }
 

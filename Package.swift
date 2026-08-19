@@ -10,8 +10,6 @@ let packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/groue/GRDB.swift", from: "7.0.0"),
     // FluidAudio for Parakeet STT on CoreML/ANE
     .package(url: "https://github.com/FluidInference/FluidAudio", .upToNextMinor(from: "0.14.5")),
-    // ArgumentParser for CLI
-    .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     // Sparkle for auto-updates (non-App Store distribution)
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0")
 ] + (skipWhisperKit ? [] : [
@@ -38,7 +36,6 @@ let package = Package(
     ],
     products: [
         .executable(name: "Splay", targets: ["Splay"]),
-        .executable(name: "macparakeet-cli", targets: ["CLI"]),
         .library(name: "SplayCore", targets: ["SplayCore"]),
         .library(name: "SplayViewModels", targets: ["SplayViewModels"])
     ],
@@ -54,18 +51,6 @@ let package = Package(
             ],
             path: "Sources/Splay",
             resources: [.process("Resources")]
-        ),
-        // macparakeet-cli — versioned public surface (semver, Sources/CLI/CHANGELOG.md).
-        // Consumed by the macOS app, scripted callers, and downstream agent skills
-        // (see /AGENTS.md and integrations/README.md).
-        .executableTarget(
-            name: "CLI",
-            dependencies: [
-                "SplayCore",
-                .product(name: "ArgumentParser", package: "swift-argument-parser")
-            ],
-            path: "Sources/CLI",
-            exclude: ["CHANGELOG.md"]
         ),
         // Objective-C shim target for catching NSException in Swift.
         // Swift's `do/try/catch` cannot catch Objective-C exceptions raised by
@@ -101,11 +86,6 @@ let package = Package(
             name: "SplayTests",
             dependencies: ["Splay", "SplayCore", "SplayViewModels", "SplayObjCShims"],
             path: "Tests/SplayTests"
-        ),
-        .testTarget(
-            name: "CLITests",
-            dependencies: ["CLI", "SplayCore"],
-            path: "Tests/CLITests"
         )
     ]
 )
