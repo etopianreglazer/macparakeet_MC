@@ -66,9 +66,16 @@ Accepting one downloads `MacParakeet.dmg` **over `/Applications/Splay.app`**.
 - [ ] Stand up GitHub Pages so the feed URL actually resolves (see `docs/releasing.md` 2.2).
 - [ ] Verify a freshly built bundle resolves no upstream URL.
 
-### A2. The build is not distributable
-- [ ] Signed with **Developer ID Application**, not `Apple Development` (today's install
-      is a development cert — it runs only on this machine).
+### A2. The build is not distributable — 🟡 Apple setup DONE, build not yet cut
+- [x] **Developer ID Application certificate created 2026-08-19** via Xcode's Manage
+      Certificates. `Developer ID Application: Mathew Cleveland (76K8473JHR)`, expires
+      2027-02-01. Verified: signs with hardened runtime, chains to Apple Root CA, and
+      obtains an Apple secure timestamp.
+- [x] **notarytool credentials stored** as keychain profile `splay`; authenticated
+      against Apple (empty submission history returned, not an auth error).
+- [ ] Back up the certificate + private key as a `.p12` off this machine (5 Developer ID
+      certs exist per account, ever).
+- [ ] Actually build and sign a release bundle with that identity.
 - [ ] **Notarized + stapled**, then verified with `spctl -a -vv` on a clean path.
 - [ ] Confirm bundled helpers still validate after signing (`yt-dlp` needs
       `com.apple.security.cs.disable-library-validation` — see `CLAUDE.md`).
@@ -213,9 +220,8 @@ Run against a **freshly installed, Developer-ID-signed** build.
 
 1. ~~**A1** — kill the upstream Sparkle feed.~~ ✅ done 2026-08-18.
 2. ~~**A4** — stop telemetry reporting to upstream.~~ ✅ mitigated (endgame decision open).
-3. **A2 Part 1** — Apple setup: Developer ID cert + notarytool credentials. *Owner's own
-   steps* — see `docs/releasing.md` Part 1. Start this early; it is the only step with an
-   external dependency (Apple issuing a certificate).
+3. ~~**A2 Part 1** — Apple setup: Developer ID cert + notarytool credentials.~~
+   ✅ done 2026-08-19.
 4. **B** — Phase 6, the cut.
 5. **A3** — finish identity: LICENSE line, version, usage strings, repo name/detach.
 6. **C4** — visual pass in the tuner.
