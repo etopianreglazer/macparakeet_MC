@@ -40,7 +40,7 @@ final class AppEnvironment {
     let entitlementsService: EntitlementsService
     let launchAtLoginService: LaunchAtLoginService
     let checkoutURL: URL?
-    let telemetryService: TelemetryService
+    let telemetryService: TelemetryServiceProtocol
     let llmClient: RoutingLLMClient
     let llmConfigStore: LLMConfigStore
     let llmService: LLMService
@@ -220,7 +220,11 @@ final class AppEnvironment {
             }
         )
 
-        let telemetry = TelemetryService()
+        // Splay does not report telemetry — the only sink is the No-Op (see
+        // TelemetryService.swift). Wiring it keeps the app's ~40 `Telemetry.send`
+        // call sites and CrashReporter's report path inert rather than removing
+        // every instrumentation point.
+        let telemetry = NoOpTelemetryService()
         telemetryService = telemetry
         Telemetry.configure(telemetry)
         Telemetry.send(.appLaunched)
