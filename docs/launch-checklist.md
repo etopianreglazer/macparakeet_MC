@@ -109,6 +109,38 @@ without its agreement, and `README` privacy claims could not have been made trut
 - [ ] Same check for `CrashReporter`.
 - [ ] Confirm the Settings toggle reflects the new default sensibly.
 
+### A6. Every remaining pointer at upstream infrastructure 🚨 — OPEN
+A full sweep of shipping code (2026-08-19) found A1 and A4 were not isolated incidents.
+**Five network endpoints and seven user-facing links still resolve to upstream.**
+
+**Endpoints that send data to `macparakeet.com`:**
+
+| Service | Endpoint | Severity |
+|---|---|---|
+| `FeedbackService` | `macparakeet.com/api` | 🚨 **Worst of the set.** The in-app feedback form posts the user's message — and optionally their email and a screenshot — to upstream's Cloudflare function, which files a **GitHub Issue on Daniel Moon's repository**. Splay users' bug reports would land in another project's tracker, carrying their content. |
+| `TelemetryService` | `macparakeet.com/api` | Mitigated (opt-in as of A4); endpoint unchanged. |
+| `DiscoverService` | `macparakeet.com/api/discover.json` | Discover is on the cut list; the fetch still exists. |
+| `DiscoverThoughtsService` | `macparakeet.com/api/discover-thoughts` | Same. |
+| Help menu | `macparakeet.com` | Opens upstream's marketing site from Splay's Help menu. |
+
+**User-facing links to `github.com/moona3k/macparakeet`** (7): the About card's repo link,
+`AppDelegate` repoLink, the Settings telemetry-docs link, the menu bar "View on GitHub",
+**`FeedbackView`'s "Issues" link** (sends users to file bugs upstream), and two CLI help
+strings (`transcribe`, `config`).
+
+- [ ] `FeedbackService` — remove the feature or repoint it. Do not ship a form that posts
+      user content to someone else's backend.
+- [ ] `DiscoverService` / `DiscoverThoughtsService` — Discover is cut; remove the fetches.
+- [ ] Repoint or remove all 7 repo links, including the two CLI help strings.
+- [ ] Help menu → Splay's own repo or README.
+- [ ] Re-run this sweep before release:
+      `grep -rn "macparakeet\.com\|moona3k" --include="*.swift" Sources/`
+
+> **Note on `SparkleUpdateGuard`:** it blocks updates only for versions literally `0.0.0`,
+> `dev`, empty, or containing `pdx`. The installed dev builds were `0.6.0`, so the guard
+> never applied — consistent with an update alert actually being shown. It is not a
+> safety net for A1; the feed URL fix is.
+
 ### A5. Attribution and identity draft — 🟡 IN PROGRESS
 - [x] `README.md` rewritten as Splay's own (`docs/README-macparakeet-original.md` keeps
       the original for reference). Presents Splay as its own product, names MacParakeet
@@ -220,6 +252,8 @@ Run against a **freshly installed, Developer-ID-signed** build.
 
 1. ~~**A1** — kill the upstream Sparkle feed.~~ ✅ done 2026-08-18.
 2. ~~**A4** — stop telemetry reporting to upstream.~~ ✅ mitigated (endgame decision open).
+2b. **A6** — the rest of the upstream pointers (feedback endpoint is the urgent one).
+   Overlaps heavily with Phase 6, which cuts Feedback and Discover anyway.
 3. ~~**A2 Part 1** — Apple setup: Developer ID cert + notarytool credentials.~~
    ✅ done 2026-08-19.
 4. **B** — Phase 6, the cut.
