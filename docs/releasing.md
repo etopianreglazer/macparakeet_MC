@@ -231,6 +231,36 @@ Sparkle compares builds to decide whether an update exists.
 
 ---
 
+### 3.3a If signing fails with `errSecInternalComponent`
+
+```
+Downloader.xpc: errSecInternalComponent
+```
+
+This is **not** a problem with your bundle or the script. It means `codesign` could not
+use the private key because the key's keychain ACL wants interactive confirmation, and
+the process had no way to show the prompt. The tell: the identical command **works when
+run in a foreground terminal and fails when run in the background, over ssh, or from CI.**
+
+One-time fix — authorise the Apple tools to use the key without prompting:
+
+```bash
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s ~/Library/Keychains/login.keychain-db
+```
+
+It prompts for your **login (Mac) password** — leave `-k` off, as above, so the password
+never lands in shell history. You will likely get a "want to allow access" dialog as well;
+choose **Always Allow**.
+
+Then re-run step 3.3. This is a per-keychain, per-key setting: do it once after creating
+the certificate and it holds until you create a new one.
+
+Symptoms that look similar but are not this:
+- *"The specified item could not be found in the keychain"* — the identity string in
+  `SIGN_IDENTITY` does not match. Copy it verbatim from `security find-identity`.
+- *"ambiguous (matches multiple identities)"* — you have two certs with the same name;
+  pass the SHA-1 hash instead of the name.
+
 # Part 4 — First-release-only gotchas
 
 - **There is no upgrade path to test yet.** With one release, Sparkle has nothing to
