@@ -5,7 +5,132 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-18 **thread 7d** — ⭐ **MENU-REOPEN BUG: ROOT-CAUSED + FIXED, committed
+> **Last updated:** 2026-08-19 **thread 7d/7e** — ⭐ **NEXT THREAD = THE BIG CLEAN-UP.** The menu-reopen
+> bug is **fixed and user-confirmed live** ("Yeeees, it worked"). Launch prep is done as far as it can go
+> without cutting things. **29 commits ahead of `origin/main`, still NOT pushed.**
+>
+> ## What the next thread is for
+>
+> **Cut the junk out of the app.** This is `plans/active/splay-two-surface-rebuild.md` **Phase 6**, plus
+> everything the publish audit turned up. Three motivations that all point the same way:
+> (1) only the two surfaces should exist; (2) **half the 136 MB download is YouTube support**; (3) most
+> remaining **upstream-infrastructure pointers die with the features that use them**.
+> The authoritative work lists are **`docs/launch-checklist.md` §B + §A6** and
+> **`docs/publish-inventory.md`**. Read both before starting — they are precise and grounded, not
+> aspirational.
+>
+> ### The cut list, concretely
+>
+> **Code / surfaces (Phase 6):**
+> - `AppWindowCoordinator.openMainWindow()` / `openMainWindowToSettings(tab:)` — **10+ live call sites**
+>   across `AppDelegate` + `MenuBarCoordinator`. Re-route to cards or delete. Then retire the main window.
+> - The `Go` menu still lists Transcribe · Library · Dictations · Meetings · Vocabulary · Transforms ·
+>   Feedback · Settings…; `Capture` still offers New Transcription · Start Dictation · File Transcription ·
+>   Record Meeting · Create Transform; `Window` still has *Show Splay*. Rebuild menus for two surfaces.
+> - Dead Slice-4 overlay path: `IslandOverlayController`, `openSettingsOverlay`, `openLibraryOverlay` —
+>   left in place *specifically for Phase 6 to delete*.
+> - Feature flags all still `true`: `meetingRecordingEnabled`, `calendarEnabled`, `transformsEnabled`,
+>   `meetingVadLiveChunkingEnabled`, `islandReplacesDictationPill`.
+> - ⚠️ **Hide before deleting.** `CLAUDE.md` forbids removing licensing/entitlement plumbing and
+>   meeting-recovery artifacts as "dead code" without explicit owner sign-off.
+>
+> **Bundled junk (verified present in the notarized artifact):**
+> - 🚨 `Sources/Splay/Resources/voices/altman-v-altman-complaint-2025-01-06.pdf` — **657 KB PDF of an
+>   unrelated court complaint, referenced by no code**, shipping to every user since upstream. Delete the
+>   whole `voices/` folder. Owner has not yet said why it is there — ask, then delete.
+> - `menubar-icon@2x.png` (unreferenced); `discover-fallback.json` + `parakeet-mark.png` (die with Discover).
+> - `node` **113 MB** + `yt-dlp` **36 MB** = YouTube only. Cutting YouTube roughly **halves** the download
+>   (136 MB → ~70 MB). `ffmpeg` 63 MB stays (file/video import). `macparakeet-cli` 29 MB — **open question:
+>   does Splay ship a CLI at all?** Upstream treats it as a public contract; Splay has no stated CLI audience.
+>
+> **Upstream infrastructure still in shipping code (checklist §A6) — 5 endpoints, 7 links:**
+> - 🚨 `FeedbackService` → `macparakeet.com/api`: the in-app feedback form posts the user's message,
+>   optional **email** and screenshot to upstream's function, which files a **GitHub Issue on Daniel Moon's
+>   repo**. Worst of the set. Remove or repoint.
+> - `TelemetryService` → `macparakeet.com/api` (already defaulted **opt-in/off** this thread; endpoint unchanged).
+> - `DiscoverService` + `DiscoverThoughtsService` → upstream (Discover is cut).
+> - Help menu → `macparakeet.com`; 7 links to `github.com/moona3k/macparakeet` incl. `FeedbackView`'s
+>   "Issues" link and two CLI help strings.
+> - **Re-run before release:** `grep -rn "macparakeet\.com\|moona3k" --include="*.swift" Sources/`
+>
+> ### Open decisions the owner has NOT answered (ask early, they gate real work)
+> 1. `spec/` (38) + `plans/` (81) + `integrations/` + `marketing/` — **125 of the repo's 166 markdown files
+>    are upstream's**, describing in prescriptive present tense an app Splay is cutting apart.
+>    *Recommendation: keep `spec/adr/` only; drop the rest; move `plans/active/splay-*.md` into `docs/`.*
+> 2. `docs/research/` (11 files: competitor reverse-engineering, WisprFlow deep dives) — *recommend exclude*.
+> 3. `CLAUDE.md` / `AGENTS.md` — rewrite for Splay, or keep private?
+> 4. `brand-assets/` — MacParakeet's parakeet marks + coral palette. Replace or exclude?
+> 5. About card still says *"a personal fork of MacParakeet"* — reword to match README/CREDITS?
+> 6. Delete `Resources/voices/`? (agent would, absent a reason)
+> 7. Does Splay ship `macparakeet-cli`?
+>
+> ## What got DONE this thread (all committed, none pushed)
+>
+> **1. The menu-reopen bug — fixed, live-confirmed (`59101f91`).** Root cause was *not* exotic: the island
+> had exactly **one** working click path — the **global** monitor — and AppKit never reports an app's own
+> events to a global monitor. Proof from the log: `monitor_rejected src=local` **0 times** in 1.4 MB while
+> `src=global` 35 times, and **all 14** island clicks were followed by `present … app_active=false`. Zero
+> island clicks had *ever* succeeded while Splay was active. `present` calls `NSApp.activate`; the Close
+> button leaves it active; the island went dead. "Once per activation" was literally "once per *de*activation."
+> Fix = (a) `.nonactivatingPanel` on `IslandPanel` (it was the lone `.borderless`-only panel; every sibling
+> floating panel already had it), (b) the local monitor made real — screen-space resolution, accepts
+> window-less own-app clicks, logs its declines, (c) `SplayCardController.yieldActivationIfIdle` hands the
+> foreground back after teardown. `dispatchClick` now logs `src=local|global|mouseDown`. **Live test passed.**
+>
+> **2. Apple release setup — COMPLETE.** Developer ID Application cert created via Xcode → Settings →
+> Accounts → Manage Certificates (no manual CSR needed with full Xcode). `Developer ID Application: Mathew
+> Cleveland (76K8473JHR)`, **expires 2027-02-01** (short — likely pinned to membership renewal; timestamped
+> signatures survive expiry). notarytool keychain profile **`splay`** stored and authenticated.
+>
+> **3. 🏆 First notarized build exists and passed.** Dry run `0.0.1` build `20260819211955`:
+> `spctl` → `accepted / source=Notarized Developer ID` for **both app and DMG**, tickets stapled, chain to
+> Apple Root CA, hardened runtime on, every nested binary (Sparkle XPC, yt-dlp, ffmpeg, node, CLI) cleared.
+> **The release pipeline is proven end to end.** `dist/Splay.dmg` = 136 MB.
+> ⚠️ **Second-Mac test still outstanding** — the one check neither agent nor owner has run.
+>
+> **4. Killed the Sparkle footgun (`A1`).** The bundle shipped `SUFeedURL=macparakeet.com/appcast.xml` +
+> upstream's `SUPublicEDKey` (whose private half we never had) with auto-checks on; owner's defaults showed
+> `SULastCheckTime` and a stored update-alert frame — it had already offered an update that would have
+> replaced Splay.app with MacParakeet.dmg. Generated **Splay's own EdDSA keypair**
+> (`UjG8RmU9eOGL2ZNFdfc72QUhFH5z6KgYWTYBgmRJ6no=`, private half in login keychain, service
+> `https://sparkle-project.org` / account `ed25519`), pointed the feed at
+> `https://etopianreglazer.github.io/splay/appcast.xml`, cleared the stale defaults.
+> ⚠️ **The private key is backed up nowhere. Losing it = no existing install can ever update.**
+> ⚠️ `SparkleUpdateGuard` was never protecting us — it only blocks versions literally `0.0.0`/`dev`/empty/`pdx`.
+>
+> **5. Identity + legal.** `LICENSE` now carries Splay's copyright **alongside** Daniel Moon's with a dated
+> derivation statement (GPL-3.0 §5(a)). `README.md` rewritten as Splay's own product (original archived at
+> `docs/README-macparakeet-original.md`). **`CREDITS.md`** written — the thank-you letter, MacParakeet first
+> and at length, plus Talkify (dead-≠-silent) and DynamicNotchKit (blur-into-focus).
+> `THIRD_PARTY_LICENSES.md` **verified accurate** against all 11 `Package.resolved` deps.
+>
+> **6. New docs (read these first next thread):** `docs/launch-checklist.md` (the "r2launch" gate),
+> `docs/releasing.md` (first-release mechanics + the `errSecInternalComponent` trap),
+> `docs/publish-inventory.md` (every asset/doc classified SHIP/REWRITE/HISTORICAL/EXCLUDE).
+>
+> ## Gotchas learned this thread
+> - **`errSecInternalComponent` when signing** = keychain ACL wants interactive confirmation and the process
+>   is backgrounded. Identical command works in foreground. Fixed permanently by the owner running
+>   `security set-key-partition-list -S apple-tool:,apple:,codesign: -s ~/Library/Keychains/login.keychain-db`
+>   (no `-k`, so the password stays out of history). **Signing now works backgrounded.**
+> - **The dev install and the release build load resources differently.** `install_local.sh` uses
+>   `BUILD_SYSTEM=swiftpm`, which emits **no** SwiftPM resource bundles — `/Applications/Splay.app` has no
+>   `Splay_Splay.bundle` and resolves `Bundle.module` out of `.build/` **on this machine only**. The release
+>   path (`xcodebuild`, the default) copies them correctly. **Every live test so far ran on a build whose
+>   resource loading is machine-dependent.** Verify resource-backed UI (menu bar mark) on release artifacts.
+>   This also refines the old note: `run_app.sh`'s xcodebuild is broken here, but `build_app_bundle.sh`'s is fine.
+> - Piping a long background command through `| tail -N` buffers all output until exit — you see nothing
+>   mid-run. Poll `xcrun notarytool history --keychain-profile splay` instead.
+> - `swift test` baseline is **3166 tests / 8 failures = the same known 7 environmental fork-debt cases**.
+> - Commit messages with apostrophes break `git commit -m "…'…"` in this shell — use `git commit -F -`.
+>
+> **Still open from older threads:** the deferred glow "nudges" (`SplayGlowTuning`: drift visibility /
+> brightness / extend sway to ready) and the **talk-glow live verdict** (open since thread 6) — both queued
+> for the final visual pass (`docs/launch-checklist.md` §C4), to be dialled in the live HTML tuner.
+> **TEMP `f125f21d` diagnostic markers** are still in the tree; strip the `post_present` snapshot, keep the
+> `src=` click tags.
+>
+> **Last updated (prior):** 2026-08-18 **thread 7d** — ⭐ **MENU-REOPEN BUG: ROOT-CAUSED + FIXED, committed
 > `59101f91` (NOT pushed). LIVE TEST PENDING — that is the one thing to do next.**
 > **The cause was not event-routing exotica; it was that the island had exactly one working click path
 > and that path is off whenever Splay is active.** Proof from `~/Library/Logs/MacParakeet/dictation-audio.log`
