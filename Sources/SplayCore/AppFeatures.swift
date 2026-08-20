@@ -21,9 +21,9 @@ public enum AppFeatures {
     /// Transforms exist in the DB so flipping this flag is a no-data
     /// operation.
     ///
-    /// Enabled once the website telemetry allowlist accepts
-    /// `transform_executed` / `transform_failed` (ADR-022 §9).
-    public static let transformsEnabled: Bool = true
+    /// Hidden in Splay: the two-surface product is a focused voice recorder, so
+    /// Transforms is flag-off (code kept dormant, trivially re-enabled).
+    public static let transformsEnabled: Bool = false
 
     /// VAD-guided meeting live chunking
     /// (`plans/active/2026-05-meeting-vad-guided-live-chunking.md`). When
