@@ -1,4 +1,3 @@
-import EventKit
 import SwiftUI
 import SplayCore
 import SplayViewModels
@@ -8,7 +7,6 @@ struct MeetingsView: View {
 
     var onRecordMeeting: () -> Void
     var onPauseToggleMeeting: (() -> Void)?
-    var onOpenCalendarSettings: () -> Void
     var onOpenAISettings: () -> Void
     var onRecoverMeetings: () -> Void
     var onSelectMeeting: (Transcription) -> Void
@@ -33,21 +31,6 @@ struct MeetingsView: View {
         .background(DesignSystem.Colors.contentBackground)
         .onAppear {
             viewModel.refreshIfNeeded()
-        }
-        .onChange(of: viewModel.settingsViewModel.calendarAutoStartMode) { _, _ in
-            viewModel.refreshUpcomingEvents()
-        }
-        .onChange(of: viewModel.settingsViewModel.calendarPermissionStatus) { _, _ in
-            viewModel.refreshUpcomingEvents()
-        }
-        .onChange(of: viewModel.settingsViewModel.meetingTriggerFilter) { _, _ in
-            viewModel.refreshUpcomingEvents()
-        }
-        .onChange(of: viewModel.settingsViewModel.calendarExcludedIdentifiers) { _, _ in
-            viewModel.refreshUpcomingEvents()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .EKEventStoreChanged)) { _ in
-            viewModel.refreshUpcomingEvents()
         }
         .alert(
             "Save Failed",
@@ -118,7 +101,6 @@ struct MeetingsView: View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                    upcomingSection
                     recentMeetingsSection
                 }
                 .frame(minWidth: 480, maxWidth: .infinity, alignment: .topLeading)
@@ -133,7 +115,6 @@ struct MeetingsView: View {
             }
 
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                upcomingSection
                 attentionSection
                 intelligenceSection
                 autoNotesSection
@@ -141,90 +122,6 @@ struct MeetingsView: View {
                 recentMeetingsSection
             }
         }
-    }
-
-    @ViewBuilder
-    private var upcomingSection: some View {
-        if AppFeatures.calendarEnabled {
-            MeetingsSection(title: "Upcoming", icon: "calendar.badge.clock") {
-                CalendarInlineControlsRow(
-                    settingsViewModel: viewModel.settingsViewModel,
-                    onOpenCalendarSettings: onOpenCalendarSettings
-                )
-                MeetingsHairline()
-
-                switch viewModel.calendarStatus {
-                case .unavailable:
-                    unavailableCalendarState
-                case .off:
-                    MeetingsInlineState(
-                        icon: "calendar",
-                        title: "Calendar reminders are off",
-                        detail: calendarOffDetail,
-                        actionTitle: nil,
-                        actionIcon: nil,
-                        action: nil
-                    )
-                case .permissionNeeded:
-                    // The controls row above owns the permission CTA (inline
-                    // "Connect Calendar"), so this is context-only — no second
-                    // button competing with a different destination.
-                    MeetingsInlineState(
-                        icon: "calendar.badge.exclamationmark",
-                        title: "Calendar access needed",
-                        detail: "Connect Calendar above to see your upcoming meetings.",
-                        actionTitle: nil,
-                        actionIcon: nil,
-                        action: nil
-                    )
-                case .permissionDenied:
-                    MeetingsInlineState(
-                        icon: "lock.shield",
-                        title: "Calendar is blocked",
-                        detail: "Re-enable Calendar access in macOS Settings to see upcoming meetings.",
-                        actionTitle: nil,
-                        actionIcon: nil,
-                        action: nil
-                    )
-                case .loading:
-                    MeetingsLoadingRow(title: "Loading calendar")
-                case .error(let message):
-                    MeetingsInlineState(
-                        icon: "exclamationmark.triangle",
-                        title: "Calendar unavailable",
-                        detail: message,
-                        actionTitle: "Try Again",
-                        actionIcon: "arrow.clockwise",
-                        action: { viewModel.refreshUpcomingEvents() }
-                    )
-                case .ready(let mode):
-                    if viewModel.upcomingEvents.isEmpty {
-                        MeetingsInlineState(
-                            icon: "calendar",
-                            title: "No upcoming meetings",
-                            detail: calendarEmptyDetail(for: mode),
-                            actionTitle: "Refresh",
-                            actionIcon: "arrow.clockwise",
-                            action: { viewModel.refreshUpcomingEvents() }
-                        )
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(viewModel.upcomingEvents) { event in
-                                CalendarEventRow(event: event)
-                                if event.id != viewModel.upcomingEvents.last?.id {
-                                    MeetingsHairline()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var unavailableCalendarState: some View {
-        assertionFailure("calendarStatus should not be unavailable when the calendar feature is enabled.")
-        return EmptyView()
     }
 
     @ViewBuilder
@@ -543,37 +440,12 @@ struct MeetingsView: View {
         }
     }
 
-    private func calendarEmptyDetail(for mode: CalendarAutoStartMode) -> String {
-        switch mode {
-        case .off:
-            assertionFailure("calendarEmptyDetail should not be called when calendar reminders are off.")
-            return "Calendar reminders are off."
-        case .notify:
-            return "Calendar reminders are on."
-        case .autoStart:
-            return "Calendar auto-start is on."
-        }
-    }
-
-    private var calendarOffDetail: String {
-        switch viewModel.settingsViewModel.calendarPermissionStatus {
-        case .granted:
-            return "Turn on Reminders or Auto-start above to preview matching calendar events."
-        case .notDetermined:
-            return "Connect Calendar above to enable reminders and auto-start."
-        case .denied:
-            return "Re-enable Calendar access in System Settings to use reminders and auto-start."
-        }
-    }
-
     private func performAttentionAction(_ action: MeetingsWorkspaceViewModel.AttentionAction) {
         switch action {
         case .recordMeeting:
             onRecordMeeting()
         case .recoverMeetings:
             onRecoverMeetings()
-        case .openCalendarSettings:
-            onOpenCalendarSettings()
         case .openAISettings:
             onOpenAISettings()
         }
@@ -595,245 +467,6 @@ struct MeetingsView: View {
                 audioSaveErrorMessage = error.localizedDescription
             }
         }
-    }
-}
-
-private struct CalendarInlineControlsRow: View {
-    @Bindable var settingsViewModel: SettingsViewModel
-    var onOpenCalendarSettings: () -> Void
-
-    @State private var isRequestingPermission = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(DesignSystem.Colors.accent)
-                    .frame(width: 22)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 7) {
-                        Text("Calendar")
-                            .font(DesignSystem.Typography.body.weight(.semibold))
-                            .foregroundStyle(DesignSystem.Colors.textPrimary)
-
-                        CalendarModeBadge(mode: settingsViewModel.calendarAutoStartMode)
-                    }
-
-                    Text(calendarDetail)
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: DesignSystem.Spacing.sm)
-
-                Button(action: onOpenCalendarSettings) {
-                    Label("Calendar Settings", systemImage: "gearshape")
-                }
-                .parakeetAction(.secondary)
-                .help("Open Calendar Settings")
-            }
-
-            controlsArea
-        }
-        .padding(DesignSystem.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private var controlsArea: some View {
-        if controlsEnabled {
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    calendarModePicker
-                    eventFilterPicker
-                }
-
-                VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                    calendarModePicker
-                    eventFilterPicker
-                }
-            }
-        } else {
-            connectCalendarControls
-        }
-    }
-
-    @ViewBuilder
-    private var connectCalendarControls: some View {
-        switch settingsViewModel.calendarPermissionStatus {
-        case .notDetermined:
-            Button(action: connectCalendar) {
-                if isRequestingPermission {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    Label("Connect Calendar", systemImage: "calendar.badge.plus")
-                        .frame(maxWidth: .infinity)
-                }
-            }
-            .parakeetAction(.secondary)
-            .disabled(isRequestingPermission)
-            .accessibilityLabel("Connect Calendar")
-        case .denied:
-            Button {
-                settingsViewModel.openCalendarSystemSettings()
-            } label: {
-                Label("Open System Settings", systemImage: "gearshape")
-                    .frame(maxWidth: .infinity)
-            }
-            .parakeetAction(.secondary)
-            .help("Calendar access is blocked — re-enable it in System Settings")
-        case .granted:
-            EmptyView()
-        }
-    }
-
-    private func connectCalendar() {
-        isRequestingPermission = true
-        Task {
-            _ = await settingsViewModel.requestCalendarPermission()
-            isRequestingPermission = false
-        }
-    }
-
-    private var calendarModePicker: some View {
-        Picker("Calendar behavior", selection: $settingsViewModel.calendarAutoStartMode) {
-            Text("Off").tag(CalendarAutoStartMode.off)
-            Text("Reminders").tag(CalendarAutoStartMode.notify)
-            Text("Auto-start").tag(CalendarAutoStartMode.autoStart)
-        }
-        .labelsHidden()
-        .pickerStyle(.segmented)
-        .controlSize(.small)
-        .frame(width: 252)
-        .accessibilityLabel("Calendar behavior")
-        .accessibilityValue(calendarModeTitle)
-    }
-
-    private var eventFilterPicker: some View {
-        CalendarMenuPicker(label: "Events") {
-            Picker("Event filter", selection: $settingsViewModel.meetingTriggerFilter) {
-                Text("With video link").tag(MeetingTriggerFilter.withLink)
-                Text("With participants").tag(MeetingTriggerFilter.withParticipants)
-                Text("All events").tag(MeetingTriggerFilter.allEvents)
-            }
-            .accessibilityLabel("Event filter")
-            .accessibilityValue(eventFilterTitle)
-        }
-    }
-
-    private var calendarDetail: String {
-        // `controlsEnabled` is `permissionStatus == .granted`, so the not-granted
-        // branch only ever sees `.notDetermined` / `.denied`.
-        guard controlsEnabled else {
-            if settingsViewModel.calendarPermissionStatus == .denied {
-                return "Calendar access is blocked. Re-enable it in System Settings to use reminders."
-            }
-            return "Connect your macOS Calendar to preview meetings and enable reminders."
-        }
-
-        switch settingsViewModel.calendarAutoStartMode {
-        case .off:
-            return "Turn on calendar matching without leaving Meetings."
-        case .notify:
-            return "Preview matching events and remind before they start."
-        case .autoStart:
-            return "Auto-start matching meetings after a cancellable countdown."
-        }
-    }
-
-    private var controlsEnabled: Bool {
-        settingsViewModel.calendarPermissionStatus == .granted
-    }
-
-    private var calendarModeTitle: String {
-        switch settingsViewModel.calendarAutoStartMode {
-        case .off:
-            return "Off"
-        case .notify:
-            return "Reminders"
-        case .autoStart:
-            return "Auto-start"
-        }
-    }
-
-    private var eventFilterTitle: String {
-        switch settingsViewModel.meetingTriggerFilter {
-        case .withLink:
-            return "With video link"
-        case .withParticipants:
-            return "With participants"
-        case .allEvents:
-            return "All events"
-        }
-    }
-}
-
-private struct CalendarModeBadge: View {
-    let mode: CalendarAutoStartMode
-
-    var body: some View {
-        Text(title)
-            .font(DesignSystem.Typography.micro.weight(.semibold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Capsule().fill(tint.opacity(0.12)))
-    }
-
-    private var title: String {
-        switch mode {
-        case .off:
-            return "Off"
-        case .notify:
-            return "Reminders"
-        case .autoStart:
-            return "Auto-start"
-        }
-    }
-
-    private var tint: Color {
-        switch mode {
-        case .off:
-            return DesignSystem.Colors.textTertiary
-        case .notify:
-            return DesignSystem.Colors.accent
-        case .autoStart:
-            return DesignSystem.Colors.warningAmber
-        }
-    }
-}
-
-private struct CalendarMenuPicker<Content: View>: View {
-    let label: String
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(label)
-                .font(DesignSystem.Typography.micro.weight(.semibold))
-                .foregroundStyle(DesignSystem.Colors.textTertiary)
-                .textCase(.uppercase)
-            content()
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .frame(minWidth: 128, alignment: .leading)
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 7)
-                .fill(DesignSystem.Colors.surfaceElevated.opacity(0.72))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 7)
-                .strokeBorder(DesignSystem.Colors.border.opacity(0.55), lineWidth: 0.5)
-        )
     }
 }
 
@@ -990,57 +623,6 @@ private struct MeetingsLoadingRow: View {
     }
 }
 
-private struct CalendarEventRow: View {
-    let event: CalendarEvent
-
-    var body: some View {
-        HStack(alignment: .center, spacing: DesignSystem.Spacing.md) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(event.title)
-                    .font(DesignSystem.Typography.body.weight(.semibold))
-                    .foregroundStyle(DesignSystem.Colors.textPrimary)
-                    .lineLimit(1)
-                HStack(spacing: 6) {
-                    Text(eventDateText)
-                    Text("·")
-                    Text(event.formattedTimeRange)
-                    if let calendarName = event.calendarName, !calendarName.isEmpty {
-                        Text("·")
-                        Text(calendarName)
-                    }
-                    if event.attendeeCount > 0 {
-                        Text("·")
-                        Text(peopleCountText)
-                    }
-                }
-                .font(DesignSystem.Typography.caption)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .lineLimit(1)
-            }
-        }
-        .padding(DesignSystem.Spacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var peopleCountText: String {
-        let count = event.attendeeCount + 1
-        return "\(count) \(count == 1 ? "person" : "people")"
-    }
-
-    private static let eventDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = .autoupdatingCurrent
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .none
-        formatter.doesRelativeDateFormatting = true
-        return formatter
-    }()
-
-    private var eventDateText: String {
-        Self.eventDateFormatter.string(from: event.startTime)
-    }
-}
-
 private struct AttentionRow: View {
     let item: MeetingsWorkspaceViewModel.AttentionItem
     var action: () -> Void
@@ -1085,7 +667,7 @@ private struct AttentionRow: View {
             return "record.circle"
         case .recoverMeetings:
             return "tray.and.arrow.up"
-        case .openCalendarSettings, .openAISettings:
+        case .openAISettings:
             return "gearshape"
         }
     }

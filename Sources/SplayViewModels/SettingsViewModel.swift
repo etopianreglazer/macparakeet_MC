@@ -352,80 +352,6 @@ public final class SettingsViewModel {
     }
     public var meetingAutoSaveFolderPath: String?
 
-    // Calendar auto-start (ADR-017)
-    //
-    // Each `didSet` writes the value through to `UserDefaults`, fires the
-    // shared `macParakeetCalendarSettingsDidChange` notification (so the
-    // coordinator re-reads its config without waiting for the next poll
-    // tick), and emits a typed telemetry event. Excluded calendar IDs flow
-    // through the same notification — the coordinator's filter changes the
-    // moment a checkbox is toggled.
-    public var calendarAutoStartMode: CalendarAutoStartMode {
-        didSet {
-            defaults.set(calendarAutoStartMode.rawValue, forKey: CalendarAutoStartPreferences.modeKey)
-            // Guard ALL side effects (not just the auth prompt). Onboarding
-            // posts the cross-VM notification itself; if we re-post here
-            // during the resulting reload, the observer cycles indefinitely
-            // (the .common-mode Task hop drops the re-entrancy guard before
-            // the observer fires again). The originator already emitted
-            // telemetry — don't double-emit on sync.
-            guard !isResolvingCalendarSettings else { return }
-            NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
-            Telemetry.send(.settingChanged(setting: .calendarAutoStartMode))
-            // Enabling reminders requires notification authorization. The
-            // onboarding-grant flow asks for this in tandem with Calendar
-            // access, but a user who granted Calendar earlier (or via
-            // System Settings) and *now* flips the mode picker to non-`.off`
-            // would otherwise hit the silent-drop path: coordinator marks
-            // the event reminded, finds notifications unauthorized, returns
-            // without delivering.
-            if calendarAutoStartMode != .off {
-                Task { await CalendarNotificationAuthorization.requestIfNeeded() }
-            }
-        }
-    }
-    public var calendarReminderMinutes: Int {
-        didSet {
-            defaults.set(calendarReminderMinutes, forKey: CalendarAutoStartPreferences.reminderMinutesKey)
-            guard !isResolvingCalendarSettings else { return }
-            NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
-            Telemetry.send(.settingChanged(setting: .calendarReminderMinutes))
-        }
-    }
-    public var meetingTriggerFilter: MeetingTriggerFilter {
-        didSet {
-            defaults.set(meetingTriggerFilter.rawValue, forKey: CalendarAutoStartPreferences.triggerFilterKey)
-            guard !isResolvingCalendarSettings else { return }
-            NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
-            Telemetry.send(.settingChanged(setting: .calendarTriggerFilter))
-        }
-    }
-    public var calendarExcludedIdentifiers: Set<String> {
-        didSet {
-            defaults.set(Array(calendarExcludedIdentifiers), forKey: CalendarAutoStartPreferences.excludedCalendarIdsKey)
-            guard !isResolvingCalendarSettings else { return }
-            NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
-            Telemetry.send(.settingChanged(setting: .calendarIncludedCalendars))
-        }
-    }
-    /// Three-state Calendar permission. Settings UI needs to distinguish
-    /// `.denied` from `.notDetermined` because macOS only shows the
-    /// EventKit prompt once — after denial, the only recovery path is
-    /// System Settings, so the Settings button label has to change too.
-    public var calendarPermissionStatus: CalendarService.PermissionStatus = .notDetermined
-    /// Convenience derived from `calendarPermissionStatus` for callers that
-    /// only care about the granted-or-not boolean (onboarding gating, etc.).
-    public var calendarPermissionGranted: Bool {
-        calendarPermissionStatus == .granted
-    }
-    /// Whether macOS notification authorization is granted. Calendar reminders
-    /// (`.notify`, and the pre-meeting reminder in `.autoStart`) are delivered
-    /// via `UNUserNotificationCenter`, a *separate* TCC scope from Calendar —
-    /// so a user can grant Calendar yet have reminders silently dropped.
-    /// Settings surfaces this; refreshed by the view (defaults to `true` so the
-    /// warning never flashes before the first async check resolves).
-    public var calendarNotificationsAuthorized: Bool = true
-
     // Permission status
     public var microphoneGranted = false
     public var accessibilityGranted = false
@@ -485,10 +411,6 @@ public final class SettingsViewModel {
     /// cancellation affordance while the existing safe runtime warm-up owns
     /// download, cache validation, and retry behavior.
     @ObservationIgnored nonisolated(unsafe) private var parakeetSetupTask: Task<Void, Never>?
-    @ObservationIgnored nonisolated(unsafe) private var calendarSettingsObserver: NSObjectProtocol?
-    /// Re-entrancy guard so `observeCalendarSettings()` doesn't fire `didSet`
-    /// → notification → re-resolve → `didSet` → … on every user toggle.
-    private var isResolvingCalendarSettings = false
     private let logger = Logger(subsystem: "com.macparakeet.viewmodels", category: "SettingsViewModel")
 
     public init(
@@ -577,10 +499,6 @@ public final class SettingsViewModel {
         meetingAutoSave = (defaults.object(forKey: AutoSaveScope.meeting.enabledKey) as? Bool) ?? true
         meetingAutoSaveFormat = AutoSaveFormat(rawValue: defaults.string(forKey: AutoSaveScope.meeting.formatKey) ?? "md") ?? .md
         meetingAutoSaveFolderPath = Self.resolveAutoSaveFolderPath(defaults: defaults, scope: .meeting)
-        calendarAutoStartMode = Self.resolveCalendarAutoStartMode(defaults: defaults)
-        calendarReminderMinutes = Self.resolveCalendarReminderMinutes(defaults: defaults)
-        meetingTriggerFilter = Self.resolveMeetingTriggerFilter(defaults: defaults)
-        calendarExcludedIdentifiers = Self.resolveCalendarExcludedIdentifiers(defaults: defaults)
 
         // Defense-in-depth self-heal: in the rare case that
         // `ensureFolderConfigured` couldn't create the default folder
@@ -599,83 +517,11 @@ public final class SettingsViewModel {
         }
 
         refreshMicrophoneDevices()
-        observeCalendarSettings()
     }
 
     deinit {
         permissionPollingTask?.cancel()
         microphoneTestTask?.cancel()
-        if let calendarSettingsObserver {
-            NotificationCenter.default.removeObserver(calendarSettingsObserver)
-        }
-    }
-
-    /// Onboarding writes calendar settings directly to UserDefaults (it
-    /// doesn't own a `SettingsViewModel`). Without this observer, an open
-    /// Settings window would show stale mode/lead/filter until Settings was
-    /// closed and re-opened. Re-resolving from defaults keeps every UI
-    /// surface that holds a `SettingsViewModel` in sync.
-    private func observeCalendarSettings() {
-        let center = NotificationCenter.default
-        calendarSettingsObserver = center.addObserver(
-            forName: .macParakeetCalendarSettingsDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.reloadCalendarSettings() }
-        }
-    }
-
-    private func reloadCalendarSettings() {
-        // Avoid the `didSet` → post-notification → reload → `didSet` loop:
-        // re-resolving has to skip the `didSet` write-through. The flag
-        // guards the entire batch so partial updates can't fire telemetry
-        // for a value the user didn't actually change.
-        guard !isResolvingCalendarSettings else { return }
-        isResolvingCalendarSettings = true
-        defer { isResolvingCalendarSettings = false }
-
-        let resolvedMode = Self.resolveCalendarAutoStartMode(defaults: defaults)
-        if calendarAutoStartMode != resolvedMode { calendarAutoStartMode = resolvedMode }
-
-        let resolvedMinutes = Self.resolveCalendarReminderMinutes(defaults: defaults)
-        if calendarReminderMinutes != resolvedMinutes { calendarReminderMinutes = resolvedMinutes }
-
-        let resolvedFilter = Self.resolveMeetingTriggerFilter(defaults: defaults)
-        if meetingTriggerFilter != resolvedFilter { meetingTriggerFilter = resolvedFilter }
-
-        let resolvedExcluded = Self.resolveCalendarExcludedIdentifiers(defaults: defaults)
-        if calendarExcludedIdentifiers != resolvedExcluded { calendarExcludedIdentifiers = resolvedExcluded }
-    }
-
-    private static func resolveCalendarAutoStartMode(defaults: UserDefaults) -> CalendarAutoStartMode {
-        guard let raw = defaults.string(forKey: CalendarAutoStartPreferences.modeKey),
-              let mode = CalendarAutoStartMode(rawValue: raw) else {
-            return .off  // Off by default — opt-in only via onboarding or Settings.
-        }
-        return mode
-    }
-
-    private static func resolveCalendarReminderMinutes(defaults: UserDefaults) -> Int {
-        guard defaults.object(forKey: CalendarAutoStartPreferences.reminderMinutesKey) != nil else {
-            return CalendarAutoStartPreferences.defaultReminderMinutes
-        }
-        return defaults.integer(forKey: CalendarAutoStartPreferences.reminderMinutesKey)
-    }
-
-    private static func resolveMeetingTriggerFilter(defaults: UserDefaults) -> MeetingTriggerFilter {
-        guard let raw = defaults.string(forKey: CalendarAutoStartPreferences.triggerFilterKey),
-              let filter = MeetingTriggerFilter(rawValue: raw) else {
-            return .withLink
-        }
-        return filter
-    }
-
-    private static func resolveCalendarExcludedIdentifiers(defaults: UserDefaults) -> Set<String> {
-        guard let raw = defaults.array(forKey: CalendarAutoStartPreferences.excludedCalendarIdsKey) as? [String] else {
-            return []
-        }
-        return Set(raw)
     }
 
     private static func normalizedMicrophoneSelection(_ uid: String?) -> String {
@@ -897,7 +743,6 @@ public final class SettingsViewModel {
                 accessibilityGranted = accStatus
                 screenRecordingGranted = screenRecordingStatus
             }
-            refreshCalendarPermission()
         }
     }
 
@@ -986,52 +831,6 @@ public final class SettingsViewModel {
 
     public func openScreenRecordingSystemSettings() {
         permissionService?.openScreenRecordingSettings()
-    }
-
-    /// Refresh calendar permission via the shared service. Cheap — no
-    /// network or disk; just reads `EKEventStore.authorizationStatus` (which
-    /// is `nonisolated` on the actor, so no await needed).
-    public func refreshCalendarPermission() {
-        calendarPermissionStatus = CalendarService.shared.permissionStatus
-    }
-
-    /// Trigger the EventKit permission prompt if not yet decided. Returns the
-    /// granted state. On grant, also requests notification authorization so
-    /// the eventual reminder isn't silently dropped by macOS — this single
-    /// async hop pairs the two permissions the feature actually needs.
-    @discardableResult
-    public func requestCalendarPermission() async -> Bool {
-        Telemetry.send(.permissionPrompted(permission: .calendar))
-        let granted = await CalendarService.shared.requestPermission()
-        // Re-read the status (rather than just assigning .granted/.denied
-        // from the bool) so `.restricted` from MDM-managed Macs is reflected
-        // accurately — the service maps it to `.denied` so callers don't
-        // need a fourth case, but a fresh read is the source of truth.
-        calendarPermissionStatus = CalendarService.shared.permissionStatus
-        Telemetry.send(granted ? .permissionGranted(permission: .calendar) : .permissionDenied(permission: .calendar))
-        if granted {
-            await CalendarNotificationAuthorization.requestIfNeeded()
-            // Match the onboarding grant flow (OnboardingViewModel applies
-            // .notify on grant): a user who explicitly grants Calendar access
-            // from Settings intends to use the feature, so default them into
-            // the safe .notify mode. Only when still .off — never clobber an
-            // existing .autoStart choice.
-            if calendarAutoStartMode == .off {
-                calendarAutoStartMode = .notify
-            }
-        }
-        return granted
-    }
-
-    public func openCalendarSystemSettings() {
-        if NSWorkspace.shared.open(CalendarService.settingsURL) { return }
-    }
-
-    /// Refresh the cached notification-authorization state. Cheap async read
-    /// of `UNUserNotificationCenter` settings; the view calls this on appear
-    /// and when the calendar mode changes.
-    public func refreshCalendarNotificationAuthorization() async {
-        calendarNotificationsAuthorized = await CalendarNotificationAuthorization.isAuthorized()
     }
 
     /// Deep-link to the Notifications pane in System Settings. The pane id

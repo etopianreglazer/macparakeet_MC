@@ -114,11 +114,6 @@ public enum TelemetryEventName: String, Sendable, CaseIterable {
     /// `AppFeatures.meetingVadLiveChunkingEnabled`, so it never fires in a
     /// flag-off build.
     case vadModelPrep = "vad_model_prep"
-    // Calendar auto-start (ADR-017)
-    case calendarReminderShown = "calendar_reminder_shown"
-    case calendarAutoStartTriggered = "calendar_auto_start_triggered"
-    case calendarAutoStartCancelled = "calendar_auto_start_cancelled"
-    case calendarAutoStartFailed = "calendar_auto_start_failed"
     // STT runtime observability
     case sttRuntimeUnhealthy = "stt_runtime_unhealthy"
     // Errors
@@ -322,11 +317,10 @@ public enum TelemetryLLMSource: String, Sendable, Equatable {
 }
 
 /// Why a meeting recording started. Lets us distinguish manual user action
-/// from calendar-driven auto-start in adoption metrics.
+/// from hotkey-driven starts in adoption metrics.
 public enum TelemetryMeetingRecordingTrigger: String, Sendable, Equatable {
     case manual
     case hotkey
-    case calendarAutoStart = "calendar_auto_start"
 }
 
 public enum TelemetryMeetingOperationStage: String, Sendable, Equatable {
@@ -362,7 +356,6 @@ public enum TelemetryPermission: String, Sendable, Equatable {
     case microphone
     case accessibility
     case screenRecording = "screen_recording"
-    case calendar
 }
 
 /// Which capture surface a hotkey customization applies to. Lets us answer
@@ -414,12 +407,6 @@ public enum TelemetrySettingName: String, Sendable, Equatable {
     case silenceAutoStop = "silence_auto_stop"
     case keepDictationOnClipboard = "keep_dictation_on_clipboard"
     case voiceReturn = "voice_return"
-
-    // Calendar auto-start (ADR-017)
-    case calendarAutoStartMode = "calendar_auto_start_mode"
-    case calendarReminderMinutes = "calendar_reminder_minutes"
-    case calendarTriggerFilter = "calendar_trigger_filter"
-    case calendarIncludedCalendars = "calendar_included_calendars"
 }
 
 public enum TelemetryEventSpec: Sendable {
@@ -727,26 +714,6 @@ public enum TelemetryEventSpec: Sendable {
     /// Launch-time VAD model prep outcome (Phase 4.5). Only `.prepared` /
     /// `.failed` are ever sent — see `TelemetryVADModelPrepOutcome`.
     case vadModelPrep(outcome: TelemetryVADModelPrepOutcome)
-    // Calendar auto-start (ADR-017). Mode is "notify" / "auto_start" — `.off`
-    // never produces an event because the coordinator short-circuits.
-    case calendarReminderShown(mode: String, leadMinutes: Int, hasMeetUrl: Bool)
-    /// Auto-start countdown shown to the user. Fires when `.autoStartDue`
-    /// emits and `MeetingAutoStartCoordinator` actually presents the toast
-    /// (after permission + active-recording checks).
-    case calendarAutoStartTriggered(leadSeconds: Int, hasMeetUrl: Bool)
-    /// User actively cancelled the countdown before recording started.
-    /// Currently only fires `reason: "user_cancel"`. System-side
-    /// failures (permission denial, service throw, state-busy) go
-    /// through `calendarAutoStartFailed` instead so the analyst can
-    /// tell "user said no" from "system couldn't" cleanly.
-    case calendarAutoStartCancelled(reason: String)
-    /// Auto-start countdown completed but the recording flow couldn't
-    /// actually start. Distinguishes user opt-out from system failure
-    /// — see ADR-017 §10. Reasons:
-    /// - `permission_denied` — user denied mic/screen during the prompt
-    /// - `state_busy` — recording flow was non-idle (back-to-back meeting)
-    /// - `service_threw` — `MeetingRecordingService.startRecording` errored
-    case calendarAutoStartFailed(reason: String)
     // STT runtime observability. Fires when an STT runtime call (cancel-drain,
     // model-cache clear, shutdown, engine swap) exceeds the watchdog timeout.
     // Detection-only; the caller continues to await as today.
@@ -875,10 +842,6 @@ extension TelemetryEventSpec {
         case .meetingRecoveryDiscarded: return .meetingRecoveryDiscarded
         case .meetingRecoveryFailed: return .meetingRecoveryFailed
         case .vadModelPrep: return .vadModelPrep
-        case .calendarReminderShown: return .calendarReminderShown
-        case .calendarAutoStartTriggered: return .calendarAutoStartTriggered
-        case .calendarAutoStartCancelled: return .calendarAutoStartCancelled
-        case .calendarAutoStartFailed: return .calendarAutoStartFailed
         case .sttRuntimeUnhealthy: return .sttRuntimeUnhealthy
         case .errorOccurred: return .errorOccurred
         case .crashOccurred: return .crashOccurred
@@ -1442,21 +1405,6 @@ extension TelemetryEventSpec {
             return props
         case .vadModelPrep(let outcome):
             return ["outcome": outcome.rawValue]
-        case .calendarReminderShown(let mode, let leadMinutes, let hasMeetUrl):
-            return [
-                "mode": mode,
-                "lead_minutes": "\(leadMinutes)",
-                "has_meet_url": Self.boolString(hasMeetUrl),
-            ]
-        case .calendarAutoStartTriggered(let leadSeconds, let hasMeetUrl):
-            return [
-                "lead_seconds": "\(leadSeconds)",
-                "has_meet_url": Self.boolString(hasMeetUrl),
-            ]
-        case .calendarAutoStartCancelled(let reason):
-            return ["reason": reason]
-        case .calendarAutoStartFailed(let reason):
-            return ["reason": reason]
         case .sttRuntimeUnhealthy(let reason):
             return ["reason": reason]
         case .errorOccurred(let domain, let code, let description):
@@ -1674,10 +1622,6 @@ public enum TelemetryImplementedContract {
         .meetingRecoveryDiscarded: ["count", "source"],
         .meetingRecoveryFailed: ["count", "source", "error_type"],
         .vadModelPrep: ["outcome"],
-        .calendarReminderShown: ["mode", "lead_minutes", "has_meet_url"],
-        .calendarAutoStartTriggered: ["lead_seconds", "has_meet_url"],
-        .calendarAutoStartCancelled: ["reason"],
-        .calendarAutoStartFailed: ["reason"],
         .sttRuntimeUnhealthy: ["reason"],
         .errorOccurred: ["domain", "code", "description"],
         .crashOccurred: ["crash_type", "signal", "name", "crash_ts", "crash_app_ver"],

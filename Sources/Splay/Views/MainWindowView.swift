@@ -131,9 +131,6 @@ struct MainWindowView: View {
                                 onRecordMeetingFromWorkspace()
                             },
                             onPauseToggleMeeting: onPauseToggleMeeting,
-                            onOpenCalendarSettings: {
-                                state.navigateToSettings(tab: .modes)
-                            },
                             onOpenAISettings: {
                                 state.navigateToSettings(tab: .ai)
                             },

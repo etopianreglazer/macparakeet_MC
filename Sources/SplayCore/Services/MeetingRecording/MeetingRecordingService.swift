@@ -58,9 +58,8 @@ public struct MeetingCaptureHealth: Sendable, Equatable {
 }
 
 public protocol MeetingRecordingServiceProtocol: Sendable {
-    /// `title` lets callers (e.g., the calendar auto-start path) pre-name
-    /// the recording. `nil` or whitespace-only falls back to the default
-    /// "Meeting <date>" label.
+    /// `title` lets callers pre-name the recording. `nil` or whitespace-only
+    /// falls back to the default "Meeting <date>" label.
     func startRecording(title: String?, sourceMode: MeetingAudioSourceMode?) async throws
     func stopRecording() async throws -> MeetingRecordingOutput
     func completeTranscription(for recording: MeetingRecordingOutput) async
@@ -103,8 +102,8 @@ public protocol MeetingRecordingServiceProtocol: Sendable {
 }
 
 public extension MeetingRecordingServiceProtocol {
-    /// Existing manual / hotkey callers use the no-arg form — the calendar
-    /// path is the only caller that has a meaningful title to pass.
+    /// Manual / hotkey callers use the no-arg form; the `title` overload
+    /// exists for callers that have a meaningful title to pre-name with.
     func startRecording(title: String?) async throws {
         try await startRecording(title: title, sourceMode: nil)
     }

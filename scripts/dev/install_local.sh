@@ -74,7 +74,7 @@ while IFS= read -r -d '' b; do
   sign "$b"
 done < <(find "$APP_PATH/Contents/MacOS" -maxdepth 1 -type f -perm -111 -print0 2>/dev/null || true)
 
-# The app itself, with entitlements (audio-input, calendars, network)
+# The app itself, with entitlements (audio-input, network)
 sign --entitlements "$ROOT_DIR/scripts/dist/MacParakeet.entitlements" "$APP_PATH"
 
 echo "[3/4] Verifying signature…"

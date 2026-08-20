@@ -2,13 +2,12 @@ import Foundation
 import OSLog
 import UserNotifications
 
-/// Calendar reminders rely on `UNUserNotificationCenter`. Without a prior
-/// `requestAuthorization` call, macOS silently drops every reminder we post —
-/// the user grants Calendar access, sees nothing, and concludes the feature
-/// is broken. This helper centralizes the request so onboarding, Settings,
-/// and the coordinator all flow through one path.
-public enum CalendarNotificationAuthorization {
-    private static let logger = Logger(subsystem: "com.macparakeet", category: "CalendarNotifications")
+/// User-facing notifications rely on `UNUserNotificationCenter`. Without a prior
+/// `requestAuthorization` call, macOS silently drops every notification we post —
+/// the user sees nothing and concludes the feature is broken. This helper
+/// centralizes the request so every caller flows through one path.
+public enum NotificationAuthorization {
+    private static let logger = Logger(subsystem: "com.macparakeet", category: "Notifications")
 
     /// `UNUserNotificationCenter.current()` requires a host bundle with a
     /// proper `bundleIdentifier` and crashes inside `xctest` (the test
@@ -20,8 +19,8 @@ public enum CalendarNotificationAuthorization {
             && Bundle.main.bundleIdentifier?.hasPrefix("com.apple.dt.xctest") == false
     }
 
-    /// Request `.alert` authorization (no `.sound` — calendar reminders are
-    /// silent by design so they don't fight the user's Zoom join sound). No-op
+    /// Request `.alert` authorization (no `.sound` — notifications are
+    /// silent by design so they don't fight the user's own audio). No-op
     /// when status is already `.authorized` or `.provisional`.
     @discardableResult
     public static func requestIfNeeded() async -> Bool {
@@ -31,7 +30,7 @@ public enum CalendarNotificationAuthorization {
         case .authorized, .provisional:
             return true
         case .denied:
-            logger.warning("Notification authorization previously denied — calendar reminders will not deliver")
+            logger.warning("Notification authorization previously denied — notifications will not deliver")
             return false
         case .notDetermined, .ephemeral:
             fallthrough
@@ -47,7 +46,7 @@ public enum CalendarNotificationAuthorization {
         }
     }
 
-    /// Cheap status check the coordinator can call before posting a reminder.
+    /// Cheap status check callers can use before posting a notification.
     public static func isAuthorized() async -> Bool {
         guard isHostBundleEligible else { return false }
         let settings = await UNUserNotificationCenter.current().notificationSettings()

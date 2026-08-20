@@ -27,7 +27,7 @@ enum TranscriptionCompletionPresenter {
 
     private static func postBanner(_ content: TranscriptionCompletionNotifier.Content) {
         Task {
-            guard await CalendarNotificationAuthorization.requestIfNeeded() else {
+            guard await NotificationAuthorization.requestIfNeeded() else {
                 logger.info("Completion banner skipped — notifications not authorized")
                 return
             }

@@ -38,7 +38,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkeyCoordinator: AppHotkeyCoordinator?
     private var dictationFlowCoordinator: DictationFlowCoordinator?
     private var meetingRecordingFlowCoordinator: MeetingRecordingFlowCoordinator?
-    private var meetingAutoStartCoordinator: MeetingAutoStartCoordinator?
     /// Ambient island panel (fork: `islandReplacesDictationPill`). Long-lived
     /// for the app's lifetime; a pure indicator morphing through the capture
     /// lifecycle. Anything it needs to say is a card (`splayCardController`).
@@ -350,7 +349,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictationFlowCoordinator?.hideIdlePill()
         islandController?.hide()
         hotkeyCoordinator?.stopAll()
-        meetingAutoStartCoordinator?.stop()
         transformsCoordinator?.stop()
         settingsObserverCoordinator.stopObserving()
         environmentSetupTask?.cancel()
@@ -474,7 +472,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictationFlowCoordinator = runtime.dictationFlowCoordinator
         meetingRecordingFlowCoordinator = runtime.meetingRecordingFlowCoordinator
         hotkeyCoordinator = runtime.hotkeyCoordinator
-        meetingAutoStartCoordinator = runtime.meetingAutoStartCoordinator
         islandController = runtime.islandController
 
         // Shared resolver for the user's LLM provider — returns the live

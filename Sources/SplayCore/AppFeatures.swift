@@ -11,18 +11,6 @@ public enum AppFeatures {
     /// intact.
     public static let meetingRecordingEnabled: Bool = true
 
-    /// Calendar auto-start (ADR-017). When `false`, all calendar entry points
-    /// are hidden: onboarding calendar step, Settings calendar subsection,
-    /// search-index calendar entry, and the auto-start coordinator never starts
-    /// polling. CalendarService, MeetingAutoStartCoordinator, models, and tests
-    /// remain intact — only the surfaces that would invoke them are gated.
-    /// Enabled after the post-#318 reliability hardening (ADR-017 Phases 1+2):
-    /// mid-flight teardown, RSVP/zero-duration guards, and reschedule re-fire.
-    /// Calendar-driven auto-stop was removed by the 2026-05 amendment. Auto-
-    /// start defaults to mode `.off`, so upgraders opt in explicitly via
-    /// onboarding or Settings; nothing changes for existing users until they do.
-    public static let calendarEnabled: Bool = true
-
     /// Transforms — productized Phase 2 (ADR-022). When `true`:
     /// - the Transforms tab appears in the main sidebar
     /// - `TransformsHotkeyRegistry` installs its event tap on launch

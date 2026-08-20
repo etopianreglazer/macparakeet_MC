@@ -15,9 +15,8 @@ struct MerkabaPillIcon: NSViewRepresentable {
     var isAnimating: Bool = false
     var audioLevel: Float = 0
     /// When `false`, render only the Flower-of-Life head (no stem/leaves) -
-    /// used where the rosette is a compact standalone mark, e.g. inside the
-    /// calendar countdown halo. Defaults to `true` so the recording pill keeps
-    /// the full flower.
+    /// used where the rosette is a compact standalone mark. Defaults to `true`
+    /// so the recording pill keeps the full flower.
     var showStem: Bool = true
 
     func makeNSView(context: Context) -> MerkabaPillIconView {

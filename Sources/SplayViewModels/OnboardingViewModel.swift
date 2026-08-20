@@ -24,7 +24,6 @@ public final class OnboardingViewModel {
         case microphone
         case accessibility
         case meetingRecording
-        case calendar
         case hotkey
         case engine
         case done
@@ -37,7 +36,6 @@ public final class OnboardingViewModel {
             case .microphone: return "Microphone"
             case .accessibility: return "Accessibility"
             case .meetingRecording: return "Meeting Recording"
-            case .calendar: return "Calendar"
             case .hotkey: return "Hotkey"
             case .engine: return "Speech Model"
             case .done: return "Ready"
@@ -61,8 +59,6 @@ public final class OnboardingViewModel {
     public private(set) var accessibilityGranted: Bool = false
     public private(set) var screenRecordingGranted: Bool = false
     public private(set) var meetingRecordingSkipped: Bool
-    public private(set) var calendarPermissionGranted: Bool = false
-    public private(set) var calendarSkipped: Bool
     public private(set) var showRelaunchHint: Bool = false
     public private(set) var engineState: EngineState = .idle
     public private(set) var whisperRecommendation: WhisperOnboardingRecommendation?
@@ -106,7 +102,6 @@ public final class OnboardingViewModel {
 
     public nonisolated static let onboardingCompletedKey = "onboarding.completedAtISO"
     public nonisolated static let meetingRecordingSkippedKey = "onboarding.meetingRecordingSkipped"
-    public nonisolated static let calendarSkippedKey = "onboarding.calendarSkipped"
 
     public init(
         permissionService: PermissionServiceProtocol,
@@ -144,8 +139,6 @@ public final class OnboardingViewModel {
         self.permissionPollingInterval = permissionPollingInterval
         self.relaunchHintDelay = relaunchHintDelay
         self.meetingRecordingSkipped = defaults.bool(forKey: Self.meetingRecordingSkippedKey)
-        self.calendarSkipped = defaults.bool(forKey: Self.calendarSkippedKey)
-        self.calendarPermissionGranted = CalendarService.shared.permissionStatus == .granted
         self.whisperRecommendation = Self.recommendedWhisperLanguage(
             preferredLanguages: (preferredLanguages ?? { Locale.preferredLanguages })()
         )
@@ -166,15 +159,9 @@ public final class OnboardingViewModel {
     public func resetOnboarding() {
         defaults.removeObject(forKey: Self.onboardingCompletedKey)
         defaults.removeObject(forKey: Self.meetingRecordingSkippedKey)
-        defaults.removeObject(forKey: Self.calendarSkippedKey)
         step = .welcome
         engineState = .idle
         meetingRecordingSkipped = false
-        calendarSkipped = false
-        // Re-resolve from the live calendar permission so a previously-
-        // granted user re-entering onboarding sees the correct "completed"
-        // state, not the stale value carried over from VM init.
-        calendarPermissionGranted = CalendarService.shared.permissionStatus == .granted
         clearMeetingRecordingPendingState()
     }
 
@@ -206,16 +193,12 @@ public final class OnboardingViewModel {
 
     /// Steps the user actually sees. Hidden steps (gated by `AppFeatures`) are
     /// filtered out so next/back/jump all walk the visible list — no flicker or
-    /// silent no-ops when flags are off. Calendar requires BOTH meeting
-    /// recording and calendar to be enabled; gating the inner flag alone lets
-    /// us hide the (untested) calendar flow without dropping meeting recording.
+    /// silent no-ops when flags are off.
     public static var visibleSteps: [Step] {
         Step.allCases.filter { step in
             switch step {
             case .meetingRecording:
                 return AppFeatures.meetingRecordingEnabled
-            case .calendar:
-                return AppFeatures.meetingRecordingEnabled && AppFeatures.calendarEnabled
             default:
                 return true
             }
@@ -262,8 +245,6 @@ public final class OnboardingViewModel {
         case .accessibility:
             return accessibilityGranted
         case .meetingRecording:
-            return true
-        case .calendar:
             return true
         case .hotkey:
             return true
@@ -326,49 +307,6 @@ public final class OnboardingViewModel {
         defaults.set(true, forKey: Self.meetingRecordingSkippedKey)
         clearMeetingRecordingPendingState()
         goNext()
-    }
-
-    /// Trigger the EventKit permission prompt. On grant, default the user
-    /// into `.notify` mode so the feature works out of the box and request
-    /// notification authorization in the same flow — without it, macOS
-    /// silently drops every reminder we post and the user concludes the
-    /// feature is broken. We write directly to UserDefaults + post the
-    /// shared notification so a running `MeetingAutoStartCoordinator`
-    /// re-evaluates immediately.
-    public func requestCalendarAccess() {
-        isBusy = true
-        Telemetry.send(.permissionPrompted(permission: .calendar))
-        Task {
-            let granted = await CalendarService.shared.requestPermission()
-            let notificationsGranted = granted
-                ? await CalendarNotificationAuthorization.requestIfNeeded()
-                : false
-            await MainActor.run {
-                self.isBusy = false
-                self.calendarPermissionGranted = granted
-                if granted {
-                    Telemetry.send(.permissionGranted(permission: .calendar))
-                    self.applyCalendarMode(notificationsGranted ? .notify : .off)
-                } else {
-                    Telemetry.send(.permissionDenied(permission: .calendar))
-                }
-            }
-        }
-    }
-
-    /// Skip the calendar onboarding step. Persists `.off` mode explicitly so
-    /// the SettingsViewModel default doesn't silently flip back to enabled
-    /// later. Symmetric to `skipMeetingRecordingStep()`.
-    public func skipCalendarStep() {
-        calendarSkipped = true
-        defaults.set(true, forKey: Self.calendarSkippedKey)
-        applyCalendarMode(.off)
-        goNext()
-    }
-
-    private func applyCalendarMode(_ mode: CalendarAutoStartMode) {
-        defaults.set(mode.rawValue, forKey: CalendarAutoStartPreferences.modeKey)
-        NotificationCenter.default.post(name: .macParakeetCalendarSettingsDidChange, object: nil)
     }
 
     public func openScreenRecordingSystemSettings() {

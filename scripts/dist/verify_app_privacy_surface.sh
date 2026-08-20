@@ -46,10 +46,8 @@ require_entitlement_true() {
 
 require_info_string "NSMicrophoneUsageDescription"
 require_info_string "NSAudioCaptureUsageDescription"
-require_info_string "NSCalendarsFullAccessUsageDescription"
 
 require_entitlement_true "com.apple.security.device.audio-input"
-require_entitlement_true "com.apple.security.personal-information.calendars"
 require_entitlement_true "com.apple.security.network.client"
 
 echo "Verified app privacy surface: $APP_PATH"

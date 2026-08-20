@@ -306,14 +306,14 @@ public final class AutoSaveService {
     ///
     /// Uses `transcription.fileName` for both transcriptions and meetings —
     /// the auto-saved filename should match what the user sees in the
-    /// in-app library card. Calendar-driven meeting recordings (post-#135)
-    /// carry the calendar event title (e.g. "Roadmap Sync") rather than
-    /// the date-based default, so a hardcoded "Meeting" stem would diverge
-    /// from the library and confuse users hunting for a specific meeting.
-    /// For uncalendared meetings the displayName is "Meeting <date>" and
-    /// the filename ends up with the date twice (once from the date prefix,
-    /// once from the stem) — slightly redundant, but matches the library
-    /// label exactly, which is what users expect to grep for.
+    /// in-app library card. A custom-titled meeting recording carries its
+    /// title (e.g. "Roadmap Sync") rather than the date-based default, so a
+    /// hardcoded "Meeting" stem would diverge from the library and confuse
+    /// users hunting for a specific meeting. For untitled meetings the
+    /// displayName is "Meeting <date>" and the filename ends up with the
+    /// date twice (once from the date prefix, once from the stem) — slightly
+    /// redundant, but matches the library label exactly, which is what users
+    /// expect to grep for.
     func buildFileURL(for transcription: Transcription, format: AutoSaveFormat, in folder: URL) -> URL {
         let stem = TranscriptSegmenter.sanitizedExportStem(from: transcription.fileName)
         let dateStr = Self.dateFormatter.string(from: transcription.createdAt)

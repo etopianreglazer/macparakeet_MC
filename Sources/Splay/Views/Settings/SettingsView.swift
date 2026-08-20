@@ -216,7 +216,6 @@ struct SettingsView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             viewModel.refreshPermissions()
             viewModel.refreshSpeechEngineSwitchAvailability()
-            Task { await viewModel.refreshCalendarNotificationAuthorization() }
         }
         .onAppear {
             if requestedTab != nil {
@@ -356,7 +355,6 @@ struct SettingsView: View {
     /// with Storage / Permissions / per-mode chips). The legacy `generalCard`
     /// was split: "Show idle pill" lives on the Dictation card now;
     /// Launch at Login + Menu Bar Only moved to the System Startup card.
-    /// The Calendar card was folded into Meeting Recording.
     private var modesTabContent: some View {
         scrollableTabBody {
             audioInputCard.id("audio.input")
@@ -920,15 +918,6 @@ struct SettingsView: View {
                 if viewModel.meetingAutoSave {
                     meetingAutoSaveOptionsView
                 }
-
-                if AppFeatures.calendarEnabled {
-                    Divider()
-
-                    // Calendar section folded in from the legacy standalone
-                    // `calendarCard`. Calendar is meeting-only — folding it
-                    // here removes a card without losing any controls.
-                    meetingCalendarSection
-                }
             }
         }
     }
@@ -941,25 +930,6 @@ struct SettingsView: View {
             meetingRecordingEnabled: AppFeatures.meetingRecordingEnabled,
             screenRecordingGranted: viewModel.screenRecordingGranted
         )
-    }
-
-    /// Calendar auto-start controls, rendered inline within the Meeting
-    /// Recording card after the auto-save section. Visually demoted to a
-    /// section heading so it reads as part of meeting setup.
-    private var meetingCalendarSection: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            HStack(spacing: 6) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                Text("Calendar auto-start")
-                    .font(DesignSystem.Typography.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-            }
-
-            CalendarSettingsView(viewModel: viewModel)
-        }
     }
 
     private var meetingAutoSaveOptionsView: some View {

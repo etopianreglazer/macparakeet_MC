@@ -15,7 +15,6 @@ final class AppEnvironmentConfigurer {
         let dictationFlowCoordinator: DictationFlowCoordinator
         let meetingRecordingFlowCoordinator: MeetingRecordingFlowCoordinator
         let hotkeyCoordinator: AppHotkeyCoordinator
-        let meetingAutoStartCoordinator: MeetingAutoStartCoordinator?
         /// The ambient island panel (fork: `islandReplacesDictationPill`). Nil
         /// when the flag is off. Long-lived; retained by `AppDelegate`. Pure
         /// indicator — anything it needs to say is a card (`SplayCardController`).
@@ -425,35 +424,10 @@ final class AppEnvironmentConfigurer {
             island?.updateAudioAlive(alive)
         }
 
-        // Calendar auto-start (ADR-017 Phases 1 + 2 — reminders +
-        // pre-meeting countdown toast). The coordinator is a no-op when
-        // `calendarAutoStartMode == .off` so it's safe to start
-        // unconditionally; we still gate creation on the meeting-recording
-        // feature flag because calendar integration only makes sense when
-        // the user can actually record meetings.
-        let calendarCoordinator: MeetingAutoStartCoordinator?
-        if AppFeatures.meetingRecordingEnabled {
-            let coordinator = MeetingAutoStartCoordinator(
-                calendarService: CalendarService.shared,
-                settingsViewModel: settingsViewModel,
-                isRecordingActive: { [weak meetingCoordinator] in
-                    meetingCoordinator?.isMeetingRecordingActive ?? false
-                },
-                onAutoStartConfirmed: { [weak meetingCoordinator] title in
-                    meetingCoordinator?.startFromCalendar(title: title)
-                }
-            )
-            coordinator.start()
-            calendarCoordinator = coordinator
-        } else {
-            calendarCoordinator = nil
-        }
-
         return Runtime(
             dictationFlowCoordinator: dictationCoordinator,
             meetingRecordingFlowCoordinator: meetingCoordinator,
             hotkeyCoordinator: hotkeyCoordinator,
-            meetingAutoStartCoordinator: calendarCoordinator,
             islandController: island
         )
     }

@@ -439,8 +439,6 @@ cat >"$INFO_PLIST" <<EOF
   <string>Splay needs microphone access to record.</string>
   <key>NSAudioCaptureUsageDescription</key>
   <string>Splay needs system-audio recording access for meetings.</string>
-  <key>NSCalendarsFullAccessUsageDescription</key>
-  <string>Splay reads your calendar to remind you before a meeting and, if you choose, begin recording. Events stay on your Mac.</string>
   <!-- Splay's own update feed and signing key. These MUST NOT point at upstream
        MacParakeet: its appcast serves MacParakeet.dmg, so an update accepted against
        it would replace Splay with upstream. The private half of SUPublicEDKey lives in

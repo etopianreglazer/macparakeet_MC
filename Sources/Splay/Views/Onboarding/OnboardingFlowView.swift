@@ -192,7 +192,6 @@ struct OnboardingFlowView: View {
         case .microphone: return "mic"
         case .accessibility: return "accessibility"
         case .meetingRecording: return "record.circle"
-        case .calendar: return "calendar"
         case .hotkey: return "keyboard"
         case .engine: return "cpu"
         case .done: return "checkmark.circle"
@@ -209,8 +208,6 @@ struct OnboardingFlowView: View {
             return viewModel.accessibilityGranted
         case .meetingRecording:
             return viewModel.screenRecordingGranted || viewModel.meetingRecordingSkipped
-        case .calendar:
-            return viewModel.calendarPermissionGranted || viewModel.calendarSkipped
         case .hotkey:
             return viewModel.step.rawValue > step.rawValue
         case .engine:
@@ -366,8 +363,6 @@ struct OnboardingFlowView: View {
             }
         case .meetingRecording:
             meetingRecordingStep
-        case .calendar:
-            calendarStep
         case .hotkey:
             hotkeyStep
         case .engine:
@@ -499,58 +494,6 @@ struct OnboardingFlowView: View {
         }
     }
 
-    private var calendarStep: some View {
-        onboardingCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Calendar Meetings (Optional)")
-                        .font(DesignSystem.Typography.sectionTitle)
-                    Spacer()
-                    Text(viewModel.calendarPermissionGranted ? "Granted" : "Not granted")
-                        .font(DesignSystem.Typography.caption)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule().fill(
-                                viewModel.calendarPermissionGranted
-                                ? DesignSystem.Colors.successGreen.opacity(0.15)
-                                : DesignSystem.Colors.warningAmber.opacity(0.15)
-                            )
-                        )
-                        .foregroundStyle(
-                            viewModel.calendarPermissionGranted
-                            ? DesignSystem.Colors.successGreen
-                            : DesignSystem.Colors.warningAmber
-                        )
-                }
-
-                Text("Splay can read your macOS calendar to send a quiet notification before each scheduled meeting and, if you choose, start recording automatically.")
-                    .font(DesignSystem.Typography.bodySmall)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text("Events are read on-device only and never uploaded. You can change the lead time, ignore specific calendars, or turn this off entirely from Settings.")
-                    .font(DesignSystem.Typography.bodySmall)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 10) {
-                    accentButton(
-                        viewModel.isBusy ? "Requesting..." : "Enable Calendar Access",
-                        disabled: viewModel.isBusy || viewModel.calendarPermissionGranted
-                    ) {
-                        viewModel.requestCalendarAccess()
-                    }
-
-                    Button("Skip — I'll set this up later") {
-                        viewModel.skipCalendarStep()
-                    }
-                    .parakeetAction(.secondary)
-                }
-            }
-            .padding(DesignSystem.Spacing.lg)
-        }
-    }
 
     @State private var tapPhase = 0
     @State private var holdPhase: CGFloat = 0
@@ -1054,7 +997,6 @@ struct OnboardingFlowView: View {
         case .microphone: return "Enable Microphone Access"
         case .accessibility: return "Enable Accessibility"
         case .meetingRecording: return "Meeting Recording (Optional)"
-        case .calendar: return "Calendar Meetings (Optional)"
         case .hotkey: return "Learn the Hotkey"
         case .engine: return "Prepare Speech Model"
         case .done: return "All Set"
@@ -1071,8 +1013,6 @@ struct OnboardingFlowView: View {
             return "Accessibility is required for the global hotkey and reliable paste automation."
         case .meetingRecording:
             return "Optional. This is only needed to capture system audio during meeting recording."
-        case .calendar:
-            return "Optional. Lets Splay remind you before scheduled meetings and enable opt-in auto-start."
         case .hotkey:
             return "Two ways to dictate — pick whichever feels natural."
         case .engine:
@@ -1091,7 +1031,6 @@ struct OnboardingFlowView: View {
         case .microphone: return "Continue"
         case .accessibility: return "Continue"
         case .meetingRecording: return "Continue"
-        case .calendar: return "Continue"
         case .hotkey: return "Continue"
         case .engine: return "Continue"
         case .done: return "Finish"
@@ -1227,7 +1166,7 @@ struct OnboardingFlowView: View {
             return "Grant microphone access to continue."
         case .accessibility:
             return "Enable Accessibility to continue."
-        case .meetingRecording, .calendar:
+        case .meetingRecording:
             return nil
         case .engine:
             if viewModel.whisperRecommendation != nil {

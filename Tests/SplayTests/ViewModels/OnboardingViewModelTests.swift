@@ -166,7 +166,7 @@ final class OnboardingViewModelTests: XCTestCase {
     func testMeetingRecordingStepOrdering() {
         XCTAssertEqual(
             OnboardingViewModel.Step.allCases,
-            [.welcome, .microphone, .accessibility, .meetingRecording, .calendar, .hotkey, .engine, .done]
+            [.welcome, .microphone, .accessibility, .meetingRecording, .hotkey, .engine, .done]
         )
     }
 
@@ -212,11 +212,8 @@ final class OnboardingViewModelTests: XCTestCase {
 
         XCTAssertTrue(vm.meetingRecordingSkipped)
         XCTAssertTrue(defaults.bool(forKey: OnboardingViewModel.meetingRecordingSkippedKey))
-        // Skip advances to the next *visible* step. With `calendarEnabled` on
-        // that's `.calendar`; with it off the calendar step is filtered out
-        // and the flow jumps straight to `.hotkey`.
-        let expected: OnboardingViewModel.Step = AppFeatures.calendarEnabled ? .calendar : .hotkey
-        XCTAssertEqual(vm.step, expected)
+        // Skip advances to the next *visible* step, which is `.hotkey`.
+        XCTAssertEqual(vm.step, .hotkey)
     }
 
     func testResetOnboardingClearsMeetingRecordingSkippedFlag() {

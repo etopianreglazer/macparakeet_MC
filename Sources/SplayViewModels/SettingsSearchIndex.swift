@@ -83,24 +83,13 @@ public enum SettingsSearchIndex {
     /// that won't render.
     private static let meetingGatedIds: Set<String> = [
         "meeting",
-        "meeting.calendar",
         "system.permissions.screen"
-    ]
-
-    /// Ids gated on `AppFeatures.calendarEnabled` independently of meeting
-    /// recording. Filtered out when the flag is off so search doesn't land
-    /// on a hidden calendar subsection.
-    private static let calendarGatedIds: Set<String> = [
-        "meeting.calendar"
     ]
 
     public static let entries: [SettingsSearchEntry] = {
         var result = allEntries
         if !AppFeatures.meetingRecordingEnabled {
             result = result.filter { !meetingGatedIds.contains($0.id) }
-        }
-        if !AppFeatures.calendarEnabled {
-            result = result.filter { !calendarGatedIds.contains($0.id) }
         }
         return result
     }()
@@ -188,14 +177,6 @@ public enum SettingsSearchIndex {
             title: "Meeting Recording",
             subtitle: "Dedicated controls for meeting audio capture.",
             keywords: ["meeting", "system audio", "screen recording", "meeting capture", "core audio taps"],
-            cardAnchor: "meeting"
-        ),
-        SettingsSearchEntry(
-            id: "meeting.calendar",
-            tab: .modes,
-            title: "Calendar",
-            subtitle: "in Meeting Recording",
-            keywords: ["calendar", "auto start", "auto-start", "reminders", "events", "ics"],
             cardAnchor: "meeting"
         ),
 
