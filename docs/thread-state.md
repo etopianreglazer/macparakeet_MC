@@ -2,10 +2,49 @@
 
 > **What this is:** a handover of *where we left things*, written for the next session to
 > resume cold. It is **not** a briefing (the "what's planned" lives in
-> `docs/fork-product-model.md`) and **not** a build plan (`plans/active/fn-rework.md`). This is
+> `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-19 **thread 7d/7e** — ⭐ **NEXT THREAD = THE BIG CLEAN-UP.** The menu-reopen
+> **Last updated:** 2026-08-19 **thread 8 — THE BIG CLEAN-UP: mostly DONE.** 10 cleanup commits
+> landed (all build + full-suite green = the known-7 environmental failures only; **40 commits ahead
+> of `origin/main`, still NOT pushed**). Removed, each its own commit: upstream junk assets + About
+> reword; repointed the 4 surviving identity links → `github.com/etopianreglazer/splay`; **dropped the
+> `macparakeet-cli` target** (−29 MB); **removed telemetry reporting** (networking class + upstream URL
+> deleted, No-Op wired; CrashReporter rides the same seam so it's inert too); **removed Feedback**
+> (the worst upstream endpoint); **removed Discover** (last two upstream endpoints — a shared
+> `MerkabaShape` was rescued from its folder to `Views/Components/`); **removed YouTube entirely**
+> (DB migration `v0.21` remaps old `sourceType='youtube'` rows → `file` before the enum case is
+> deleted; `node`+`yt-dlp` bundling gone → ~half the download); **removed calendar auto-start**
+> (ADR-017; the misnamed `CalendarNotificationAuthorization` was the generic notification helper —
+> moved to `Services/System/NotificationAuthorization.swift`, transcription banner still works);
+> **pruned upstream docs** (kept `spec/adr/` only; moved the 6 Splay plans to `docs/plans/`; dropped
+> `plans/ integrations/ marketing/ brand-assets/ docs/research|agents|audits|blog|planning` + 8 upstream
+> `docs/*.md`; −48,776 lines); **hid Transforms** (`AppFeatures.transformsEnabled=false`, code dormant).
+> **Upstream sweep** `grep -rn "macparakeet\.com\|moona3k" --include=*.swift Sources/` is down from 13
+> to **1** — only `SettingsView.swift:2407` (telemetry-docs link), which dies with the main-window Settings.
+>
+> ### ⭐ WHAT'S LEFT (start here)
+> 1. **⏸️ Main-window retirement — the one high-risk piece, NOT started (awaiting owner go).** Re-route
+>    the 10+ `AppWindowCoordinator.openMainWindow()/openMainWindowToSettings(tab:)` call sites to cards
+>    or delete; rebuild the Go/Capture/Window menus for the two surfaces; delete the dead Slice-4 overlay
+>    path (`IslandOverlayController`, `openSettingsOverlay`, `openLibraryOverlay`). Retiring the
+>    main-window Settings also removes the last upstream link (`SettingsView.swift:2407`). Keep meeting
+>    recording (`meetingRecordingEnabled`) + `islandReplacesDictationPill` ON — the island *is* the recorder.
+> 2. **`CLAUDE.md` / `AGENTS.md` rewrite** for Splay (owner chose "rewrite slim") — both still describe
+>    MacParakeet (3 modes, Transforms, calendar, the CLI, the 9-item nav). Now also reference many
+>    now-deleted `spec/`, `plans/`, `docs/` paths.
+> 3. **Minor:** ~24 stale `plans/active/…md` / `docs/research/…` *comment* pointers left in source
+>    (non-functional; deferred polish). `meetingVadLiveChunkingEnabled` left ON (not in the cut list).
+>    Empty `Sources/SplayCore/Calendar/` dir may linger (git ignores empty dirs).
+> 4. Then the launch gate proper (`docs/launch-checklist.md` §A2/§C: build, sign, notarize, second-Mac
+>    test) — unchanged from before.
+>
+> **Owner decisions captured this thread:** YouTube→remove+migrate; CLI→drop; spec/plans→adr-only;
+> CLAUDE/AGENTS→rewrite slim; Transforms→hide; brand-assets→drop; docs/research→drop; calendar→remove.
+> The `NotificationAuthorization` move + the `v0.21` migration + keeping the youtube metadata columns
+> are the load-bearing safety calls. **Not pushed; owner has not asked to push.**
+>
+> **Last updated (prior):** 2026-08-19 **thread 7d/7e** — ⭐ **NEXT THREAD = THE BIG CLEAN-UP.** The menu-reopen
 > bug is **fixed and user-confirmed live** ("Yeeees, it worked"). Launch prep is done as far as it can go
 > without cutting things. **29 commits ahead of `origin/main`, still NOT pushed.**
 >
