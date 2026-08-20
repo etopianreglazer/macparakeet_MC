@@ -296,8 +296,8 @@ final class MeetingsWorkspaceViewModelTests: XCTestCase {
             makeResultPrompt(name: "Summary", isAutoRun: true, sortOrder: 0),
             // Off by default.
             makeResultPrompt(name: "Action Items", isAutoRun: false, sortOrder: 1),
-            // Auto-run but scoped to YouTube only → not a meeting auto-note.
-            makeResultPrompt(name: "Blog Post", isAutoRun: true, sortOrder: 2, appliesToSources: [.youtube]),
+            // Auto-run but scoped to file only → not a meeting auto-note.
+            makeResultPrompt(name: "Blog Post", isAutoRun: true, sortOrder: 2, appliesToSources: [.file]),
             // Hidden → excluded from the card entirely.
             makeResultPrompt(name: "Hidden", isVisible: false, sortOrder: 3),
         ]

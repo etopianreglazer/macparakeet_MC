@@ -132,17 +132,6 @@ struct TranscriptResultView: View {
     var body: some View {
         adaptiveLayout
         .onAppear {
-            // Lazy migration for existing webm/opus YouTube audio files
-            // saved before issue #237's playback fix shipped. The VM
-            // transcodes in the background; this callback persists the new
-            // .m4a path so the next open hits it directly.
-            playerViewModel.onPlaybackFilePathConverted = { [viewModel] id, newPath, sourcePath in
-                try viewModel.applyConvertedPlaybackPath(
-                    transcriptionID: id,
-                    newFilePath: newPath,
-                    sourceFileToCleanup: sourcePath
-                )
-            }
             Task {
                 if showVideoPanel {
                     await playerViewModel.load(for: transcription)
@@ -373,12 +362,6 @@ struct TranscriptResultView: View {
                         Button {
                             withAnimation(DesignSystem.Animation.contentSwap) {
                                 showVideoPanel = true
-                            }
-                            // Lazy-load: extract YouTube stream only when user wants video
-                            if playerViewModel.needsVideoStreamLoad {
-                                Task {
-                                    await playerViewModel.load(for: transcription)
-                                }
                             }
                         } label: {
                             Label("Show Video", systemImage: "play.rectangle")
@@ -875,8 +858,6 @@ struct TranscriptResultView: View {
         switch transcription.sourceType {
         case .meeting:
             return "record.circle.fill"
-        case .youtube:
-            return "play.rectangle.fill"
         case .file:
             return "waveform"
         }
@@ -886,8 +867,6 @@ struct TranscriptResultView: View {
         switch transcription.sourceType {
         case .meeting:
             return "Meeting"
-        case .youtube:
-            return "YouTube"
         case .file:
             return "Local"
         }
@@ -897,8 +876,6 @@ struct TranscriptResultView: View {
         switch transcription.sourceType {
         case .meeting:
             return "Meeting recording"
-        case .youtube:
-            return "YouTube source"
         case .file:
             return "Local file"
         }
@@ -908,8 +885,6 @@ struct TranscriptResultView: View {
         switch transcription.sourceType {
         case .meeting:
             return DesignSystem.Colors.accent
-        case .youtube:
-            return DesignSystem.Colors.youtubeRed
         case .file:
             return DesignSystem.Colors.accent
         }

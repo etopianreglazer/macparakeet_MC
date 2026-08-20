@@ -977,45 +977,15 @@ struct SettingsView: View {
     private var transcriptionCard: some View {
         settingsCard(
             title: "Transcription",
-            subtitle: "Options for file and YouTube transcription.",
+            subtitle: "Options for file transcription.",
             icon: "doc.text"
         ) {
             VStack(spacing: DesignSystem.Spacing.md) {
                 transcriptionHotkeyRow(
                     title: "File transcription hotkey",
                     detail: "Opens the file picker from anywhere on macOS.",
-                    trigger: $viewModel.fileTranscriptionHotkeyTrigger,
-                    otherTranscriptionTrigger: viewModel.youtubeTranscriptionHotkeyTrigger,
-                    otherTranscriptionName: "YouTube transcription"
+                    trigger: $viewModel.fileTranscriptionHotkeyTrigger
                 )
-
-                Divider()
-
-                transcriptionHotkeyRow(
-                    title: "YouTube transcription hotkey",
-                    detail: "Opens the YouTube URL panel from anywhere on macOS.",
-                    trigger: $viewModel.youtubeTranscriptionHotkeyTrigger,
-                    otherTranscriptionTrigger: viewModel.fileTranscriptionHotkeyTrigger,
-                    otherTranscriptionName: "file transcription"
-                )
-
-                Divider()
-
-                HStack(alignment: .center) {
-                    rowText(
-                        title: "YouTube audio quality",
-                        detail: viewModel.youtubeAudioQuality.detail
-                    )
-                    Spacer(minLength: DesignSystem.Spacing.md)
-                    Picker("YouTube audio quality", selection: $viewModel.youtubeAudioQuality) {
-                        ForEach(YouTubeAudioQuality.allCases, id: \.self) { quality in
-                            Text(quality.displayTitle).tag(quality)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(minWidth: 170, idealWidth: 210, maxWidth: 260)
-                }
 
                 Divider()
 
@@ -1029,7 +999,7 @@ struct SettingsView: View {
 
                 settingsToggleRow(
                     title: "Notify when transcription finishes",
-                    detail: "Play a sound when a file, YouTube, or batch transcription completes — plus a notification banner when MacParakeet is in the background.",
+                    detail: "Play a sound when a file or batch transcription completes — plus a notification banner when MacParakeet is in the background.",
                     isOn: $viewModel.notifyOnTranscriptionComplete
                 )
 
@@ -1049,15 +1019,12 @@ struct SettingsView: View {
     }
 
     /// A transcription-hotkey row with a recorder and an inline conflict
-    /// warning when the trigger collides with dictation, meeting, or the
-    /// other transcription hotkey. Default trigger is `.disabled` — users opt
-    /// in by recording a key.
+    /// warning when the trigger collides with dictation or meeting hotkeys.
+    /// Default trigger is `.disabled` — users opt in by recording a key.
     private func transcriptionHotkeyRow(
         title: String,
         detail: String,
-        trigger: Binding<HotkeyTrigger>,
-        otherTranscriptionTrigger: HotkeyTrigger,
-        otherTranscriptionName: String
+        trigger: Binding<HotkeyTrigger>
     ) -> some View {
         HStack(alignment: .center) {
             rowText(title: title, detail: detail)
@@ -1089,12 +1056,6 @@ struct SettingsView: View {
                                 trigger: viewModel.meetingHotkeyTrigger
                             ))
                         }
-                        if candidate.overlaps(with: otherTranscriptionTrigger) {
-                            return .blocked(SettingsHotkeyConflictMessage.blocked(
-                                conflictingWith: otherTranscriptionName,
-                                trigger: otherTranscriptionTrigger
-                            ))
-                        }
                         if let conflict = transformHotkeyConflict(for: candidate) {
                             return .blocked(SettingsHotkeyConflictMessage.blocked(
                                 conflictingWith: conflict.name,
@@ -1106,11 +1067,7 @@ struct SettingsView: View {
                     onRecordingStateChanged: onHotkeyRecordingStateChanged
                 )
 
-                if let conflict = conflictMessage(
-                    trigger: trigger.wrappedValue,
-                    otherTranscription: otherTranscriptionTrigger,
-                    otherTranscriptionName: otherTranscriptionName
-                ) {
+                if let conflict = conflictMessage(trigger: trigger.wrappedValue) {
                     transcriptionHotkeyConflictText(conflict)
                 }
             }
@@ -1118,9 +1075,7 @@ struct SettingsView: View {
     }
 
     private func conflictMessage(
-        trigger: HotkeyTrigger,
-        otherTranscription: HotkeyTrigger,
-        otherTranscriptionName: String
+        trigger: HotkeyTrigger
     ) -> String? {
         guard !trigger.isDisabled else { return nil }
         if trigger.conflicts(with: viewModel.hotkeyTrigger, otherMode: .bareModifierDictation) {
@@ -1139,12 +1094,6 @@ struct SettingsView: View {
             return SettingsHotkeyConflictMessage.disabled(
                 conflictingWith: "meeting recording",
                 trigger: viewModel.meetingHotkeyTrigger
-            )
-        }
-        if trigger.overlaps(with: otherTranscription) {
-            return SettingsHotkeyConflictMessage.disabled(
-                conflictingWith: otherTranscriptionName,
-                trigger: otherTranscription
             )
         }
         if let conflict = transformHotkeyConflict(for: trigger) {
@@ -1178,12 +1127,6 @@ struct SettingsView: View {
                 trigger: viewModel.fileTranscriptionHotkeyTrigger
             ))
         }
-        if candidate.conflicts(with: viewModel.youtubeTranscriptionHotkeyTrigger, selfMode: .bareModifierDictation) {
-            return .blocked(SettingsHotkeyConflictMessage.blocked(
-                conflictingWith: "YouTube transcription",
-                trigger: viewModel.youtubeTranscriptionHotkeyTrigger
-            ))
-        }
         if let conflict = transformHotkeyConflict(for: candidate, triggerMode: .bareModifierDictation) {
             return .blocked(SettingsHotkeyConflictMessage.blocked(
                 conflictingWith: conflict.name,
@@ -1213,12 +1156,6 @@ struct SettingsView: View {
             return .blocked(SettingsHotkeyConflictMessage.blocked(
                 conflictingWith: "file transcription",
                 trigger: viewModel.fileTranscriptionHotkeyTrigger
-            ))
-        }
-        if candidate.conflicts(with: viewModel.youtubeTranscriptionHotkeyTrigger, selfMode: .bareModifierDictation) {
-            return .blocked(SettingsHotkeyConflictMessage.blocked(
-                conflictingWith: "YouTube transcription",
-                trigger: viewModel.youtubeTranscriptionHotkeyTrigger
             ))
         }
         if let conflict = transformHotkeyConflict(for: candidate, triggerMode: .bareModifierDictation) {
@@ -1253,12 +1190,6 @@ struct SettingsView: View {
                 trigger: viewModel.fileTranscriptionHotkeyTrigger
             ))
         }
-        if candidate.overlaps(with: viewModel.youtubeTranscriptionHotkeyTrigger) {
-            return .blocked(SettingsHotkeyConflictMessage.blocked(
-                conflictingWith: "YouTube transcription",
-                trigger: viewModel.youtubeTranscriptionHotkeyTrigger
-            ))
-        }
         if let conflict = transformHotkeyConflict(for: candidate) {
             return .blocked(SettingsHotkeyConflictMessage.blocked(
                 conflictingWith: conflict.name,
@@ -1289,12 +1220,6 @@ struct SettingsView: View {
             return SettingsHotkeyConflictMessage.disabled(
                 conflictingWith: "file transcription",
                 trigger: viewModel.fileTranscriptionHotkeyTrigger
-            )
-        }
-        if trigger.conflicts(with: viewModel.youtubeTranscriptionHotkeyTrigger, selfMode: .bareModifierDictation) {
-            return SettingsHotkeyConflictMessage.disabled(
-                conflictingWith: "YouTube transcription",
-                trigger: viewModel.youtubeTranscriptionHotkeyTrigger
             )
         }
         if let conflict = transformHotkeyConflict(for: trigger, triggerMode: .bareModifierDictation) {
@@ -1329,12 +1254,6 @@ struct SettingsView: View {
                 trigger: viewModel.fileTranscriptionHotkeyTrigger
             )
         }
-        if trigger.conflicts(with: viewModel.youtubeTranscriptionHotkeyTrigger, selfMode: .bareModifierDictation) {
-            return SettingsHotkeyConflictMessage.disabled(
-                conflictingWith: "YouTube transcription",
-                trigger: viewModel.youtubeTranscriptionHotkeyTrigger
-            )
-        }
         if let conflict = transformHotkeyConflict(for: trigger, triggerMode: .bareModifierDictation) {
             return SettingsHotkeyConflictMessage.disabled(
                 conflictingWith: conflict.name,
@@ -1362,12 +1281,6 @@ struct SettingsView: View {
             return SettingsHotkeyConflictMessage.disabled(
                 conflictingWith: "file transcription",
                 trigger: viewModel.fileTranscriptionHotkeyTrigger
-            )
-        }
-        if trigger.overlaps(with: viewModel.youtubeTranscriptionHotkeyTrigger) {
-            return SettingsHotkeyConflictMessage.disabled(
-                conflictingWith: "YouTube transcription",
-                trigger: viewModel.youtubeTranscriptionHotkeyTrigger
             )
         }
         if let conflict = transformHotkeyConflict(for: trigger) {
@@ -1553,14 +1466,6 @@ struct SettingsView: View {
 
                 Divider()
 
-                settingsToggleRow(
-                    title: "Keep downloaded YouTube audio",
-                    detail: "Turn off to auto-delete downloaded audio after transcription.",
-                    isOn: $viewModel.saveTranscriptionAudio
-                )
-
-                Divider()
-
                 LazyVGrid(
                     columns: [GridItem(.adaptive(minimum: 190), spacing: DesignSystem.Spacing.md)],
                     spacing: DesignSystem.Spacing.md
@@ -1569,12 +1474,6 @@ struct SettingsView: View {
                         title: "Dictation Records",
                         value: "\(viewModel.dictationCount)",
                         detail: viewModel.dictationCount == 1 ? "entry" : "entries"
-                    )
-
-                    metricTile(
-                        title: "YouTube Downloads",
-                        value: "\(viewModel.youtubeDownloadCount)",
-                        detail: viewModel.formattedYouTubeStorage
                     )
                 }
             }
@@ -1631,21 +1530,6 @@ struct SettingsView: View {
                             confirmationMessage: "This will delete all saved Transform runs. Transform definitions and shortcuts are not affected. This cannot be undone.",
                             confirmButtonLabel: "Clear History",
                             perform: viewModel.clearTransformHistory
-                        )
-                    )
-
-                    Divider()
-
-                    resetActionRow(
-                        title: "Downloaded YouTube audio",
-                        detail: "Saved audio files only. Transcriptions stay; audio detaches.",
-                        action: ResetDestructiveAction(
-                            buttonTitle: "Clear…",
-                            accessibilityLabel: "Clear downloaded YouTube audio",
-                            confirmationTitle: "Clear Downloaded YouTube Audio?",
-                            confirmationMessage: "This will delete all downloaded YouTube audio files and detach them from existing transcriptions. This cannot be undone.",
-                            confirmButtonLabel: "Clear Audio",
-                            perform: viewModel.clearDownloadedYouTubeAudio
                         )
                     )
                 }

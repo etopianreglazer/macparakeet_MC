@@ -134,7 +134,7 @@ public final class AutoSaveService {
     /// Copy the recording's audio into a `Recordings/` subfolder next to the
     /// transcript, sharing the transcript's basename, so the audio and its
     /// transcript live together in the user's folder. Meetings/voice notes only —
-    /// file and YouTube transcriptions keep their original source in place.
+    /// file transcriptions keep their original source in place.
     /// Best-effort: a copy failure never fails the transcript save.
     private func copyPairedAudioIfAvailable(
         transcription: Transcription,

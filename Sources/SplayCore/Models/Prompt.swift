@@ -28,7 +28,7 @@ public struct Prompt: Codable, Identifiable, Sendable {
     /// `isAutoRun` is true. `nil` means **all sources** — the historical
     /// behavior, and what every existing/migrated row decodes to. A non-nil
     /// set restricts auto-run to those sources: e.g. `[.meeting]` makes it a
-    /// meeting-only auto-note that won't fire on file/YouTube transcriptions.
+    /// meeting-only auto-note that won't fire on file transcriptions.
     /// Has no effect when `isAutoRun` is false, and is irrelevant to
     /// `.transform` prompts. Stored as JSON (GRDB encodes the Set). See
     /// ADR-020 (2026-05 amendment) and the Meetings "After each meeting" card.

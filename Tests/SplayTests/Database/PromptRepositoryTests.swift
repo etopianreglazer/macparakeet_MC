@@ -135,12 +135,12 @@ final class PromptRepositoryTests: XCTestCase {
         )
 
         let meetingAuto = try repo.fetchAutoRunPrompts(for: .meeting).map(\.name)
-        let youtubeAuto = try repo.fetchAutoRunPrompts(for: .youtube).map(\.name)
+        let fileAuto = try repo.fetchAutoRunPrompts(for: .file).map(\.name)
 
         XCTAssertTrue(meetingAuto.contains("Summary"))                 // unscoped → all
         XCTAssertTrue(meetingAuto.contains("Action Items & Decisions")) // meeting-scoped
-        XCTAssertTrue(youtubeAuto.contains("Summary"))
-        XCTAssertFalse(youtubeAuto.contains("Action Items & Decisions")) // not on YouTube
+        XCTAssertTrue(fileAuto.contains("Summary"))
+        XCTAssertFalse(fileAuto.contains("Action Items & Decisions")) // not on file
         // The source-agnostic query still returns every auto-run prompt.
         XCTAssertTrue(try repo.fetchAutoRunPrompts().map(\.name).contains("Action Items & Decisions"))
     }
@@ -160,16 +160,16 @@ final class PromptRepositoryTests: XCTestCase {
 
     func testSetAutoRunDisableFromAllNarrowsToOtherSources() throws {
         // Summary is auto-run + unscoped (all). Turning it off for meetings
-        // should keep it running for file/YouTube.
+        // should keep it running for file.
         let summary = try XCTUnwrap((try repo.fetchAll()).first(where: { $0.name == "Summary" }))
 
         try repo.setAutoRun(id: summary.id, source: .meeting, enabled: false)
 
         let reloaded = try XCTUnwrap(try repo.fetch(id: summary.id))
         XCTAssertTrue(reloaded.isAutoRun)
-        XCTAssertEqual(reloaded.appliesToSources, [.file, .youtube])
+        XCTAssertEqual(reloaded.appliesToSources, [.file])
         XCTAssertFalse(reloaded.autoRuns(for: .meeting))
-        XCTAssertTrue(reloaded.autoRuns(for: .youtube))
+        XCTAssertTrue(reloaded.autoRuns(for: .file))
     }
 
     func testSetAutoRunDisablingLastSourceTurnsAutoRunOff() throws {
@@ -192,7 +192,7 @@ final class PromptRepositoryTests: XCTestCase {
         let summary = try XCTUnwrap((try repo.fetchAll()).first(where: { $0.name == "Summary" }))
 
         try repo.setAutoRun(id: summary.id, source: .meeting, enabled: false)
-        XCTAssertEqual(try XCTUnwrap(repo.fetch(id: summary.id)).appliesToSources, [.file, .youtube])
+        XCTAssertEqual(try XCTUnwrap(repo.fetch(id: summary.id)).appliesToSources, [.file])
 
         try repo.setAutoRun(id: summary.id, source: .meeting, enabled: true)
         let reloaded = try XCTUnwrap(try repo.fetch(id: summary.id))
@@ -217,7 +217,10 @@ final class PromptRepositoryTests: XCTestCase {
 
     func testSetAutoRunAddsSourceToExistingPartialScope() throws {
         // Already auto-run, scoped to file only. Enabling for meeting must union
-        // the sets rather than replace — and not normalize away the partial scope.
+        // the sets rather than replace. With only two source types (file,
+        // meeting), covering both is full coverage, which normalizes to nil
+        // (= all sources) — the `autoRuns(for:)` checks still prove it unioned
+        // rather than replaced (a replace would drop .file).
         var chapter = try XCTUnwrap((try repo.fetchAll()).first(where: { $0.name == "Chapter Breakdown" }))
         chapter.isAutoRun = true
         chapter.appliesToSources = [.file]
@@ -226,10 +229,9 @@ final class PromptRepositoryTests: XCTestCase {
         try repo.setAutoRun(id: chapter.id, source: .meeting, enabled: true)
 
         let reloaded = try XCTUnwrap(try repo.fetch(id: chapter.id))
-        XCTAssertEqual(reloaded.appliesToSources, [.file, .meeting])
+        XCTAssertNil(reloaded.appliesToSources, "Covering every source type normalizes to nil (all sources).")
         XCTAssertTrue(reloaded.autoRuns(for: .file))
         XCTAssertTrue(reloaded.autoRuns(for: .meeting))
-        XCTAssertFalse(reloaded.autoRuns(for: .youtube))
     }
 
     func testRestoreDefaultsClearsSourceScoping() throws {
@@ -237,7 +239,7 @@ final class PromptRepositoryTests: XCTestCase {
         // Built-ins ship unscoped, so restore must clear appliesToSources —
         // otherwise Summary comes back "visible" but silently meeting-only.
         let summary = try XCTUnwrap((try repo.fetchAll()).first(where: { $0.name == "Summary" }))
-        try repo.setAutoRun(id: summary.id, source: .meeting, enabled: false) // → {file, youtube}
+        try repo.setAutoRun(id: summary.id, source: .meeting, enabled: false) // → {file}
         XCTAssertNotNil(try XCTUnwrap(repo.fetch(id: summary.id)).appliesToSources)
 
         try repo.restoreDefaults()
@@ -257,13 +259,13 @@ final class PromptRepositoryTests: XCTestCase {
         let first = try DatabaseManager(path: dbPath)
         let firstRepo = PromptRepository(dbQueue: first.dbQueue)
         let summary = try XCTUnwrap((try firstRepo.fetchAll()).first(where: { $0.name == "Summary" }))
-        try firstRepo.setAutoRun(id: summary.id, source: .meeting, enabled: false) // → {file, youtube}
+        try firstRepo.setAutoRun(id: summary.id, source: .meeting, enabled: false) // → {file}
 
         // Fresh boot re-runs the reconciler; the user's scoping must survive.
         let second = try DatabaseManager(path: dbPath)
         let secondRepo = PromptRepository(dbQueue: second.dbQueue)
         let reloaded = try XCTUnwrap(try secondRepo.fetch(id: summary.id))
-        XCTAssertEqual(reloaded.appliesToSources, [.file, .youtube], "Reconciler must preserve user source-scoping on built-ins.")
+        XCTAssertEqual(reloaded.appliesToSources, [.file], "Reconciler must preserve user source-scoping on built-ins.")
     }
 
     func testReconcilerPreservesUserCustomizedBuiltInTransformFields() throws {

@@ -150,7 +150,6 @@ public enum TelemetryDictationCancelReason: String, Sendable, Equatable {
 
 public enum TelemetryTranscriptionSource: String, Sendable, Equatable {
     case file
-    case youtube
     case meeting
     case dragDrop = "drag_drop"
 }
@@ -222,7 +221,7 @@ public enum TelemetryChatSource: String, Sendable, Equatable {
     /// Live in-meeting Ask tab (ADR-018). `userNotesProvider` is bound by
     /// `MeetingRecordingPanelViewModel`.
     case meetingAsk = "meeting_ask"
-    /// Post-transcription chat surface — file, YouTube, dictation, or a
+    /// Post-transcription chat surface — file, dictation, or a
     /// finalized meeting transcript shown in `TranscriptResultView`.
     case transcriptChat = "transcript_chat"
 }
@@ -375,7 +374,6 @@ public enum TelemetryHotkeySurface: String, Sendable, Equatable {
     case pushToTalk = "push_to_talk"
     case meeting
     case fileTranscription = "file_transcription"
-    case youtubeTranscription = "youtube_transcription"
 }
 
 /// Mirrors `HotkeyTrigger.Kind` for telemetry. Kept separate so changes to the
@@ -400,7 +398,6 @@ public enum TelemetrySettingName: String, Sendable, Equatable {
     case menuBarOnly = "menu_bar_only"
     case hidePill = "hide_pill"
     case saveTranscriptionAudio = "save_transcription_audio"
-    case youtubeAudioQuality = "youtube_audio_quality"
     case speakerDiarization = "speaker_diarization"
     case parakeetModelVariant = "parakeet_model_variant"
     case whisperDefaultLanguage = "whisper_default_language"
@@ -408,7 +405,6 @@ public enum TelemetrySettingName: String, Sendable, Equatable {
     case meetingAutoSave = "meeting_auto_save"
     case meetingHotkey = "meeting_hotkey"
     case fileTranscriptionHotkey = "file_transcription_hotkey"
-    case youtubeTranscriptionHotkey = "youtube_transcription_hotkey"
     case microphoneSelection = "microphone_selection"
     case meetingAudioSourceMode = "meeting_audio_source_mode"
     case pauseMediaDuringDictation = "pause_media_during_dictation"

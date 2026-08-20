@@ -44,7 +44,7 @@ final class SettingsViewModelTests: XCTestCase {
     var testDefaults: UserDefaults!
     var testDefaultsSuiteName: String!
     var entitlements: EntitlementsService!
-    var youtubeDownloadsTestDir: URL!
+    var tempTestDir: URL!
 
     private func waitUntil(
         timeout: Duration = .seconds(1),
@@ -69,20 +69,15 @@ final class SettingsViewModelTests: XCTestCase {
         mockTranscriptionRepo = MockTranscriptionRepository()
         mockPermissions = MockPermissionService()
         mockLaunchAtLogin = MockLaunchAtLoginService()
-        youtubeDownloadsTestDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("mp-youtube-\(UUID().uuidString)", isDirectory: true)
-        try? FileManager.default.createDirectory(at: youtubeDownloadsTestDir, withIntermediateDirectories: true)
+        tempTestDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mp-test-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: tempTestDir, withIntermediateDirectories: true)
 
         // Use a unique suite name for isolated UserDefaults per test
         testDefaultsSuiteName = "com.macparakeet.tests.\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: testDefaultsSuiteName)!
 
-        viewModel = SettingsViewModel(
-            defaults: testDefaults,
-            youtubeDownloadsDirPath: { [youtubeDownloadsTestDir] in
-                youtubeDownloadsTestDir?.path ?? AppPaths.youtubeDownloadsDir
-            }
-        )
+        viewModel = SettingsViewModel(defaults: testDefaults)
 
         entitlements = EntitlementsService(
             config: LicensingConfig(checkoutURL: nil, expectedVariantID: nil),
@@ -98,8 +93,8 @@ final class SettingsViewModelTests: XCTestCase {
         if let testDefaultsSuiteName {
             testDefaults.removePersistentDomain(forName: testDefaultsSuiteName)
         }
-        if let youtubeDownloadsTestDir {
-            try? FileManager.default.removeItem(at: youtubeDownloadsTestDir)
+        if let tempTestDir {
+            try? FileManager.default.removeItem(at: tempTestDir)
         }
         testDefaults = nil
         testDefaultsSuiteName = nil
@@ -140,7 +135,6 @@ final class SettingsViewModelTests: XCTestCase {
         )
         XCTAssertTrue(viewModel.saveAudioRecordings, "saveAudioRecordings should default to true")
         XCTAssertTrue(viewModel.saveTranscriptionAudio, "saveTranscriptionAudio should default to true")
-        XCTAssertEqual(viewModel.youtubeAudioQuality, .m4a, "youtubeAudioQuality should default to Apple-friendly saved audio")
         XCTAssertFalse(viewModel.speakerDiarization, "speakerDiarization should default to false")
         XCTAssertEqual(viewModel.meetingHotkeyTrigger, .chord(modifiers: ["command", "shift"], keyCode: 46))
         XCTAssertEqual(viewModel.meetingAudioSourceMode, .microphoneAndSystem)
@@ -162,10 +156,6 @@ final class SettingsViewModelTests: XCTestCase {
         testDefaults.set(true, forKey: UserDefaultsAppRuntimePreferences.keepDictationOnClipboardKey)
         testDefaults.set(false, forKey: "saveAudioRecordings")
         testDefaults.set(false, forKey: "saveTranscriptionAudio")
-        testDefaults.set(
-            YouTubeAudioQuality.bestAvailable.rawValue,
-            forKey: UserDefaultsAppRuntimePreferences.youtubeAudioQualityKey
-        )
         testDefaults.set(true, forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey)
         testDefaults.set("usb-mic-uid", forKey: UserDefaultsAppRuntimePreferences.selectedMicrophoneDeviceUIDKey)
         testDefaults.set(
@@ -187,7 +177,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertTrue(vm.keepDictationOnClipboard)
         XCTAssertFalse(vm.saveAudioRecordings)
         XCTAssertFalse(vm.saveTranscriptionAudio)
-        XCTAssertEqual(vm.youtubeAudioQuality, .bestAvailable)
         XCTAssertTrue(vm.speakerDiarization)
         XCTAssertEqual(vm.selectedMicrophoneDeviceUID, "usb-mic-uid")
         XCTAssertEqual(vm.meetingAudioSourceMode, .systemOnly)
@@ -305,7 +294,7 @@ final class SettingsViewModelTests: XCTestCase {
 
         fresh.set(true, forKey: AutoSaveService.enabledKey)
         fresh.set(AutoSaveFormat.json.rawValue, forKey: AutoSaveService.formatKey)
-        AutoSaveService.storeFolder(youtubeDownloadsTestDir, defaults: fresh)
+        AutoSaveService.storeFolder(tempTestDir, defaults: fresh)
 
         let vm = SettingsViewModel(defaults: fresh)
 
@@ -313,7 +302,7 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(vm.meetingAutoSaveFormat, .json)
         XCTAssertEqual(
             vm.meetingAutoSaveFolderPath.map { URL(fileURLWithPath: $0).standardizedFileURL.path },
-            youtubeDownloadsTestDir.standardizedFileURL.path
+            tempTestDir.standardizedFileURL.path
         )
         XCTAssertEqual(fresh.object(forKey: AutoSaveScope.meeting.enabledKey) as? Bool, true)
         XCTAssertEqual(fresh.string(forKey: AutoSaveScope.meeting.formatKey), AutoSaveFormat.json.rawValue)
@@ -349,21 +338,21 @@ final class SettingsViewModelTests: XCTestCase {
     func testInitPreservesUserChosenFolder() {
         // The user previously picked a custom folder. ensureFolderConfigured
         // must not stomp it with the default.
-        AutoSaveService.storeFolder(youtubeDownloadsTestDir, defaults: testDefaults)
+        AutoSaveService.storeFolder(tempTestDir, defaults: testDefaults)
 
         let vm = SettingsViewModel(defaults: testDefaults)
 
         XCTAssertEqual(
             vm.autoSaveFolderPath.map { URL(fileURLWithPath: $0).standardizedFileURL.path },
-            youtubeDownloadsTestDir.standardizedFileURL.path,
+            tempTestDir.standardizedFileURL.path,
             "User-chosen folders must survive init untouched."
         )
     }
 
     func testResetAutoSaveFolderRestoresDefault() {
-        AutoSaveService.storeFolder(youtubeDownloadsTestDir, defaults: testDefaults)
+        AutoSaveService.storeFolder(tempTestDir, defaults: testDefaults)
         viewModel.autoSaveTranscripts = true
-        viewModel.autoSaveFolderPath = youtubeDownloadsTestDir.path
+        viewModel.autoSaveFolderPath = tempTestDir.path
 
         viewModel.resetAutoSaveFolder()
 
@@ -373,9 +362,9 @@ final class SettingsViewModelTests: XCTestCase {
     }
 
     func testResetMeetingAutoSaveFolderRestoresDefault() {
-        AutoSaveService.storeFolder(youtubeDownloadsTestDir, scope: .meeting, defaults: testDefaults)
+        AutoSaveService.storeFolder(tempTestDir, scope: .meeting, defaults: testDefaults)
         viewModel.meetingAutoSave = true
-        viewModel.meetingAutoSaveFolderPath = youtubeDownloadsTestDir.path
+        viewModel.meetingAutoSaveFolderPath = tempTestDir.path
 
         viewModel.resetMeetingAutoSaveFolder()
 
@@ -524,15 +513,6 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertFalse(testDefaults.bool(forKey: "saveTranscriptionAudio"))
     }
 
-    func testSettingYouTubeAudioQualityPersists() {
-        viewModel.youtubeAudioQuality = .bestAvailable
-
-        XCTAssertEqual(
-            testDefaults.string(forKey: UserDefaultsAppRuntimePreferences.youtubeAudioQualityKey),
-            YouTubeAudioQuality.bestAvailable.rawValue
-        )
-    }
-
     func testSettingSpeakerDiarizationPersists() {
         viewModel.speakerDiarization = true
 
@@ -576,11 +556,10 @@ final class SettingsViewModelTests: XCTestCase {
         wait(for: [expectation], timeout: 1.0)
     }
 
-    // MARK: - File/YouTube Transcription Hotkeys
+    // MARK: - File Transcription Hotkeys
 
     func testTranscriptionHotkeysDefaultToDisabled() {
         XCTAssertEqual(viewModel.fileTranscriptionHotkeyTrigger, .disabled)
-        XCTAssertEqual(viewModel.youtubeTranscriptionHotkeyTrigger, .disabled)
     }
 
     func testFileTranscriptionHotkeyPersistsToDedicatedDefaultsKey() {
@@ -597,35 +576,12 @@ final class SettingsViewModelTests: XCTestCase {
         )
     }
 
-    func testYouTubeTranscriptionHotkeyPersistsToDedicatedDefaultsKey() {
-        let trigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 16) // Y
-        viewModel.youtubeTranscriptionHotkeyTrigger = trigger
-
-        XCTAssertEqual(
-            HotkeyTrigger.current(
-                defaults: testDefaults,
-                defaultsKey: HotkeyTrigger.youtubeTranscriptionDefaultsKey,
-                fallback: .disabled
-            ),
-            trigger
-        )
-    }
-
     func testFileTranscriptionHotkeyPostsNotificationOnChange() {
         let expectation = expectation(
             forNotification: Notification.Name("macparakeet.fileTranscriptionHotkeyTriggerDidChange"),
             object: nil
         )
         viewModel.fileTranscriptionHotkeyTrigger = .chord(modifiers: ["control", "shift"], keyCode: 3)
-        wait(for: [expectation], timeout: 1.0)
-    }
-
-    func testYouTubeTranscriptionHotkeyPostsNotificationOnChange() {
-        let expectation = expectation(
-            forNotification: Notification.Name("macparakeet.youtubeTranscriptionHotkeyTriggerDidChange"),
-            object: nil
-        )
-        viewModel.youtubeTranscriptionHotkeyTrigger = .chord(modifiers: ["control", "shift"], keyCode: 16)
         wait(for: [expectation], timeout: 1.0)
     }
 
@@ -637,7 +593,6 @@ final class SettingsViewModelTests: XCTestCase {
         viewModel.pushToTalkHotkeyTrigger = .control
         viewModel.meetingHotkeyTrigger = .chord(modifiers: ["control", "option"], keyCode: 46)
         viewModel.fileTranscriptionHotkeyTrigger = .disabled
-        viewModel.youtubeTranscriptionHotkeyTrigger = .fromKeyCode(16)
 
         let events = telemetry.snapshot()
         let hotkeyEvents = events.compactMap { event -> String? in
@@ -649,7 +604,6 @@ final class SettingsViewModelTests: XCTestCase {
             return [
                 .meetingHotkey,
                 .fileTranscriptionHotkey,
-                .youtubeTranscriptionHotkey,
             ].contains(setting)
         }
 
@@ -658,21 +612,17 @@ final class SettingsViewModelTests: XCTestCase {
             "push_to_talk:modifier",
             "meeting:chord",
             "file_transcription:disabled",
-            "youtube_transcription:key_code",
         ])
         XCTAssertTrue(hotkeySettingEvents.isEmpty)
     }
 
     func testTranscriptionHotkeysLoadFromUserDefaults() {
         let fileTrigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 3)
-        let youtubeTrigger = HotkeyTrigger.chord(modifiers: ["control", "shift"], keyCode: 16)
         fileTrigger.save(to: testDefaults, defaultsKey: HotkeyTrigger.fileTranscriptionDefaultsKey)
-        youtubeTrigger.save(to: testDefaults, defaultsKey: HotkeyTrigger.youtubeTranscriptionDefaultsKey)
 
         let vm = SettingsViewModel(defaults: testDefaults)
 
         XCTAssertEqual(vm.fileTranscriptionHotkeyTrigger, fileTrigger)
-        XCTAssertEqual(vm.youtubeTranscriptionHotkeyTrigger, youtubeTrigger)
     }
 
     func testShowIdlePillDefaultsToTrue() {
@@ -951,61 +901,11 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.dictationCount, 0)
     }
 
-    // MARK: - YouTube Audio Storage
-
-    func testRefreshStatsIncludesYouTubeDownloadStorage() throws {
-        let fileA = youtubeDownloadsTestDir.appendingPathComponent("a.m4a")
-        let fileB = youtubeDownloadsTestDir.appendingPathComponent("b.webm")
-        XCTAssertTrue(FileManager.default.createFile(atPath: fileA.path, contents: Data(repeating: 0x1, count: 1024)))
-        XCTAssertTrue(FileManager.default.createFile(atPath: fileB.path, contents: Data(repeating: 0x2, count: 2048)))
-
-        viewModel.configure(
-            permissionService: mockPermissions,
-            dictationRepo: mockRepo,
-            transcriptionRepo: mockTranscriptionRepo,
-            entitlementsService: entitlements,
-            checkoutURL: nil
-        )
-
-        XCTAssertEqual(viewModel.youtubeDownloadCount, 2)
-        XCTAssertGreaterThan(viewModel.youtubeDownloadStorageMB, 0)
-    }
-
-    func testClearDownloadedYouTubeAudioRemovesFilesAndClearsStoredPaths() throws {
-        let file = youtubeDownloadsTestDir.appendingPathComponent("a.m4a")
-        XCTAssertTrue(FileManager.default.createFile(atPath: file.path, contents: Data(repeating: 0x1, count: 512)))
-
-        let ytTranscription = Transcription(
-            fileName: "yt",
-            filePath: file.path,
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ"
-        )
-        mockTranscriptionRepo.transcriptions = [ytTranscription]
-
-        viewModel.configure(
-            permissionService: mockPermissions,
-            dictationRepo: mockRepo,
-            transcriptionRepo: mockTranscriptionRepo,
-            entitlementsService: entitlements,
-            checkoutURL: nil
-        )
-
-        viewModel.clearDownloadedYouTubeAudio()
-
-        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
-        XCTAssertEqual(viewModel.youtubeDownloadCount, 0)
-        XCTAssertEqual(mockTranscriptionRepo.transcriptions.first?.filePath, nil)
-    }
-
     // MARK: - Local Models
 
     func testRefreshModelStatusMarksSpeechNotDownloadedWhenCacheMissing() async throws {
         let vm = SettingsViewModel(
             defaults: testDefaults,
-            youtubeDownloadsDirPath: { [youtubeDownloadsTestDir] in
-                youtubeDownloadsTestDir?.path ?? AppPaths.youtubeDownloadsDir
-            },
             parakeetModelVariantCached: { _ in false }
         )
         let stt = MockSTTClient()
@@ -1027,9 +927,6 @@ final class SettingsViewModelTests: XCTestCase {
         SpeechEnginePreference.whisper.save(to: testDefaults)
         let vm = SettingsViewModel(
             defaults: testDefaults,
-            youtubeDownloadsDirPath: { [youtubeDownloadsTestDir] in
-                youtubeDownloadsTestDir?.path ?? AppPaths.youtubeDownloadsDir
-            },
             parakeetModelVariantCached: { _ in true }
         )
         let stt = MockSTTClient()
@@ -1052,9 +949,6 @@ final class SettingsViewModelTests: XCTestCase {
     func testRepairParakeetModelUsesRetryAndEndsReady() async throws {
         let vm = SettingsViewModel(
             defaults: testDefaults,
-            youtubeDownloadsDirPath: { [youtubeDownloadsTestDir] in
-                youtubeDownloadsTestDir?.path ?? AppPaths.youtubeDownloadsDir
-            },
             parakeetModelVariantCached: { _ in true }
         )
         let stt = MockSTTClient()

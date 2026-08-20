@@ -34,7 +34,6 @@ final class AppEnvironmentConfigurer {
         let onOpenErrorCard: (String) -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
-        let onTriggerYouTubeTranscriptionFromHotkey: () -> Void
         let onHotkeyBecameAvailable: () -> Void
         let onHotkeyUnavailable: () -> Void
         let onHotkeyConflict: (HotkeyTrigger, [HotkeyTrigger]) -> Void
@@ -350,7 +349,6 @@ final class AppEnvironmentConfigurer {
                 coordinatorRefs.meeting?.toggleRecording(trigger: .hotkey, sourceModeOverride: sourceMode)
             },
             onTriggerFileTranscription: callbacks.onTriggerFileTranscriptionFromHotkey,
-            onTriggerYouTubeTranscription: callbacks.onTriggerYouTubeTranscriptionFromHotkey,
             onDictationHotkeyManagersChanged: { managers in
                 coordinatorRefs.dictation?.hotkeyManagers = managers
             },

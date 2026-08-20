@@ -24,7 +24,6 @@ final class AppEnvironment {
     let meetingRecordingRecoveryService: MeetingRecordingRecoveryService
     let dictationService: DictationService
     let transcriptionService: TranscriptionService
-    let youtubeDownloader: YouTubeDownloader
     let diarizationService: DiarizationService
     /// Stateless; fetches the Silero VAD model for VAD-guided meeting live
     /// chunking. Consumed by `AppDelegate.scheduleDeferredSpeechPreWarm` on every
@@ -158,14 +157,6 @@ final class AppEnvironment {
             runtimePreferences.processingMode
         }
 
-        let binaryBootstrap = BinaryBootstrap()
-        youtubeDownloader = YouTubeDownloader(
-            binaryBootstrap: binaryBootstrap,
-            audioQuality: { [runtimePreferences] in runtimePreferences.youtubeAudioQuality }
-        )
-        Task.detached(priority: .utility) {
-            await binaryBootstrap.autoUpdateYtDlpIfNeeded()
-        }
         diarizationService = DiarizationService()
 
         let voiceReturnTriggerClosure: @Sendable () -> String? = { [runtimePreferences] in
@@ -246,7 +237,6 @@ final class AppEnvironment {
             aiFormatterPromptTemplate: aiFormatterPromptClosure,
             shouldKeepDownloadedAudio: { [runtimePreferences] in runtimePreferences.shouldSaveTranscriptionAudio },
             shouldDiarize: { [runtimePreferences] in runtimePreferences.shouldDiarize },
-            youtubeDownloader: youtubeDownloader,
             diarizationService: diarizationService
         )
 

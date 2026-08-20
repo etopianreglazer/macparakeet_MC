@@ -5,12 +5,12 @@ import Testing
 /// Pins the `cli_operation` event's prop schema. The point of these tests is
 /// not to catch a typo — `compactProps` already does that — but to make any
 /// future addition of a path-shaped, URL-shaped, or content-shaped prop fail
-/// loudly at PR review time. If you're adding `file_path`, `youtube_url`,
+/// loudly at PR review time. If you're adding `file_path`, `video_url`,
 /// `transcript_excerpt`, etc., these tests are doing their job.
 @Suite("cli_operation privacy schema")
 struct CLIOperationPrivacyTests {
 
-    @Test("cli_operation never emits forbidden keys, even with a YouTube input_kind")
+    @Test("cli_operation never emits forbidden keys, even with a video input_kind")
     func cliOperationNeverShipsForbiddenKeys() {
         let context = ObservabilityOperationContext(
             operationID: "op-1",
@@ -24,7 +24,7 @@ struct CLIOperationPrivacyTests {
             subcommand: nil,
             outcome: .success,
             durationSeconds: 12.5,
-            inputKind: .youtube,
+            inputKind: .video,
             outputFormat: "json",
             json: true,
             exitCode: 0,
@@ -35,7 +35,7 @@ struct CLIOperationPrivacyTests {
 
         let forbidden: Set<String> = [
             "file_path", "path", "filename", "input_path",
-            "url", "youtube_url", "video_url", "video_id",
+            "url", "video_url", "video_id",
             "transcript", "transcript_excerpt", "raw_transcript", "clean_transcript",
             "language", "host", "hostname",
             "device_name", "device_uid", "microphone", "microphone_name",
@@ -109,7 +109,6 @@ struct CLIOperationPrivacyTests {
         for (_, value) in props {
             #expect(!value.contains("/Users/"), "Found `/Users/` in cli_operation prop value: \(value)")
             #expect(!value.contains("file://"), "Found `file://` in cli_operation prop value: \(value)")
-            #expect(!value.lowercased().contains("youtube.com"), "Found `youtube.com` in cli_operation prop value: \(value)")
         }
     }
 }

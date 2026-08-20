@@ -146,8 +146,8 @@ public enum SettingsSearchIndex {
             id: "transcription",
             tab: .modes,
             title: "Transcription",
-            subtitle: "How file and YouTube transcription behaves.",
-            keywords: ["file", "youtube", "drag drop", "audio file", "video file", "transcribe"],
+            subtitle: "How file transcription behaves.",
+            keywords: ["file", "drag drop", "audio file", "video file", "transcribe"],
             cardAnchor: "transcription"
         ),
         SettingsSearchEntry(
@@ -156,22 +156,6 @@ public enum SettingsSearchIndex {
             title: "File transcription hotkey",
             subtitle: "in Transcription",
             keywords: ["hotkey", "shortcut", "file", "drag drop", "audio file", "video file"],
-            cardAnchor: "transcription"
-        ),
-        SettingsSearchEntry(
-            id: "transcription.hotkey.youtube",
-            tab: .modes,
-            title: "YouTube transcription hotkey",
-            subtitle: "in Transcription",
-            keywords: ["hotkey", "shortcut", "youtube", "url", "video"],
-            cardAnchor: "transcription"
-        ),
-        SettingsSearchEntry(
-            id: "transcription.youtube.audio.quality",
-            tab: .modes,
-            title: "YouTube audio quality",
-            subtitle: "in Transcription",
-            keywords: ["youtube", "audio", "quality", "m4a", "best available", "opus", "webm"],
             cardAnchor: "transcription"
         ),
         SettingsSearchEntry(
@@ -331,7 +315,7 @@ public enum SettingsSearchIndex {
             subtitle: "Retention preferences and disk usage.",
             keywords: [
                 "storage", "retention", "disk", "history",
-                "save dictation", "save audio", "keep youtube audio", "youtube"
+                "save dictation", "save audio"
             ],
             cardAnchor: "system.storage"
         ),
@@ -374,7 +358,7 @@ public enum SettingsSearchIndex {
             subtitle: "Destructive — clear history, reset stats.",
             keywords: [
                 "reset", "clear", "delete", "destructive", "wipe",
-                "lifetime stats", "clear all dictations", "clear transform history", "clear youtube"
+                "lifetime stats", "clear all dictations", "clear transform history"
             ],
             cardAnchor: "system.reset"
         )

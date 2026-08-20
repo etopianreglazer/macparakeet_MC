@@ -217,204 +217,6 @@ final class TranscriptionViewModelTests: XCTestCase {
         XCTAssertEqual(callCount, 2)
     }
 
-    // MARK: - Transcribe URL
-
-    func testTranscribeURLUpdatesState() async throws {
-        let expectedResult = Transcription(
-            fileName: "YouTube Video",
-            rawTranscript: "URL transcript",
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ"
-        )
-        await mockService.configure(result: expectedResult)
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.urlInput = "https://youtu.be/dQw4w9WgXcQ"
-
-        viewModel.transcribeURL()
-
-        XCTAssertTrue(viewModel.isTranscribing)
-        XCTAssertEqual(viewModel.progress, "Preparing...")
-        XCTAssertEqual(viewModel.urlInput, "")
-
-        try await Task.sleep(for: .milliseconds(200))
-
-        XCTAssertFalse(viewModel.isTranscribing)
-        XCTAssertEqual(viewModel.progress, "")
-        XCTAssertEqual(viewModel.currentTranscription?.rawTranscript, "URL transcript")
-        let callCount = await mockService.transcribeURLCallCount
-        XCTAssertEqual(callCount, 1)
-    }
-
-    func testTranscribeURLInvalidInputNoOp() async {
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.urlInput = "https://notyoutube.com/watch?v=dQw4w9WgXcQ"
-
-        viewModel.transcribeURL()
-
-        XCTAssertFalse(viewModel.isTranscribing)
-        let callCount = await mockService.transcribeURLCallCount
-        XCTAssertEqual(callCount, 0)
-    }
-
-    func testTranscribeURLProgressParsesDownloadPercent() async throws {
-        let expectedResult = Transcription(
-            fileName: "YouTube Video",
-            rawTranscript: "URL transcript",
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ"
-        )
-        await mockService.configure(result: expectedResult)
-        await mockService.configureURLProgress(phases: [.downloading(percent: 42)])
-        await mockService.configureURLDelay(milliseconds: 200)
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.urlInput = "https://youtu.be/dQw4w9WgXcQ"
-        viewModel.transcribeURL()
-
-        try await waitUntil { self.viewModel.transcriptionProgress == 0.42 }
-        let progress = try XCTUnwrap(viewModel.transcriptionProgress)
-        XCTAssertEqual(progress, 0.42, accuracy: 0.0001)
-    }
-
-    func testTranscribeURLProgressTracksTranscribingPercent() async throws {
-        let expectedResult = Transcription(
-            fileName: "YouTube Video",
-            rawTranscript: "URL transcript",
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ"
-        )
-        await mockService.configure(result: expectedResult)
-        await mockService.configureURLProgress(phases: [.transcribing(percent: 42)])
-        await mockService.configureURLDelay(milliseconds: 200)
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.urlInput = "https://youtu.be/dQw4w9WgXcQ"
-        viewModel.transcribeURL()
-
-        try await waitUntil { self.viewModel.transcriptionProgress == 0.42 }
-        let progress = try XCTUnwrap(viewModel.transcriptionProgress)
-        XCTAssertEqual(progress, 0.42, accuracy: 0.0001)
-    }
-
-    func testTranscribeURLProgressClearsPercentOnNonPercentPhase() async throws {
-        let expectedResult = Transcription(
-            fileName: "YouTube Video",
-            rawTranscript: "URL transcript",
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ"
-        )
-        await mockService.configure(result: expectedResult)
-        await mockService.configureURLProgress(phases: [
-            .downloading(percent: 42),
-            .converting
-        ])
-        await mockService.configureURLDelay(milliseconds: 200)
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.urlInput = "https://youtu.be/dQw4w9WgXcQ"
-        viewModel.transcribeURL()
-
-        try await waitUntil { self.viewModel.progressPhase == .converting }
-        XCTAssertNil(viewModel.transcriptionProgress, "Non-percent phase should clear stale progress values")
-    }
-
-    func testTranscribeURLProgressTracksPhaseHeadlineAndSourceKind() async throws {
-        let expectedResult = Transcription(
-            fileName: "YouTube Video",
-            rawTranscript: "URL transcript",
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ"
-        )
-        await mockService.configure(result: expectedResult)
-        await mockService.configureURLProgress(phases: [.converting, .transcribing(percent: 12)])
-        await mockService.configureURLDelay(milliseconds: 200)
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.urlInput = "https://youtu.be/dQw4w9WgXcQ"
-        viewModel.transcribeURL()
-
-        XCTAssertEqual(viewModel.sourceKind, .youtubeURL)
-
-        try await waitUntil { self.viewModel.progressPhase == .transcribing }
-        XCTAssertEqual(viewModel.progressPhase, .transcribing)
-        XCTAssertEqual(viewModel.sourceKind, .youtubeURL)
-        XCTAssertEqual(viewModel.progressHeadline, "Running speech recognition")
-    }
-
-    // MARK: - Duplicate URL Detection
-
-    func testTranscribeURLShowsExistingWhenAlreadyTranscribed() async {
-        let existing = Transcription(
-            fileName: "Already Done",
-            rawTranscript: "Existing transcript",
-            status: .completed,
-            sourceURL: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-        )
-        mockRepo.transcriptions = [existing]
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.urlInput = "https://youtu.be/dQw4w9WgXcQ"
-
-        viewModel.transcribeURL()
-
-        // Should show existing result immediately, no transcription started
-        XCTAssertFalse(viewModel.isTranscribing)
-        XCTAssertEqual(viewModel.currentTranscription?.id, existing.id)
-        XCTAssertEqual(viewModel.currentTranscription?.rawTranscript, "Existing transcript")
-        XCTAssertEqual(viewModel.urlInput, "")
-        let callCount = await mockService.transcribeURLCallCount
-        XCTAssertEqual(callCount, 0, "Should not call service when duplicate exists")
-    }
-
-    func testTranscribeURLIgnoresFailedDuplicates() async throws {
-        let failed = Transcription(
-            fileName: "Failed Video",
-            status: .error,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ"
-        )
-        mockRepo.transcriptions = [failed]
-
-        let expectedResult = Transcription(
-            fileName: "YouTube Video",
-            rawTranscript: "Fresh transcript",
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ"
-        )
-        await mockService.configure(result: expectedResult)
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.urlInput = "https://youtu.be/dQw4w9WgXcQ"
-
-        viewModel.transcribeURL()
-
-        // Should start fresh transcription since existing one failed
-        XCTAssertTrue(viewModel.isTranscribing)
-
-        try await Task.sleep(for: .milliseconds(200))
-        let finalCount = await mockService.transcribeURLCallCount
-        XCTAssertEqual(finalCount, 1, "Should transcribe when only failed duplicates exist")
-    }
-
-    func testTranscribeURLMatchesDifferentURLFormats() async {
-        let existing = Transcription(
-            fileName: "Video",
-            rawTranscript: "Transcript",
-            status: .completed,
-            sourceURL: "https://www.youtube.com/watch?v=awOxxHnsiv0"
-        )
-        mockRepo.transcriptions = [existing]
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-
-        // Same video, different URL format
-        viewModel.urlInput = "https://youtu.be/awOxxHnsiv0"
-        viewModel.transcribeURL()
-
-        XCTAssertFalse(viewModel.isTranscribing)
-        XCTAssertEqual(viewModel.currentTranscription?.id, existing.id)
-    }
-
     // MARK: - Delete
 
     func testDeleteTranscription() {
@@ -430,43 +232,18 @@ final class TranscriptionViewModelTests: XCTestCase {
         XCTAssertTrue(mockRepo.deleteCalledWith.contains(t.id))
     }
 
-    func testDeleteYouTubeTranscriptionRemovesStoredAudioFile() throws {
-        try AppPaths.ensureDirectories()
-        let audioURL = URL(fileURLWithPath: AppPaths.youtubeDownloadsDir, isDirectory: true)
-            .appendingPathComponent("yt-audio-\(UUID().uuidString).m4a")
-        let created = FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8))
-        XCTAssertTrue(created)
-        defer { try? FileManager.default.removeItem(at: audioURL) }
-
-        let t = Transcription(
-            fileName: "yt",
-            filePath: audioURL.path,
-            rawTranscript: "Hello",
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ",
-            sourceType: .youtube
-        )
-        mockRepo.transcriptions = [t]
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.deleteTranscription(t)
-
-        XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
-    }
-
     func testRepositoryDeleteFailureKeepsExternalAudioFile() throws {
         let audioURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("yt-audio-\(UUID().uuidString).m4a")
+            .appendingPathComponent("external-audio-\(UUID().uuidString).m4a")
         let created = FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8))
         XCTAssertTrue(created)
         defer { try? FileManager.default.removeItem(at: audioURL) }
 
         let t = Transcription(
-            fileName: "yt",
+            fileName: "clip",
             filePath: audioURL.path,
             rawTranscript: "Hello",
             status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ",
             sourceType: .file
         )
         mockRepo.transcriptions = [t]
@@ -478,122 +255,6 @@ final class TranscriptionViewModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
         XCTAssertEqual(viewModel.transcriptions.count, 1)
         XCTAssertNotNil(viewModel.errorMessage)
-    }
-
-    func testAssetCleanupFailureDoesNotDeleteTranscription() throws {
-        try AppPaths.ensureDirectories()
-        let protectedDir = URL(fileURLWithPath: AppPaths.youtubeDownloadsDir, isDirectory: true)
-            .appendingPathComponent("viewmodel-protected-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: protectedDir, withIntermediateDirectories: true)
-        let audioURL = protectedDir.appendingPathComponent("asset.m4a")
-        let created = FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8))
-        XCTAssertTrue(created)
-        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: protectedDir.path)
-        defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: protectedDir.path)
-            try? FileManager.default.removeItem(at: protectedDir)
-        }
-
-        let t = Transcription(
-            fileName: "yt",
-            filePath: audioURL.path,
-            rawTranscript: "Hello",
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ",
-            sourceType: .youtube
-        )
-        mockRepo.transcriptions = [t]
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.currentTranscription = t
-        viewModel.deleteTranscription(t)
-
-        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
-        XCTAssertFalse(mockRepo.deleteCalledWith.contains(t.id))
-        XCTAssertEqual(viewModel.transcriptions.map(\.id), [t.id])
-        XCTAssertEqual(viewModel.currentTranscription?.id, t.id)
-        XCTAssertNotNil(viewModel.errorMessage)
-    }
-
-    // MARK: - Playback Path Migration
-
-    func testApplyConvertedPlaybackPathDeletesSourceAfterDBUpdate() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("macparakeet-playback-path-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        let sourceURL = dir.appendingPathComponent("source.webm")
-        let convertedURL = dir.appendingPathComponent("source.m4a")
-        XCTAssertTrue(FileManager.default.createFile(atPath: sourceURL.path, contents: Data("webm".utf8)))
-        XCTAssertTrue(FileManager.default.createFile(atPath: convertedURL.path, contents: Data("m4a".utf8)))
-
-        let transcription = Transcription(
-            fileName: "Video",
-            filePath: sourceURL.path,
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ",
-            sourceType: .youtube
-        )
-        mockRepo.transcriptions = [transcription]
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.currentTranscription = transcription
-
-        try viewModel.applyConvertedPlaybackPath(
-            transcriptionID: transcription.id,
-            newFilePath: convertedURL.path,
-            sourceFileToCleanup: sourceURL.path
-        )
-
-        XCTAssertEqual(mockRepo.updateFilePathCalls.count, 1)
-        XCTAssertEqual(mockRepo.updateFilePathCalls.first?.id, transcription.id)
-        XCTAssertEqual(mockRepo.updateFilePathCalls.first?.filePath, convertedURL.path)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: sourceURL.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: convertedURL.path))
-        XCTAssertEqual(mockRepo.transcriptions.first?.filePath, convertedURL.path)
-        XCTAssertEqual(viewModel.currentTranscription?.filePath, convertedURL.path)
-        XCTAssertEqual(viewModel.transcriptions.first?.filePath, convertedURL.path)
-    }
-
-    func testApplyConvertedPlaybackPathKeepsSourceWhenDBUpdateFails() throws {
-        let dir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("macparakeet-playback-path-fail-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-
-        let sourceURL = dir.appendingPathComponent("source.webm")
-        let convertedURL = dir.appendingPathComponent("source.m4a")
-        XCTAssertTrue(FileManager.default.createFile(atPath: sourceURL.path, contents: Data("webm".utf8)))
-        XCTAssertTrue(FileManager.default.createFile(atPath: convertedURL.path, contents: Data("m4a".utf8)))
-
-        let transcription = Transcription(
-            fileName: "Video",
-            filePath: sourceURL.path,
-            status: .completed,
-            sourceURL: "https://youtu.be/dQw4w9WgXcQ",
-            sourceType: .youtube
-        )
-        mockRepo.transcriptions = [transcription]
-        mockRepo.updateFilePathError = NSError(domain: "repo", code: 1)
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.currentTranscription = transcription
-
-        XCTAssertThrowsError(try viewModel.applyConvertedPlaybackPath(
-            transcriptionID: transcription.id,
-            newFilePath: convertedURL.path,
-            sourceFileToCleanup: sourceURL.path
-        ))
-
-        XCTAssertEqual(mockRepo.updateFilePathCalls.count, 1)
-        XCTAssertEqual(mockRepo.updateFilePathCalls.first?.id, transcription.id)
-        XCTAssertEqual(mockRepo.updateFilePathCalls.first?.filePath, convertedURL.path)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: sourceURL.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: convertedURL.path))
-        XCTAssertEqual(mockRepo.transcriptions.first?.filePath, sourceURL.path)
-        XCTAssertEqual(viewModel.currentTranscription?.filePath, sourceURL.path)
-        XCTAssertEqual(viewModel.transcriptions.first?.filePath, sourceURL.path)
     }
 
     func testDeleteFailureKeepsCurrentSelection() {
@@ -1181,63 +842,6 @@ final class TranscriptionViewModelTests: XCTestCase {
 
     // MARK: - Retranscribe
 
-    func testRetranscribeUpdatesOriginalRecordInPlace() async throws {
-        let tmpFile = FileManager.default.temporaryDirectory.appendingPathComponent("retranscribe-test.mp3")
-        FileManager.default.createFile(atPath: tmpFile.path, contents: Data([0]))
-        defer { try? FileManager.default.removeItem(at: tmpFile) }
-
-        let createdAt = Date(timeIntervalSince1970: 1234)
-        let original = Transcription(
-            id: UUID(),
-            createdAt: createdAt,
-            fileName: "lecture.mp3",
-            filePath: tmpFile.path,
-            rawTranscript: "Old transcript",
-            status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc123",
-            thumbnailURL: "https://img.youtube.com/vi/abc123/default.jpg",
-            channelName: "Channel",
-            videoDescription: "Description",
-            isFavorite: true,
-            sourceType: .youtube
-        )
-        mockRepo.transcriptions = [original]
-
-        let newResult = Transcription(
-            fileName: tmpFile.lastPathComponent,
-            rawTranscript: "New transcript",
-            status: .completed
-        )
-        await mockService.configure(result: newResult)
-
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-
-        viewModel.retranscribe(original)
-
-        try await Task.sleep(for: .milliseconds(300))
-
-        XCTAssertTrue(mockRepo.deleteCalledWith.isEmpty,
-                      "Retranscribe should update the existing transcription instead of deleting it")
-
-        // Existing record should be updated in place with the new transcript payload.
-        let saved = mockRepo.transcriptions
-        XCTAssertEqual(saved.count, 1, "Should still have exactly one record after retranscribe")
-        XCTAssertEqual(saved.first?.id, original.id, "Retranscribe should preserve transcription identity")
-        XCTAssertEqual(saved.first?.createdAt, createdAt, "Should preserve original creation date")
-        XCTAssertEqual(saved.first?.isFavorite, true, "Should preserve favorite state")
-        XCTAssertEqual(saved.first?.rawTranscript, "New transcript", "Should replace transcript content")
-        XCTAssertEqual(saved.first?.fileName, "lecture.mp3", "Should preserve original fileName")
-        XCTAssertEqual(saved.first?.sourceURL, "https://youtube.com/watch?v=abc123",
-                       "Should preserve original sourceURL")
-        XCTAssertEqual(saved.first?.thumbnailURL, original.thumbnailURL)
-        XCTAssertEqual(saved.first?.channelName, original.channelName)
-        XCTAssertEqual(saved.first?.videoDescription, original.videoDescription)
-        XCTAssertEqual(saved.first?.sourceType, .youtube, "Should preserve original sourceType")
-
-        let lastSource = await mockService.lastSource
-        XCTAssertEqual(lastSource, .youtube, "Retranscribe should preserve original telemetry source")
-    }
-
     func testRetranscribePreservesMeetingSourceType() async throws {
         let archivedMeeting = try makeArchivedMeetingRecording()
         defer { try? FileManager.default.removeItem(at: archivedMeeting.folderURL) }
@@ -1438,36 +1042,6 @@ final class TranscriptionViewModelTests: XCTestCase {
         XCTAssertEqual(option.unavailableReason, "Download the Whisper model in Settings before trying Whisper.")
     }
 
-    func testRetranscriptionEngineOptionAvailableForYouTubeSource() throws {
-        let suiteName = "TranscriptionViewModelTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        SpeechEnginePreference.parakeet.save(to: defaults)
-        viewModel = TranscriptionViewModel(defaults: defaults, isWhisperModelDownloaded: { true })
-
-        let tmpFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent("retranscribe-engine-youtube-\(UUID().uuidString).mp3")
-        FileManager.default.createFile(atPath: tmpFile.path, contents: Data([0]))
-        defer { try? FileManager.default.removeItem(at: tmpFile) }
-
-        let original = Transcription(
-            id: UUID(),
-            fileName: "YouTube Talk",
-            filePath: tmpFile.path,
-            durationMs: 2_000,
-            rawTranscript: "Old transcript",
-            status: .completed,
-            sourceType: .youtube
-        )
-
-        let option = try XCTUnwrap(viewModel.retranscriptionEngineOption(for: original))
-
-        XCTAssertEqual(option.primaryEngine, SpeechEngineSelection(engine: .parakeet))
-        XCTAssertEqual(option.alternativeEngine.engine, .whisper)
-        XCTAssertTrue(option.isAlternativeAvailable)
-        XCTAssertNil(option.unavailableReason)
-    }
-
     func testRetranscriptionEngineOptionAvailableForFileSource() throws {
         let suiteName = "TranscriptionViewModelTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -1506,7 +1080,7 @@ final class TranscriptionViewModelTests: XCTestCase {
             filePath: "/tmp/does-not-exist-\(UUID().uuidString).mp3",
             rawTranscript: "Old transcript",
             status: .completed,
-            sourceType: .youtube
+            sourceType: .file
         )
 
         XCTAssertNil(viewModel.retranscriptionEngineOption(for: original))

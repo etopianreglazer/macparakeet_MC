@@ -2,27 +2,6 @@ import XCTest
 @testable import SplayCore
 import os
 
-private actor MockYouTubeDownloader: YouTubeDownloading {
-    var downloadCallCount = 0
-    var lastURL: String?
-    private let result: YouTubeDownloader.DownloadResult
-    private let progressUpdates: [Int]
-
-    init(result: YouTubeDownloader.DownloadResult, progressUpdates: [Int] = []) {
-        self.result = result
-        self.progressUpdates = progressUpdates
-    }
-
-    func download(url: String, onProgress: (@Sendable (Int) -> Void)?) async throws -> YouTubeDownloader.DownloadResult {
-        downloadCallCount += 1
-        lastURL = url
-        for pct in progressUpdates {
-            onProgress?(pct)
-        }
-        return result
-    }
-}
-
 private final class TelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable {
     private let lock = NSLock()
     private var events: [TelemetryEventSpec] = []
@@ -52,60 +31,6 @@ private final class TelemetrySpy: TelemetryServiceProtocol, @unchecked Sendable 
         lock.lock()
         defer { lock.unlock() }
         return events
-    }
-}
-
-private actor FailingYouTubeDownloader: YouTubeDownloading {
-    private let error: Error
-
-    init(error: Error) {
-        self.error = error
-    }
-
-    func download(url: String, onProgress: (@Sendable (Int) -> Void)?) async throws -> YouTubeDownloader.DownloadResult {
-        throw error
-    }
-}
-
-private final class SaveFailingTranscriptionRepository: TranscriptionRepositoryProtocol, @unchecked Sendable {
-    private let error: Error
-
-    init(error: Error) {
-        self.error = error
-    }
-
-    func save(_ transcription: Transcription) throws {
-        throw error
-    }
-
-    func fetch(id: UUID) throws -> Transcription? { nil }
-    func fetchAll(limit: Int?) throws -> [Transcription] { [] }
-    func delete(id: UUID) throws -> Bool { false }
-    func deleteAll() throws {}
-    func updateStatus(id: UUID, status: Transcription.TranscriptionStatus, errorMessage: String?) throws {}
-}
-
-private final class CapturingPlaybackConverter: YouTubeAudioPlaybackConverting, @unchecked Sendable {
-    private let transformedPath: String
-    private let expectation: XCTestExpectation
-    private let capturedMetadata = OSAllocatedUnfairLock<YouTubeAudioArtifactMetadata?>(initialState: nil)
-
-    init(transformedPath: String, expectation: XCTestExpectation) {
-        self.transformedPath = transformedPath
-        self.expectation = expectation
-    }
-
-    func convertToPlayableM4AIfNeeded(
-        inputPath: String,
-        metadata: YouTubeAudioArtifactMetadata?
-    ) async throws -> String {
-        capturedMetadata.withLock { $0 = metadata }
-        expectation.fulfill()
-        return transformedPath
-    }
-
-    func metadataSnapshot() -> YouTubeAudioArtifactMetadata? {
-        capturedMetadata.withLock { $0 }
     }
 }
 
@@ -360,76 +285,6 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: cachedThumbnail), artwork)
     }
 
-    func testTranscribeURLBackfillsMissingMetadataFromDownloadedAudio() async throws {
-        let tempDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("url-transcription-metadata-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDir) }
-
-        let downloadedURL = try makeTempDownloadedAudio()
-        defer { try? FileManager.default.removeItem(at: downloadedURL) }
-
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "",
-            durationSeconds: nil
-        ))
-        let thumbnailCache = ThumbnailCacheService(cacheDir: tempDir.appendingPathComponent("thumbs").path)
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            youtubeDownloader: downloader,
-            mediaMetadataExtractor: StubMediaMetadataExtractor(metadata: MediaMetadata(
-                title: "Embedded Video Title",
-                author: "Embedded Channel",
-                description: "Embedded description",
-                artworkData: Data([0xFF, 0xD8, 0xFF, 0xD9]),
-                durationMs: 42_000
-            )),
-            thumbnailCache: thumbnailCache
-        )
-        await mockSTT.configure(result: STTResult(text: "Downloaded transcript"))
-
-        let result = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-        let fetched = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
-
-        XCTAssertEqual(result.fileName, "Embedded Video Title")
-        XCTAssertEqual(result.channelName, "Embedded Channel")
-        XCTAssertEqual(result.videoDescription, "Embedded description")
-        XCTAssertEqual(result.durationMs, 42_000)
-        XCTAssertEqual(fetched.fileName, "Embedded Video Title")
-        XCTAssertEqual(fetched.channelName, "Embedded Channel")
-        XCTAssertEqual(fetched.videoDescription, "Embedded description")
-        XCTAssertEqual(fetched.durationMs, 42_000)
-        XCTAssertNotNil(thumbnailCache.cachedThumbnail(for: result.id))
-    }
-
-    func testTranscribeURLTreatsNonPositiveDownloadDurationAsMissing() async throws {
-        let downloadedURL = try makeTempDownloadedAudio()
-        defer { try? FileManager.default.removeItem(at: downloadedURL) }
-
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Downloaded Title",
-            durationSeconds: 0
-        ))
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            youtubeDownloader: downloader,
-            mediaMetadataExtractor: StubMediaMetadataExtractor(metadata: MediaMetadata(durationMs: 42_000))
-        )
-        await mockSTT.configure(result: STTResult(text: "Downloaded transcript"))
-
-        let result = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-        let fetched = try XCTUnwrap(transcriptionRepo.fetch(id: result.id))
-
-        XCTAssertEqual(result.durationMs, 42_000)
-        XCTAssertEqual(fetched.durationMs, 42_000)
-    }
-
     func testTranscribeFileError() async throws {
         await mockSTT.configure(error: STTError.transcriptionFailed("Model error"))
 
@@ -518,20 +373,6 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(all.count, 1)
         XCTAssertEqual(all[0].status, .cancelled)
         XCTAssertNil(all[0].errorMessage)
-    }
-
-    func testTranscribeURLWithoutDownloaderThrows() async throws {
-        // Service without youtubeDownloader should throw
-        do {
-            _ = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-            XCTFail("Should have thrown")
-        } catch let error as YouTubeDownloadError {
-            if case .ytDlpNotFound = error {
-                // Expected — no YouTubeDownloader configured
-            } else {
-                XCTFail("Expected ytDlpNotFound, got \(error)")
-            }
-        }
     }
 
     func testConvertCalledBeforeSTT() async throws {
@@ -668,191 +509,6 @@ final class TranscriptionServiceTests: XCTestCase {
 
         await fulfillment(of: [warningPosted], timeout: 1.0)
         XCTAssertEqual(warningMessage, "Authentication failed. Check your API key. Used standard cleanup.")
-    }
-
-    func testTranscribeURLKeepsDownloadedAudioByDefault() async throws {
-        let downloadedURL = try makeTempDownloadedAudio()
-        defer { try? FileManager.default.removeItem(at: downloadedURL) }
-
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video",
-            durationSeconds: 120
-        ))
-
-        let expectedResult = STTResult(text: "Downloaded transcript")
-        await mockSTT.configure(result: expectedResult)
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            youtubeDownloader: downloader
-        )
-
-        let result = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-
-        XCTAssertTrue(FileManager.default.fileExists(atPath: downloadedURL.path))
-        XCTAssertEqual(result.filePath, downloadedURL.path)
-    }
-
-    func testTranscribeURLDeletesDownloadedAudioWhenDisabled() async throws {
-        let downloadedURL = try makeTempDownloadedAudio()
-        defer { try? FileManager.default.removeItem(at: downloadedURL) }
-
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video",
-            durationSeconds: 120
-        ))
-
-        let expectedResult = STTResult(text: "Downloaded transcript")
-        await mockSTT.configure(result: expectedResult)
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            shouldKeepDownloadedAudio: { false },
-            youtubeDownloader: downloader
-        )
-
-        let result = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-
-        XCTAssertFalse(FileManager.default.fileExists(atPath: downloadedURL.path))
-        XCTAssertNil(result.filePath)
-    }
-
-    func testTranscribeURLTransientDeletesDownloadedAudioAndDoesNotPersist() async throws {
-        let downloadedURL = try makeTempDownloadedAudio()
-        defer { try? FileManager.default.removeItem(at: downloadedURL) }
-
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video",
-            durationSeconds: 120
-        ))
-
-        await mockSTT.configure(result: STTResult(text: "Downloaded transcript"))
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            shouldKeepDownloadedAudio: { true },
-            youtubeDownloader: downloader
-        )
-
-        let result = try await service.transcribeURLTransient(urlString: "https://youtu.be/dQw4w9WgXcQ")
-
-        XCTAssertEqual(result.rawTranscript, "Downloaded transcript")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: downloadedURL.path))
-        XCTAssertNil(result.filePath)
-        XCTAssertNil(try transcriptionRepo.fetch(id: result.id))
-        XCTAssertTrue(try transcriptionRepo.fetchAll(limit: nil).isEmpty)
-    }
-
-    func testTranscribeURLDeletesDownloadedAudioWhenPersistenceFails() async throws {
-        struct SaveError: Error {}
-
-        let downloadedURL = try makeTempDownloadedAudio()
-        defer { try? FileManager.default.removeItem(at: downloadedURL) }
-
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video",
-            durationSeconds: 120
-        ))
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: SaveFailingTranscriptionRepository(error: SaveError()),
-            shouldKeepDownloadedAudio: { true },
-            youtubeDownloader: downloader
-        )
-
-        do {
-            _ = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-            XCTFail("Expected save failure")
-        } catch is SaveError {
-            XCTAssertFalse(FileManager.default.fileExists(atPath: downloadedURL.path))
-        } catch {
-            XCTFail("Unexpected error: \(error)")
-        }
-    }
-
-    func testTranscribeURLForwardsDownloadProgressToPhaseCallback() async throws {
-        let downloadedURL = try makeTempDownloadedAudio()
-        defer { try? FileManager.default.removeItem(at: downloadedURL) }
-
-        let downloader = MockYouTubeDownloader(
-            result: YouTubeDownloader.DownloadResult(
-                audioFileURL: downloadedURL,
-                title: "Video",
-                durationSeconds: 120
-            ),
-            progressUpdates: [7, 42, 100]
-        )
-
-        await mockSTT.configure(result: STTResult(text: "Downloaded transcript"))
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            youtubeDownloader: downloader
-        )
-
-        let phasesLock = OSAllocatedUnfairLock(initialState: [TranscriptionProgress]())
-        _ = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ") { progress in
-            phasesLock.withLock { $0.append(progress) }
-        }
-        let phases = phasesLock.withLock { $0 }
-
-        XCTAssertTrue(phases.contains { if case .downloading(0) = $0 { true } else { false } })
-        XCTAssertTrue(phases.contains { if case .downloading(7) = $0 { true } else { false } })
-        XCTAssertTrue(phases.contains { if case .downloading(42) = $0 { true } else { false } })
-        XCTAssertTrue(phases.contains { if case .downloading(100) = $0 { true } else { false } })
-        XCTAssertTrue(phases.contains { if case .transcribing = $0 { true } else { false } })
-    }
-
-    func testTranscribeURLPassesYouTubeMetadataToPlaybackConversion() async throws {
-        let downloadedURL = try makeTempDownloadedAudio(fileExtension: "webm")
-        defer { try? FileManager.default.removeItem(at: downloadedURL) }
-
-        let downloader = MockYouTubeDownloader(result: YouTubeDownloader.DownloadResult(
-            audioFileURL: downloadedURL,
-            title: "Video Title",
-            durationSeconds: 120,
-            channelName: "Channel Name",
-            thumbnailURL: "https://img.example/thumb.jpg",
-            videoDescription: "Video description"
-        ))
-        let conversionExpectation = expectation(description: "playback conversion received metadata")
-        let converter = CapturingPlaybackConverter(
-            transformedPath: downloadedURL.deletingPathExtension().appendingPathExtension("m4a").path,
-            expectation: conversionExpectation
-        )
-
-        await mockSTT.configure(result: STTResult(text: "Downloaded transcript"))
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            youtubeDownloader: downloader,
-            playbackConverter: converter
-        )
-
-        _ = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-        await fulfillment(of: [conversionExpectation], timeout: 2.0)
-
-        let metadata = try XCTUnwrap(converter.metadataSnapshot())
-        XCTAssertEqual(metadata.title, "Video Title")
-        XCTAssertEqual(metadata.artist, "Channel Name")
-        XCTAssertEqual(metadata.description, "Video description")
-        XCTAssertEqual(metadata.thumbnailURL, "https://img.example/thumb.jpg")
     }
 
     func testTranscribeMeetingUsesFinalizeLaneAndMergesFreshSourceTranscriptsByAlignment() async throws {
@@ -1588,66 +1244,6 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(lastJob, .fileTranscription)
     }
 
-    func testRetranscribeExistingFileUpdatesOriginalRowWithoutDuplicate() async throws {
-        let original = Transcription(
-            id: UUID(),
-            createdAt: Date(timeIntervalSince1970: 123),
-            fileName: "lecture.mp3",
-            filePath: "/tmp/lecture.mp3",
-            rawTranscript: "Old transcript",
-            cleanTranscript: "Edited old transcript",
-            wordTimestamps: [
-                WordTimestamp(word: "Old", startMs: 0, endMs: 100, confidence: 0.9, speakerId: "S1")
-            ],
-            speakerCount: 1,
-            speakers: [SpeakerInfo(id: "S1", label: "Speaker 1")],
-            diarizationSegments: [DiarizationSegmentRecord(speakerId: "S1", startMs: 0, endMs: 100)],
-            status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc123",
-            thumbnailURL: "https://img.youtube.com/vi/abc123/default.jpg",
-            channelName: "Channel",
-            videoDescription: "Description",
-            isFavorite: true,
-            sourceType: .youtube
-        )
-        try transcriptionRepo.save(original)
-        await mockSTT.configure(result: STTResult(
-            text: "New transcript",
-            words: [
-                TimestampedWord(word: "New", startMs: 0, endMs: 120, confidence: 0.98),
-                TimestampedWord(word: "transcript", startMs: 150, endMs: 420, confidence: 0.97),
-            ]
-        ))
-
-        let result = try await service.retranscribe(
-            existing: original,
-            fileURL: URL(fileURLWithPath: "/tmp/lecture.mp3"),
-            source: .youtube,
-            onProgress: nil
-        )
-
-        let all = try transcriptionRepo.fetchAll(limit: nil)
-        XCTAssertEqual(all.count, 1)
-        XCTAssertEqual(result.id, original.id)
-        XCTAssertEqual(all[0].id, original.id)
-        XCTAssertEqual(all[0].rawTranscript, "New transcript")
-        XCTAssertNil(all[0].cleanTranscript)
-        XCTAssertEqual(all[0].wordTimestamps?.map(\.word), ["New", "transcript"])
-        XCTAssertNil(all[0].speakerCount)
-        XCTAssertNil(all[0].speakers)
-        XCTAssertNil(all[0].diarizationSegments)
-        XCTAssertEqual(all[0].createdAt, original.createdAt)
-        XCTAssertEqual(all[0].fileName, original.fileName)
-        XCTAssertEqual(all[0].filePath, original.filePath)
-        XCTAssertEqual(all[0].sourceURL, original.sourceURL)
-        XCTAssertEqual(all[0].thumbnailURL, original.thumbnailURL)
-        XCTAssertEqual(all[0].channelName, original.channelName)
-        XCTAssertEqual(all[0].videoDescription, original.videoDescription)
-        XCTAssertEqual(all[0].isFavorite, true)
-        XCTAssertEqual(all[0].sourceType, .youtube)
-        XCTAssertEqual(all[0].status, .completed)
-    }
-
     func testRetranscribeExistingFileFailureLeavesOriginalRowIntact() async throws {
         let original = Transcription(
             id: UUID(),
@@ -1682,43 +1278,6 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertNil(all[0].errorMessage)
     }
 
-    func testTranscribeURLDownloadFailureEmitsDownloadStageTelemetry() async throws {
-        let telemetry = TelemetrySpy()
-        Telemetry.configure(telemetry)
-        defer { Telemetry.configure(NoOpTelemetryService()) }
-        let downloader = FailingYouTubeDownloader(
-            error: YouTubeDownloadError.downloadFailed("yt-dlp failed")
-        )
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            youtubeDownloader: downloader
-        )
-
-        do {
-            _ = try await service.transcribeURL(urlString: "https://youtu.be/dQw4w9WgXcQ")
-            XCTFail("Should have thrown")
-        } catch let error as YouTubeDownloadError {
-            guard case .downloadFailed = error else {
-                return XCTFail("Unexpected download error: \(error)")
-            }
-        }
-
-        let events = telemetry.snapshot()
-        let failedEvent = events.reversed().first {
-            if case .transcriptionFailed = $0 { return true }
-            return false
-        }
-        guard case .transcriptionFailed(let source, let stage, let errorType, _) = try XCTUnwrap(failedEvent) else {
-            return XCTFail("Expected transcription_failed telemetry")
-        }
-        XCTAssertEqual(source, .youtube)
-        XCTAssertEqual(stage, .download)
-        XCTAssertEqual(errorType, "YouTubeDownloadError.downloadFailed")
-    }
-
     private func telemetryProps(for spec: TelemetryEventSpec) throws -> [String: String] {
         let event = TelemetryEvent(
             spec: spec,
@@ -1733,14 +1292,5 @@ final class TranscriptionServiceTests: XCTestCase {
         let data = try encoder.encode(event)
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         return try XCTUnwrap(json["props"] as? [String: String])
-    }
-
-    private func makeTempDownloadedAudio(fileExtension: String = "m4a") throws -> URL {
-        try AppPaths.ensureDirectories()
-        let url = URL(fileURLWithPath: AppPaths.tempDir)
-            .appendingPathComponent("downloaded-\(UUID().uuidString).\(fileExtension)")
-        let created = FileManager.default.createFile(atPath: url.path, contents: Data("audio".utf8))
-        XCTAssertTrue(created)
-        return url
     }
 }

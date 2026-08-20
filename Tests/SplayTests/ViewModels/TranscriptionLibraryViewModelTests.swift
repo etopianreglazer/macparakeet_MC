@@ -56,10 +56,9 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
     func testFilterAll() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed))
         try repo.save(Transcription(
-            fileName: "youtube.mp3",
+            fileName: "meeting.mp3",
             status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc",
-            sourceType: .youtube
+            sourceType: .meeting
         ))
 
         vm.filter = .all
@@ -67,25 +66,9 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(vm.filteredTranscriptions.count, 2)
     }
 
-    func testFilterYouTube() async throws {
-        try repo.save(Transcription(fileName: "local.mp3", status: .completed))
-        try repo.save(Transcription(
-            fileName: "youtube.mp3",
-            status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc",
-            sourceType: .youtube
-        ))
-
-        vm.filter = .youtube
-        await load()
-        XCTAssertEqual(vm.filteredTranscriptions.count, 1)
-        XCTAssertEqual(vm.filteredTranscriptions.first?.fileName, "youtube.mp3")
-    }
-
     func testFilterLocal() async throws {
         try repo.save(Transcription(fileName: "local.mp3", status: .completed, sourceType: .file))
         try repo.save(Transcription(fileName: "meeting.mp3", status: .completed, sourceType: .meeting))
-        try repo.save(Transcription(fileName: "youtube.mp3", status: .completed, sourceURL: "https://youtube.com/watch?v=abc", sourceType: .youtube))
 
         vm.filter = .local
         await load()
@@ -171,7 +154,6 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
         try repo.save(Transcription(
             fileName: "Video",
             status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc",
             channelName: "TechChannel"
         ))
         try repo.save(Transcription(fileName: "Other", status: .completed))
@@ -252,22 +234,28 @@ final class TranscriptionLibraryViewModelTests: XCTestCase {
 
     func testDeleteCleanupFailureKeepsTranscriptionRowAndListItem() async throws {
         try AppPaths.ensureDirectories()
-        let protectedDir = URL(fileURLWithPath: AppPaths.youtubeDownloadsDir, isDirectory: true)
+        // `TranscriptionAssetCleanup.removeMeetingFolder` deletes the whole
+        // session folder. Make the session folder itself read-only (0o500) so
+        // its contents cannot be unlinked — the removal fails *before* touching
+        // the .m4a, exercising the cleanup-failure path that must keep the row,
+        // the list item, and the audio.
+        let protectedParent = URL(fileURLWithPath: AppPaths.meetingRecordingsDir, isDirectory: true)
             .appendingPathComponent("library-protected-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: protectedDir, withIntermediateDirectories: true)
-        let audioURL = protectedDir.appendingPathComponent("asset.m4a")
+        let sessionDir = protectedParent.appendingPathComponent("session", isDirectory: true)
+        try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        let audioURL = sessionDir.appendingPathComponent("meeting.m4a")
         _ = FileManager.default.createFile(atPath: audioURL.path, contents: Data("audio".utf8))
-        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: protectedDir.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: sessionDir.path)
         defer {
-            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: protectedDir.path)
-            try? FileManager.default.removeItem(at: protectedDir)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: sessionDir.path)
+            try? FileManager.default.removeItem(at: protectedParent)
         }
 
         let t = Transcription(
-            fileName: "yt",
+            fileName: "Meeting",
             filePath: audioURL.path,
             status: .completed,
-            sourceType: .youtube
+            sourceType: .meeting
         )
         try repo.save(t)
         await load()

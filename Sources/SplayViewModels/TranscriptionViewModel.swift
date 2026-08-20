@@ -19,7 +19,6 @@ public final class TranscriptionViewModel {
 
     public enum SourceKind: Sendable {
         case localFile
-        case youtubeURL
     }
 
     public enum ProgressPhase: Int, CaseIterable, Sendable {
@@ -69,7 +68,6 @@ public final class TranscriptionViewModel {
     public var errorMessage: String?
     public private(set) var transcribingFileName: String = ""
     public var isDragging = false
-    public var urlInput: String = ""
     public var hasPromptResultTabs: Bool = false
 
     // LLM state
@@ -88,8 +86,8 @@ public final class TranscriptionViewModel {
     //
     // A multi-file drop / multi-select / folder fans out into a sequential
     // queue drained on the shared file-transcription path — no new STT slot and
-    // no parallelism (ADR-016). YouTube stays single-URL. The single-file path
-    // (`count <= 1`) is untouched: it never enters batch state.
+    // no parallelism (ADR-016). The single-file path (`count <= 1`) is
+    // untouched: it never enters batch state.
     public private(set) var isBatchActive = false
     public private(set) var batchTotalCount = 0
     public private(set) var batchCompletedCount = 0
@@ -106,10 +104,6 @@ public final class TranscriptionViewModel {
             line += " \u{00B7} \(batchFailedCount) failed"
         }
         return line
-    }
-
-    public var isValidURL: Bool {
-        YouTubeURLValidator.isYouTubeURL(urlInput)
     }
 
     public var hasConversations: Bool = false
@@ -267,41 +261,6 @@ public final class TranscriptionViewModel {
         return true
     }
 
-    public func transcribeURL() {
-        guard let service = transcriptionService else {
-            reportMissingConfiguration("transcriptionService", action: "transcribeURL")
-            return
-        }
-        let url = urlInput.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let videoID = YouTubeURLValidator.extractVideoID(url) else { return }
-
-        // Check for existing transcription of the same video
-        if let existing = try? transcriptionRepo?.fetchCompletedByVideoID(videoID) {
-            currentTranscription = existing
-            urlInput = ""
-            return
-        }
-
-        let taskID = beginNewTranscription(source: .youtubeURL, fileName: "YouTube video")
-        urlInput = ""
-
-        transcriptionTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let result = try await service.transcribeURL(urlString: url) { [weak self] progress in
-                    Task { @MainActor [weak self] in
-                        self?.updateProgress(with: progress, taskID: taskID)
-                    }
-                }
-                completeSuccessfulTranscription(taskID: taskID, result: result)
-            } catch is CancellationError {
-                completeCancelledTranscription(taskID: taskID)
-            } catch {
-                completeFailedTranscription(taskID: taskID, error: error)
-            }
-        }
-    }
-
     public func handleFileDrop(
         providers: [NSItemProvider],
         onAccepted: (@MainActor @Sendable () -> Void)? = nil
@@ -409,8 +368,6 @@ public final class TranscriptionViewModel {
         let retranscriptionSource: TelemetryTranscriptionSource = switch original.sourceType {
         case .file:
             .file
-        case .youtube:
-            .youtube
         case .meeting:
             .meeting
         }
@@ -663,39 +620,6 @@ public final class TranscriptionViewModel {
         service.saveIfEnabled(transcription, scope: scope)
     }
 
-    /// Persist a new playback-friendly file path produced by the background
-    /// YouTube audio transcode (webm/opus → m4a). Used by MediaPlayerViewModel's
-    /// lazy on-open migration so the next open hits the .m4a directly.
-    ///
-    /// `sourceFileToCleanup`, when non-nil, is the original (unplayable)
-    /// file the new path supersedes. It is deleted only after the DB
-    /// `updateFilePath` write succeeds — a DB failure leaves the source
-    /// in place so a future open can retry the migration.
-    public func applyConvertedPlaybackPath(
-        transcriptionID: UUID,
-        newFilePath: String,
-        sourceFileToCleanup: String? = nil
-    ) throws {
-        guard let repo = transcriptionRepo else { return }
-        do {
-            try repo.updateFilePath(id: transcriptionID, filePath: newFilePath)
-        } catch {
-            logger.error("transcription_file_path_update_failed id=\(transcriptionID, privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
-            throw error
-        }
-        if let sourceFileToCleanup, sourceFileToCleanup != newFilePath {
-            try? FileManager.default.removeItem(atPath: sourceFileToCleanup)
-        }
-        if let current = currentTranscription, current.id == transcriptionID {
-            var updated = current
-            updated.filePath = newFilePath
-            currentTranscription = updated
-        }
-        if let index = transcriptions.firstIndex(where: { $0.id == transcriptionID }) {
-            transcriptions[index].filePath = newFilePath
-        }
-    }
-
     public func presentCompletedTranscription(_ transcription: Transcription) {
         presentCompletedTranscription(transcription, autoSave: false, runAutoPrompts: true)
     }
@@ -858,9 +782,7 @@ public final class TranscriptionViewModel {
     ) -> String? {
         switch phase {
         case .downloading:
-            return sourceKind == .youtubeURL
-                ? "Longer videos take more time to fetch"
-                : nil
+            return nil
         case .transcribing:
             switch engine {
             case .parakeet:

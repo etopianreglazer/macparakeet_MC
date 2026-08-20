@@ -30,7 +30,6 @@ final class AppHotkeyCoordinatorTests: XCTestCase {
             onToggleMeetingRecording: {},
             onFnToggleRecording: { _ in },
             onTriggerFileTranscription: {},
-            onTriggerYouTubeTranscription: {},
             onDictationHotkeyManagersChanged: { _ in },
             onAnyHotkeyEnabled: onAnyHotkeyEnabled,
             onHotkeyUnavailable: onHotkeyUnavailable,
@@ -305,7 +304,6 @@ final class AppHotkeyCoordinatorTests: XCTestCase {
         coordinator.refreshAllHotkeys()
         coordinator.refreshMeetingHotkey()
         coordinator.refreshFileTranscriptionHotkey()
-        coordinator.refreshYouTubeTranscriptionHotkey()
         XCTAssertEqual(conflictReports, 0, "refresh* must short-circuit while suspended")
 
         coordinator.resume()
@@ -345,9 +343,8 @@ final class AppHotkeyCoordinatorTests: XCTestCase {
         let conflictingTrigger = HotkeyTrigger.modifierChord(modifiers: ["command", "option"])
         viewModel.hotkeyTrigger = .disabled
         viewModel.pushToTalkHotkeyTrigger = .disabled
-        viewModel.meetingHotkeyTrigger = .disabled
+        viewModel.meetingHotkeyTrigger = conflictingTrigger
         viewModel.fileTranscriptionHotkeyTrigger = conflictingTrigger
-        viewModel.youtubeTranscriptionHotkeyTrigger = conflictingTrigger
         var conflictReports = 0
         let coordinator = makeCoordinator(
             settingsViewModel: viewModel,
@@ -359,7 +356,7 @@ final class AppHotkeyCoordinatorTests: XCTestCase {
         XCTAssertEqual(conflictReports, 0)
 
         coordinator.resume()
-        XCTAssertEqual(conflictReports, 2)
+        XCTAssertEqual(conflictReports, 1)
     }
 
     func testResumeModeMatchesActiveDictationRole() {

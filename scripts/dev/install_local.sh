@@ -13,7 +13,7 @@ set -euo pipefail
 #
 # It deliberately does NOT notarize or use the hardened runtime — neither is needed
 # to run an app locally, and skipping the hardened runtime avoids library-validation
-# friction with the bundled yt-dlp/node helpers.
+# friction with the bundled ffmpeg helper.
 #
 # Env overrides:
 #   APP_NAME       (default: Splay)
@@ -62,10 +62,10 @@ fi
 while IFS= read -r -d '' d; do sign "$d"; done < <(find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -type f -name "*.dylib" -print0 2>/dev/null || true)
 while IFS= read -r -d '' fw; do sign "$fw"; done < <(find "$APP_PATH/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d ! -name "Sparkle.framework" -print0 2>/dev/null || true)
 
-# Helper binaries under Resources (ffmpeg / yt-dlp / node)
+# Helper binaries under Resources (ffmpeg)
 while IFS= read -r -d '' b; do sign "$b"; done < <(
   find "$APP_PATH/Contents/Resources" -maxdepth 1 -type f -perm -111 \
-    \( -name "ffmpeg" -o -name "yt-dlp" -o -name "node" -o -name "node-arm64" -o -name "node-x86_64" \) -print0 2>/dev/null || true
+    \( -name "ffmpeg" \) -print0 2>/dev/null || true
 )
 
 # Other executables in MacOS (e.g. bundled macparakeet-cli) — skip the app's own exec

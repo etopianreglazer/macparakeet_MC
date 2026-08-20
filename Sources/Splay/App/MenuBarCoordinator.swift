@@ -8,12 +8,10 @@ import SplayViewModels
 final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     private let updaterController: SPUStandardUpdaterController
     private let transcriptionViewModel: TranscriptionViewModel
-    private let youtubeInputController: YouTubeInputPanelController
     private let environmentProvider: () -> AppEnvironment?
     private let hotkeyMenuTitleProvider: () -> String
     private let meetingHotkeyTriggerProvider: () -> HotkeyTrigger
     private let fileTranscriptionHotkeyTriggerProvider: () -> HotkeyTrigger
-    private let youtubeTranscriptionHotkeyTriggerProvider: () -> HotkeyTrigger
     private let meetingRecordingActiveProvider: () -> Bool
     private let dictationCaptureActiveProvider: () -> Bool
     private let onOpenMainWindow: () -> Void
@@ -38,18 +36,15 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     private var recentTransformsMenuItem: NSMenuItem?
     private var recordMeetingMenuItems: [NSMenuItem] = []
     private var transcribeFileMenuItems: [NSMenuItem] = []
-    private var transcribeYouTubeMenuItems: [NSMenuItem] = []
     private var hotkeyMenuItem: NSMenuItem?
 
     init(
         updaterController: SPUStandardUpdaterController,
         transcriptionViewModel: TranscriptionViewModel,
-        youtubeInputController: YouTubeInputPanelController,
         environmentProvider: @escaping () -> AppEnvironment?,
         hotkeyMenuTitleProvider: @escaping () -> String,
         meetingHotkeyTriggerProvider: @escaping () -> HotkeyTrigger,
         fileTranscriptionHotkeyTriggerProvider: @escaping () -> HotkeyTrigger,
-        youtubeTranscriptionHotkeyTriggerProvider: @escaping () -> HotkeyTrigger,
         meetingRecordingActiveProvider: @escaping () -> Bool,
         dictationCaptureActiveProvider: @escaping () -> Bool,
         onOpenMainWindow: @escaping () -> Void,
@@ -65,12 +60,10 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     ) {
         self.updaterController = updaterController
         self.transcriptionViewModel = transcriptionViewModel
-        self.youtubeInputController = youtubeInputController
         self.environmentProvider = environmentProvider
         self.hotkeyMenuTitleProvider = hotkeyMenuTitleProvider
         self.meetingHotkeyTriggerProvider = meetingHotkeyTriggerProvider
         self.fileTranscriptionHotkeyTriggerProvider = fileTranscriptionHotkeyTriggerProvider
-        self.youtubeTranscriptionHotkeyTriggerProvider = youtubeTranscriptionHotkeyTriggerProvider
         self.meetingRecordingActiveProvider = meetingRecordingActiveProvider
         self.dictationCaptureActiveProvider = dictationCaptureActiveProvider
         self.onOpenMainWindow = onOpenMainWindow
@@ -201,8 +194,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         applyChordShortcut(fileTranscriptionHotkeyTriggerProvider(), to: fileTranscriptionItem)
         transcribeFileMenuItems.append(fileTranscriptionItem)
         captureMenu.addItem(fileTranscriptionItem)
-        // Lean island direction: YouTube remains supported for existing data,
-        // but is no longer a user-facing capture entry point.
         if AppFeatures.meetingRecordingEnabled {
             let recordMeetingItem = makeMenuItem(
                 title: "Start Recording",
@@ -376,9 +367,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         menu.addItem(transcribeFileItem)
         transcribeFileMenuItems.append(transcribeFileItem)
 
-        // YouTube entry point intentionally hidden; retain flow for existing
-        // records and future migration/recovery work.
-
         if AppFeatures.meetingRecordingEnabled {
             let recordMeetingItem = NSMenuItem(
                 title: "Start Recording",
@@ -441,19 +429,12 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
     func refreshTranscriptionHotkeyShortcuts() {
         transcribeFileMenuItems.forEach { applyChordShortcut(fileTranscriptionHotkeyTriggerProvider(), to: $0) }
-        transcribeYouTubeMenuItems.forEach { applyChordShortcut(youtubeTranscriptionHotkeyTriggerProvider(), to: $0) }
     }
 
     /// Entry point for the file-transcription global hotkey. Shares its
     /// implementation with the menu-bar item so both behave identically.
     func invokeTranscribeFileFlow() {
         transcribeFileFlow()
-    }
-
-    /// Entry point for the YouTube-transcription global hotkey. Shares its
-    /// implementation with the menu-bar item.
-    func invokeTranscribeYouTubeFlow() {
-        transcribeYouTubeFlow()
     }
 
     func updateIcon(state: BreathWaveIcon.MenuBarState) {
@@ -580,10 +561,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         transcribeFileFlow()
     }
 
-    @objc private func transcribeFromYouTubeMenu() {
-        transcribeYouTubeFlow()
-    }
-
     private func transcribeFileFlow() {
         guard environmentProvider() != nil else { return }
 
@@ -603,11 +580,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         }
     }
 
-    private func transcribeYouTubeFlow() {
-        guard environmentProvider() != nil else { return }
-        youtubeInputController.show()
-    }
-
     @objc private func toggleMeetingRecordingFromMenu() {
         onToggleMeetingRecording()
     }
@@ -618,7 +590,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         startDictationMenuItem?.isEnabled = environmentReady && !dictationCaptureActiveProvider()
         createTransformMenuItem?.isEnabled = environmentReady
         transcribeFileMenuItems.forEach { $0.isEnabled = environmentReady }
-        transcribeYouTubeMenuItems.forEach { $0.isEnabled = environmentReady }
         recordMeetingMenuItems.forEach {
             $0.isEnabled = environmentReady
             $0.title = meetingRecordingActiveProvider()

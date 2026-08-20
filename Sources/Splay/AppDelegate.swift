@@ -87,10 +87,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     )
     private let onboardingWindowController = OnboardingWindowController()
 
-    private lazy var youtubeInputController = YouTubeInputPanelController(
-        transcriptionViewModel: transcriptionViewModel
-    )
-
     // MARK: - Coordinators
 
     private let startupBootstrapper = AppStartupBootstrapper()
@@ -228,7 +224,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var menuBarCoordinator = MenuBarCoordinator(
         updaterController: updaterController,
         transcriptionViewModel: transcriptionViewModel,
-        youtubeInputController: youtubeInputController,
         environmentProvider: { [weak self] in
             self?.appEnvironment
         },
@@ -240,9 +235,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         fileTranscriptionHotkeyTriggerProvider: { [weak self] in
             self?.settingsViewModel.fileTranscriptionHotkeyTrigger ?? .disabled
-        },
-        youtubeTranscriptionHotkeyTriggerProvider: { [weak self] in
-            self?.settingsViewModel.youtubeTranscriptionHotkeyTrigger ?? .disabled
         },
         meetingRecordingActiveProvider: { [weak self] in
             self?.meetingRecordingFlowCoordinator?.isMeetingRecordingActive == true
@@ -303,9 +295,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         onFileTranscriptionHotkeyTriggerChanged: { [weak self] in
             self?.handleFileTranscriptionHotkeyTriggerChange()
-        },
-        onYouTubeTranscriptionHotkeyTriggerChanged: { [weak self] in
-            self?.handleYouTubeTranscriptionHotkeyTriggerChange()
         },
         onAppearanceModeChanged: { [weak self] in
             self?.applyAppAppearance()
@@ -459,10 +448,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onTriggerFileTranscriptionFromHotkey: { [weak self] in
                     guard let self, !self.onboardingWindowController.isVisible else { return }
                     self.triggerFileTranscriptionFromHotkey()
-                },
-                onTriggerYouTubeTranscriptionFromHotkey: { [weak self] in
-                    guard let self, !self.onboardingWindowController.isVisible else { return }
-                    self.triggerYouTubeTranscriptionFromHotkey()
                 },
                 onHotkeyBecameAvailable: { [weak self] in
                     self?.hasPresentedHotkeyUnavailableAlert = false
@@ -631,10 +616,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshAuxiliaryHotkeys()
     }
 
-    private func handleYouTubeTranscriptionHotkeyTriggerChange() {
-        refreshAuxiliaryHotkeys()
-    }
-
     private func applyAppAppearance() {
         AppAppearanceController.apply(settingsViewModel.appAppearanceMode)
     }
@@ -642,7 +623,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func refreshAuxiliaryHotkeys() {
         hotkeyCoordinator?.refreshMeetingHotkey()
         hotkeyCoordinator?.refreshFileTranscriptionHotkey()
-        hotkeyCoordinator?.refreshYouTubeTranscriptionHotkey()
         menuBarCoordinator.refreshMeetingHotkeyShortcut()
         menuBarCoordinator.refreshTranscriptionHotkeyShortcuts()
         transformsCoordinator?.reloadBindings()
@@ -661,7 +641,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 conflictMode: .bareModifierDictation
             ),
             TransformShortcutReservedHotkey(name: "file transcription", trigger: settingsViewModel.fileTranscriptionHotkeyTrigger),
-            TransformShortcutReservedHotkey(name: "YouTube transcription", trigger: settingsViewModel.youtubeTranscriptionHotkeyTrigger),
         ]
         if AppFeatures.meetingRecordingEnabled {
             reserved.append(TransformShortcutReservedHotkey(name: "meeting recording", trigger: settingsViewModel.meetingHotkeyTrigger))
@@ -672,11 +651,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func triggerFileTranscriptionFromHotkey() {
         guard appEnvironment != nil else { return }
         menuBarCoordinator.invokeTranscribeFileFlow()
-    }
-
-    private func triggerYouTubeTranscriptionFromHotkey() {
-        guard appEnvironment != nil else { return }
-        menuBarCoordinator.invokeTranscribeYouTubeFlow()
     }
 
     private func handleShowIdlePillChange() {

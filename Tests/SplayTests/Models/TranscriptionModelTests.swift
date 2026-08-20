@@ -196,16 +196,16 @@ final class TranscriptionModelTests: XCTestCase {
 
     func testVideoMetadataFieldsPopulate() {
         let t = Transcription(
-            fileName: "YouTube Video",
-            sourceURL: "https://youtube.com/watch?v=abc",
-            thumbnailURL: "https://i.ytimg.com/vi/abc/maxresdefault.jpg",
+            fileName: "Video",
+            sourceURL: "https://videos.example.com/watch?v=abc",
+            thumbnailURL: "https://img.example.com/abc/maxresdefault.jpg",
             channelName: "Test Channel",
             videoDescription: "Great video",
             isFavorite: true,
-            sourceType: .youtube,
+            sourceType: .file,
             recoveredFromCrash: true
         )
-        XCTAssertEqual(t.thumbnailURL, "https://i.ytimg.com/vi/abc/maxresdefault.jpg")
+        XCTAssertEqual(t.thumbnailURL, "https://img.example.com/abc/maxresdefault.jpg")
         XCTAssertEqual(t.channelName, "Test Channel")
         XCTAssertEqual(t.videoDescription, "Great video")
         XCTAssertEqual(t.isFavorite, true)
@@ -216,7 +216,7 @@ final class TranscriptionModelTests: XCTestCase {
         let original = Transcription(
             fileName: "video.mp4",
             status: .completed,
-            sourceURL: "https://youtube.com/watch?v=test",
+            sourceURL: "https://videos.example.com/watch?v=test",
             thumbnailURL: "https://example.com/thumb.jpg",
             channelName: "My Channel",
             videoDescription: "Description here",
@@ -239,21 +239,21 @@ final class TranscriptionModelTests: XCTestCase {
         XCTAssertEqual(decoded.recoveredFromCrash, true)
     }
 
-    func testDecodingWithoutSourceTypeInfersYouTubeFromSourceURL() throws {
+    func testDecodingWithoutSourceTypeDefaultsToFile() throws {
         let json = """
         {
             "id": "00000000-0000-0000-0000-000000000011",
             "createdAt": "2026-03-01T00:00:00Z",
             "fileName": "video.mp3",
             "status": "completed",
-            "sourceURL": "https://youtube.com/watch?v=test",
+            "sourceURL": "https://videos.example.com/watch?v=test",
             "updatedAt": "2026-03-01T00:00:00Z"
         }
         """
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         let t = try decoder.decode(Transcription.self, from: Data(json.utf8))
-        XCTAssertEqual(t.sourceType, .youtube)
+        XCTAssertEqual(t.sourceType, .file)
     }
 
     func testDecodingWithoutIsFavoriteDefaultsToFalse() throws {

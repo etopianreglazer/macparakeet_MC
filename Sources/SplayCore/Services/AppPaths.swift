@@ -28,11 +28,6 @@ public enum AppPaths {
         "\(appSupportDir)/dictations"
     }
 
-    /// Audio storage directory for downloaded YouTube transcription audio
-    public static var youtubeDownloadsDir: String {
-        "\(appSupportDir)/youtube-downloads"
-    }
-
     /// Audio storage directory for meeting recordings
     public static var meetingRecordingsDir: String {
         "\(appSupportDir)/meeting-recordings"
@@ -48,7 +43,7 @@ public enum AppPaths {
         return path + "/Logs/MacParakeet"
     }
 
-    /// Directory for managed helper binaries (e.g. yt-dlp).
+    /// Directory for managed helper binaries (e.g. ffmpeg).
     public static var binDir: String {
         "\(appSupportDir)/bin"
     }
@@ -56,19 +51,6 @@ public enum AppPaths {
     /// WhisperKit CoreML model cache base.
     public static var whisperModelsDir: String {
         "\(appSupportDir)/models/stt/whisper"
-    }
-
-    /// Managed yt-dlp binary path.
-    public static var ytDlpBinaryPath: String {
-        "\(binDir)/yt-dlp"
-    }
-
-    /// Resolve bundled yt-dlp seed binary from app resources.
-    /// Returns nil when running outside an app bundle or when yt-dlp is not present.
-    public static func bundledYtDlpPath() -> String? {
-        guard let resourcePath = Bundle.main.resourcePath else { return nil }
-        let ytDlpPath = (resourcePath as NSString).appendingPathComponent("yt-dlp")
-        return FileManager.default.isExecutableFile(atPath: ytDlpPath) ? ytDlpPath : nil
     }
 
     /// Thumbnail cache directory
@@ -84,7 +66,7 @@ public enum AppPaths {
     /// Ensure all required directories exist
     public static func ensureDirectories() throws {
         let fm = FileManager.default
-        for dir in [appSupportDir, dictationsDir, youtubeDownloadsDir, meetingRecordingsDir, binDir, whisperModelsDir, thumbnailsDir, logsDir, tempDir] {
+        for dir in [appSupportDir, dictationsDir, meetingRecordingsDir, binDir, whisperModelsDir, thumbnailsDir, logsDir, tempDir] {
             if !fm.fileExists(atPath: dir) {
                 try fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
             }

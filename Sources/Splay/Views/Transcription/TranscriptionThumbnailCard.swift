@@ -114,7 +114,7 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
     private var thumbnailContent: some View {
         if let cached = sharedThumbnailCache.cachedThumbnail(for: transcription.id),
            let nsImage = NSImage(contentsOf: cached) {
-            // Locally cached thumbnail (YouTube download or local video frame)
+            // Locally cached thumbnail (embedded artwork or local video frame)
             Image(nsImage: nsImage)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
@@ -135,15 +135,10 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
         }
     }
 
-    /// Resolves a thumbnail URL: explicit thumbnailURL, or derived from YouTube sourceURL.
+    /// Resolves a thumbnail URL from an explicit `thumbnailURL`, when present.
     private var resolvedThumbnailURL: URL? {
         if let urlString = transcription.thumbnailURL, let url = URL(string: urlString) {
             return url
-        }
-        // Derive from YouTube video ID
-        if let sourceURL = transcription.sourceURL,
-           let videoID = YouTubeURLValidator.extractVideoID(sourceURL) {
-            return URL(string: "https://i.ytimg.com/vi/\(videoID)/hqdefault.jpg")
         }
         return nil
     }
@@ -162,7 +157,7 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
         // Meetings have a real, user-editable title (the meeting name shown in
         // the detail header). Honor it here too — the "All"/"Favorites" grid can
         // include meetings — instead of the transcript-content-derived title.
-        // File/YouTube rows have no inherent title, so the smart `derivedTitle`
+        // File rows have no inherent title, so the smart `derivedTitle`
         // is the better headline for them.
         if transcription.sourceType == .meeting {
             // A meeting's name is always its title — never fall through to the

@@ -536,19 +536,6 @@ final class ExportServiceTests: XCTestCase {
         XCTAssertFalse(md.contains("**["))
     }
 
-    func testFormatMarkdownWithYouTubeSource() {
-        let transcription = Transcription(
-            fileName: "Video Title",
-            durationMs: 60000,
-            rawTranscript: "Some content",
-            status: .completed,
-            sourceURL: "https://youtube.com/watch?v=abc123"
-        )
-
-        let md = exportService.formatMarkdown(transcription: transcription)
-        XCTAssertTrue(md.contains("**Source:** [https://youtube.com/watch?v=abc123](https://youtube.com/watch?v=abc123)"))
-    }
-
     func testExportToMarkdown() throws {
         let transcription = Transcription(
             fileName: "test.mp3",

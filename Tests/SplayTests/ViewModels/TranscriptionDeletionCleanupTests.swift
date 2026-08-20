@@ -50,41 +50,6 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
         try? FileManager.default.removeItem(at: folderURL)
     }
 
-    func testYouTubeDeletionRemovesDownloadedFileInsideAppSupport() throws {
-        let fileURL = URL(fileURLWithPath: AppPaths.youtubeDownloadsDir, isDirectory: true)
-            .appendingPathComponent("\(UUID().uuidString).m4a")
-        FileManager.default.createFile(atPath: fileURL.path, contents: Data("audio".utf8))
-
-        let transcription = Transcription(
-            fileName: "YouTube.m4a",
-            filePath: fileURL.path,
-            status: .completed,
-            sourceType: .youtube
-        )
-
-        try TranscriptionAssetCleanup.removeOwnedAssets(for: transcription)
-
-        XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
-    }
-
-    func testYouTubeDeletionOutsideAppSupportIsIgnored() throws {
-        let fileURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(UUID().uuidString).m4a")
-        FileManager.default.createFile(atPath: fileURL.path, contents: Data("audio".utf8))
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-
-        let transcription = Transcription(
-            fileName: "YouTube.m4a",
-            filePath: fileURL.path,
-            status: .completed,
-            sourceType: .youtube
-        )
-
-        try TranscriptionAssetCleanup.removeOwnedAssets(for: transcription)
-
-        XCTAssertTrue(FileManager.default.fileExists(atPath: fileURL.path))
-    }
-
     func testEmptyFilePathIsIgnored() throws {
         let currentDirectory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true)
 
@@ -92,7 +57,7 @@ final class TranscriptionDeletionCleanupTests: XCTestCase {
             fileName: "Empty.m4a",
             filePath: "",
             status: .completed,
-            sourceType: .youtube
+            sourceType: .meeting
         )
 
         try TranscriptionAssetCleanup.removeOwnedAssets(for: transcription)

@@ -10,7 +10,6 @@ private let transcriptionDecodeLogger = Logger(
 public struct Transcription: Codable, Identifiable, Sendable {
     public enum SourceType: String, Codable, Sendable, CaseIterable {
         case file
-        case youtube
         case meeting
     }
 
@@ -231,13 +230,9 @@ extension Transcription: FetchableRecord, PersistableRecord {
         channelName = try container.decodeIfPresent(String.self, forKey: .channelName)
         videoDescription = try container.decodeIfPresent(String.self, forKey: .videoDescription)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
-        if let decodedSourceType = try container.decodeIfPresent(SourceType.self, forKey: .sourceType) {
-            sourceType = decodedSourceType
-        } else if sourceURL != nil {
-            sourceType = .youtube
-        } else {
-            sourceType = .file
-        }
+        // Legacy rows without a stored sourceType (and pre-v0.21 `youtube`
+        // rows, remapped by migration) all resolve to `.file`.
+        sourceType = (try container.decodeIfPresent(SourceType.self, forKey: .sourceType)) ?? .file
         recoveredFromCrash = try container.decodeIfPresent(Bool.self, forKey: .recoveredFromCrash) ?? false
         isTranscriptEdited = try container.decodeIfPresent(Bool.self, forKey: .isTranscriptEdited) ?? false
         userNotes = try container.decodeIfPresent(String.self, forKey: .userNotes)

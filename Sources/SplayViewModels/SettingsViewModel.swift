@@ -135,16 +135,6 @@ public final class SettingsViewModel {
             Telemetry.send(fileTranscriptionHotkeyTrigger.customizedEvent(surface: .fileTranscription))
         }
     }
-    public var youtubeTranscriptionHotkeyTrigger: HotkeyTrigger {
-        didSet {
-            youtubeTranscriptionHotkeyTrigger.save(to: defaults, defaultsKey: HotkeyTrigger.youtubeTranscriptionDefaultsKey)
-            NotificationCenter.default.post(
-                name: .macParakeetYouTubeTranscriptionHotkeyTriggerDidChange,
-                object: nil
-            )
-            Telemetry.send(youtubeTranscriptionHotkeyTrigger.customizedEvent(surface: .youtubeTranscription))
-        }
-    }
     public var silenceAutoStop: Bool {
         didSet {
             defaults.set(silenceAutoStop, forKey: UserDefaultsAppRuntimePreferences.silenceAutoStopKey)
@@ -277,12 +267,6 @@ public final class SettingsViewModel {
     }
 
     // Transcription
-    public var youtubeAudioQuality: YouTubeAudioQuality {
-        didSet {
-            defaults.set(youtubeAudioQuality.rawValue, forKey: UserDefaultsAppRuntimePreferences.youtubeAudioQualityKey)
-            Telemetry.send(.settingChanged(setting: .youtubeAudioQuality))
-        }
-    }
     public var speakerDiarization: Bool {
         didSet {
             defaults.set(speakerDiarization, forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey)
@@ -449,15 +433,6 @@ public final class SettingsViewModel {
 
     // Stats
     public var dictationCount = 0
-    public var youtubeDownloadCount = 0
-    public var youtubeDownloadStorageMB: Double = 0
-    public var formattedYouTubeStorage: String {
-        let mb = youtubeDownloadStorageMB
-        if mb >= 1024 {
-            return String(format: "%.1f GB", mb / 1024)
-        }
-        return String(format: "%.0f MB", mb)
-    }
 
     // Local model status / repair
     public var parakeetStatus: LocalModelStatus = .unknown
@@ -491,7 +466,6 @@ public final class SettingsViewModel {
     private var meetingRecoveryService: MeetingRecordingRecoveryServicing?
     private var sharedMicStream: SharedMicrophoneStream?
     private let defaults: UserDefaults
-    private let youtubeDownloadsDirPath: @Sendable () -> String
     private let parakeetModelVariantCached: @Sendable (ParakeetModelVariant) -> Bool
     private let deleteParakeetModelOnDisk: @Sendable (ParakeetModelVariant) -> Bool
     private let deleteWhisperModelOnDisk: @Sendable (String) -> Bool
@@ -519,7 +493,6 @@ public final class SettingsViewModel {
 
     public init(
         defaults: UserDefaults = .standard,
-        youtubeDownloadsDirPath: @escaping @Sendable () -> String = { AppPaths.youtubeDownloadsDir },
         parakeetModelVariantCached: @escaping @Sendable (ParakeetModelVariant) -> Bool = {
             STTRuntime.isModelCached(version: $0.asrModelVersion)
         },
@@ -539,7 +512,6 @@ public final class SettingsViewModel {
     ) {
         AutoSaveService.migrateLegacyMeetingSettingsIfNeeded(defaults: defaults)
         self.defaults = defaults
-        self.youtubeDownloadsDirPath = youtubeDownloadsDirPath
         self.parakeetModelVariantCached = parakeetModelVariantCached
         self.deleteParakeetModelOnDisk = deleteParakeetModelOnDisk
         self.deleteWhisperModelOnDisk = deleteWhisperModelOnDisk
@@ -568,10 +540,6 @@ public final class SettingsViewModel {
             defaults: defaults,
             defaultsKey: HotkeyTrigger.fileTranscriptionDefaultsKey
         )
-        youtubeTranscriptionHotkeyTrigger = Self.resolveTranscriptionHotkeyTrigger(
-            defaults: defaults,
-            defaultsKey: HotkeyTrigger.youtubeTranscriptionDefaultsKey
-        )
         silenceAutoStop = defaults.bool(forKey: UserDefaultsAppRuntimePreferences.silenceAutoStopKey)
         let delay = defaults.double(forKey: UserDefaultsAppRuntimePreferences.silenceDelayKey)
         silenceDelay = delay == 0 ? 2.0 : delay
@@ -591,7 +559,6 @@ public final class SettingsViewModel {
         saveDictationHistory = defaults.object(forKey: UserDefaultsAppRuntimePreferences.saveDictationHistoryKey) as? Bool ?? true
         saveAudioRecordings = defaults.object(forKey: UserDefaultsAppRuntimePreferences.saveAudioRecordingsKey) as? Bool ?? true
         saveTranscriptionAudio = defaults.object(forKey: UserDefaultsAppRuntimePreferences.saveTranscriptionAudioKey) as? Bool ?? true
-        youtubeAudioQuality = YouTubeAudioQuality.current(defaults: defaults)
         speakerDiarization = defaults.object(forKey: UserDefaultsAppRuntimePreferences.speakerDiarizationKey) as? Bool ?? false
         speechEnginePreference = SpeechEnginePreference.current(defaults: defaults)
         parakeetModelVariant = SpeechEnginePreference.parakeetModelVariant(defaults: defaults)
@@ -834,7 +801,7 @@ public final class SettingsViewModel {
         return .disabled
     }
 
-    /// Transcription hotkeys (file / YouTube) default to `.disabled` — users opt in.
+    /// File transcription hotkey defaults to `.disabled` — users opt in.
     private static func resolveTranscriptionHotkeyTrigger(
         defaults: UserDefaults,
         defaultsKey: String
@@ -1107,10 +1074,6 @@ public final class SettingsViewModel {
         catch { logger.error("Failed to load custom word count: \(error.localizedDescription)") }
         do { snippetCount = try snippetRepo?.fetchAll().count ?? 0 }
         catch { logger.error("Failed to load snippet count: \(error.localizedDescription)") }
-
-        let (count, sizeBytes) = youtubeDownloadStats()
-        youtubeDownloadCount = count
-        youtubeDownloadStorageMB = Double(sizeBytes) / (1024.0 * 1024.0)
     }
 
     public func refreshSpeechEngineSwitchAvailability() {
@@ -1898,51 +1861,6 @@ public final class SettingsViewModel {
                 self?.logger.error("Failed to clear transform history error=\(error.localizedDescription, privacy: .public)")
             }
         }
-    }
-
-    public func clearDownloadedYouTubeAudio() {
-        let dir = youtubeDownloadsDirPath()
-        let fm = FileManager.default
-
-        if fm.fileExists(atPath: dir) {
-            try? fm.removeItem(atPath: dir)
-        }
-        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
-
-        do {
-            try transcriptionRepo?.clearStoredAudioPathsForURLTranscriptions()
-        } catch {
-            logger.error("Failed to clear stored audio paths error=\(error.localizedDescription, privacy: .public)")
-        }
-        refreshStats()
-    }
-
-    private func youtubeDownloadStats() -> (count: Int, sizeBytes: Int64) {
-        let dirURL = URL(fileURLWithPath: youtubeDownloadsDirPath(), isDirectory: true)
-        let fm = FileManager.default
-
-        guard let enumerator = fm.enumerator(
-            at: dirURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return (0, 0)
-        }
-
-        var count = 0
-        var sizeBytes: Int64 = 0
-
-        for case let fileURL as URL in enumerator {
-            guard
-                let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-                values.isRegularFile == true
-            else { continue }
-
-            count += 1
-            sizeBytes += Int64(values.fileSize ?? 0)
-        }
-
-        return (count, sizeBytes)
     }
 
     private static func normalizedProcessingMode(_ rawValue: String?) -> String {

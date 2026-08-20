@@ -16,7 +16,6 @@ final class AppHotkeyCoordinator {
     /// audio source (single = mic only, double = mic + system).
     private let onFnToggleRecording: (MeetingAudioSourceMode) -> Void
     private let onTriggerFileTranscription: () -> Void
-    private let onTriggerYouTubeTranscription: () -> Void
     private let onDictationHotkeyManagersChanged: ([HotkeyManager]) -> Void
     private let onAnyHotkeyEnabled: () -> Void
     private let onHotkeyUnavailable: () -> Void
@@ -27,7 +26,6 @@ final class AppHotkeyCoordinator {
     private var fnRecordingHotkeyManager: HotkeyManager?
     private var meetingHotkeyManager: GlobalShortcutManager?
     private var fileTranscriptionHotkeyManager: GlobalShortcutManager?
-    private var youtubeTranscriptionHotkeyManager: GlobalShortcutManager?
     /// Count of active `HotkeyRecorderView` sessions that have asked for the
     /// global CGEvent taps to stand down so the recorder can capture the
     /// user's keyDown. Reaches > 1 only across pathological re-entry — the
@@ -46,7 +44,6 @@ final class AppHotkeyCoordinator {
         onToggleMeetingRecording: @escaping () -> Void,
         onFnToggleRecording: @escaping (MeetingAudioSourceMode) -> Void,
         onTriggerFileTranscription: @escaping () -> Void,
-        onTriggerYouTubeTranscription: @escaping () -> Void,
         onDictationHotkeyManagersChanged: @escaping ([HotkeyManager]) -> Void,
         onAnyHotkeyEnabled: @escaping () -> Void,
         onHotkeyUnavailable: @escaping () -> Void,
@@ -63,7 +60,6 @@ final class AppHotkeyCoordinator {
         self.onToggleMeetingRecording = onToggleMeetingRecording
         self.onFnToggleRecording = onFnToggleRecording
         self.onTriggerFileTranscription = onTriggerFileTranscription
-        self.onTriggerYouTubeTranscription = onTriggerYouTubeTranscription
         self.onDictationHotkeyManagersChanged = onDictationHotkeyManagersChanged
         self.onAnyHotkeyEnabled = onAnyHotkeyEnabled
         self.onHotkeyUnavailable = onHotkeyUnavailable
@@ -352,19 +348,11 @@ final class AppHotkeyCoordinator {
                 .init(settingsViewModel.hotkeyTrigger, mode: .bareModifierDictation),
                 .init(settingsViewModel.pushToTalkHotkeyTrigger, mode: .bareModifierDictation),
                 .init(settingsViewModel.meetingHotkeyTrigger),
-                .init(settingsViewModel.youtubeTranscriptionHotkeyTrigger),
             ],
             onTrigger: { [weak self] in
                 self?.onTriggerFileTranscription()
             }
         )
-    }
-
-    func setupYouTubeTranscriptionHotkey() {
-        // Lean island direction: retire the exposed YouTube trigger without
-        // deleting its service, records, or migration path.
-        youtubeTranscriptionHotkeyManager?.stop()
-        youtubeTranscriptionHotkeyManager = nil
     }
 
     /// Shared setup for auxiliary (non-dictation) hotkeys: disabled-check,
@@ -457,13 +445,6 @@ final class AppHotkeyCoordinator {
         setupFileTranscriptionHotkey()
     }
 
-    func refreshYouTubeTranscriptionHotkey() {
-        guard suspendCount == 0 else { return }
-        youtubeTranscriptionHotkeyManager?.stop()
-        youtubeTranscriptionHotkeyManager = nil
-        setupYouTubeTranscriptionHotkey()
-    }
-
     // MARK: - Suspend / Resume
 
     /// Stand down every global hotkey CGEvent tap while a hotkey recorder UI
@@ -494,7 +475,6 @@ final class AppHotkeyCoordinator {
         guard suspendCount == 0 else { return }
         setupFnRecordingHotkey()
         setupFileTranscriptionHotkey()
-        setupYouTubeTranscriptionHotkey()
     }
 
     /// Test-only inspection. Exists so the suspend/resume refcount can be
@@ -507,9 +487,7 @@ final class AppHotkeyCoordinator {
         fnRecordingHotkeyManager = nil
         meetingHotkeyManager?.stop()
         fileTranscriptionHotkeyManager?.stop()
-        youtubeTranscriptionHotkeyManager?.stop()
         meetingHotkeyManager = nil
         fileTranscriptionHotkeyManager = nil
-        youtubeTranscriptionHotkeyManager = nil
     }
 }

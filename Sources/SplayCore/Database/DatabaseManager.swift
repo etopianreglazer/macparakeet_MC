@@ -906,6 +906,19 @@ public final class DatabaseManager: Sendable {
             }
         }
 
+        // v0.21 — YouTube support removed. Remap any existing `youtube`
+        // transcriptions to `file` so the `SourceType.youtube` case can be
+        // deleted without breaking decode of historical rows. A YouTube
+        // transcription was always the transcript of a downloaded local audio
+        // file, so `file` is the correct surviving type. The video-metadata
+        // columns (sourceURL/thumbnailURL/channelName/videoDescription) are left
+        // in place — harmless, and preserving them avoids a destructive column drop.
+        migrator.registerMigration("v0.21-drop-youtube-source-type") { db in
+            try db.execute(
+                sql: "UPDATE transcriptions SET sourceType = 'file' WHERE sourceType = 'youtube'"
+            )
+        }
+
         try migrator.migrate(dbQueue)
         try reconcileBuiltInPrompts()
         try reconcileBuiltInQuickPrompts()

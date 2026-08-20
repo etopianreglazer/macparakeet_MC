@@ -341,10 +341,6 @@ actor MockTranscriptionService: SpeechEngineOverrideTranscriptionService {
     var lastSpeechEngineOverride: SpeechEngineSelection?
     var transcribeProgressPhases: [TranscriptionProgress] = []
     var transcribeDelayMs: UInt64 = 0
-    var transcribeURLCallCount = 0
-    var lastURLString: String?
-    var transcribeURLProgressPhases: [TranscriptionProgress] = []
-    var transcribeURLDelayMs: UInt64 = 0
     /// Per-file overrides for batch tests, keyed by `fileURL.lastPathComponent`.
     /// `errorsByFileName` wins over `resultsByFileName`, which wins over the
     /// shared `transcribeError`/`transcribeResult`.
@@ -367,20 +363,12 @@ actor MockTranscriptionService: SpeechEngineOverrideTranscriptionService {
         self.transcribeResult = nil
     }
 
-    func configureURLProgress(phases: [TranscriptionProgress]) {
-        self.transcribeURLProgressPhases = phases
-    }
-
     func configureProgress(phases: [TranscriptionProgress]) {
         self.transcribeProgressPhases = phases
     }
 
     func configureDelay(milliseconds: UInt64) {
         self.transcribeDelayMs = milliseconds
-    }
-
-    func configureURLDelay(milliseconds: UInt64) {
-        self.transcribeURLDelayMs = milliseconds
     }
 
     func transcribe(
@@ -475,37 +463,6 @@ actor MockTranscriptionService: SpeechEngineOverrideTranscriptionService {
     ) async throws -> Transcription {
         lastSpeechEngineOverride = speechEngineOverride
         return try await transcribeMeeting(recording: recording, onProgress: onProgress)
-    }
-
-    func transcribeURL(urlString: String, onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil) async throws -> Transcription {
-        transcribeURLCallCount += 1
-        lastURLString = urlString
-
-        for phase in transcribeURLProgressPhases {
-            onProgress?(phase)
-        }
-
-        if transcribeURLDelayMs > 0 {
-            try await Task.sleep(nanoseconds: transcribeURLDelayMs * 1_000_000)
-        }
-
-        if let error = transcribeError {
-            throw error
-        }
-
-        return transcribeResult ?? Transcription(
-            fileName: "YouTube Video",
-            rawTranscript: "Mock transcription",
-            status: .completed,
-            sourceURL: urlString
-        )
-    }
-
-    func transcribeURLTransient(
-        urlString: String,
-        onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
-    ) async throws -> Transcription {
-        try await transcribeURL(urlString: urlString, onProgress: onProgress)
     }
 }
 

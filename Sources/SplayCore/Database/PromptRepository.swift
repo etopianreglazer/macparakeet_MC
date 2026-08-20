@@ -9,7 +9,7 @@ public protocol PromptRepositoryProtocol: Sendable {
     func fetchAutoRunPrompts() throws -> [Prompt]
     /// Auto-run `.result` prompts that apply to the given transcription source
     /// (unscoped prompts apply to all sources). Used by the post-transcription
-    /// auto-run trigger so meeting-scoped prompts don't fire on file/YouTube.
+    /// auto-run trigger so meeting-scoped prompts don't fire on file transcripts.
     func fetchAutoRunPrompts(for sourceType: Transcription.SourceType) throws -> [Prompt]
     func delete(id: UUID) throws -> Bool
     func toggleVisibility(id: UUID) throws

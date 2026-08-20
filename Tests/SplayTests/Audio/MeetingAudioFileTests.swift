@@ -14,15 +14,6 @@ final class MeetingAudioFileTests: XCTestCase {
         XCTAssertNil(MeetingAudioFile.mixedAudioURL(for: transcription))
     }
 
-    func testMixedAudioURLReturnsNilForYouTubeSource() {
-        let transcription = makeTranscription(
-            fileName: "interview.m4a",
-            filePath: "/tmp/interview.m4a",
-            sourceType: .youtube
-        )
-        XCTAssertNil(MeetingAudioFile.mixedAudioURL(for: transcription))
-    }
-
     func testMixedAudioURLReturnsNilWhenFilePathIsMissing() {
         let transcription = makeTranscription(
             fileName: "Meeting",

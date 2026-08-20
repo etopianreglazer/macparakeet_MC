@@ -140,7 +140,7 @@ struct MeetingRowCard<MenuContent: View>: View {
     /// to "Meeting <date>" at recording time. The Meetings list mirrors that
     /// title so the row matches the detail view and honors renames. The
     /// transcript-content-derived `derivedTitle` is only a snippet/export aid
-    /// for meetings (it still drives titles for file/YouTube grid rows).
+    /// for meetings (it still drives titles for file grid rows).
     private var displayedTitle: String {
         let name = transcription.fileName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !name.isEmpty { return name }

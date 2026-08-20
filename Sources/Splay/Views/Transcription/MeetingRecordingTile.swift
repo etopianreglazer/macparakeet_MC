@@ -2,13 +2,13 @@ import SplayCore
 import SplayViewModels
 import SwiftUI
 
-/// Capture tile for meeting recording, rendered below the YouTube + File
-/// drop cards on the Transcribe tab. Mirrors the floating recording pill's
+/// Capture tile for meeting recording, rendered below the File drop card
+/// on the Transcribe tab. Mirrors the floating recording pill's
 /// visual language (flower-of-life rosette + stem + leaves) at a larger
 /// scale, on a light surface. The tile body is informational; only the
-/// Start / Stop buttons fire the action. Mirrors the sibling YouTube
-/// card's "click the button, not the body" pattern, and gives Start and
-/// Stop symmetric tap targets so users learn one rule.
+/// Start / Stop buttons fire the action, following the "click the button,
+/// not the body" pattern, and gives Start and Stop symmetric tap targets
+/// so users learn one rule.
 struct MeetingRecordingTile: View {
     enum PermissionState: Equatable {
         case ready(capturesMicrophone: Bool)

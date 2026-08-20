@@ -427,12 +427,12 @@ final class PromptResultsViewModelTests: XCTestCase {
 
         let transcript = String(repeating: "Long transcript ", count: 50)
 
-        let youtubeIDs = viewModel.autoGeneratePromptResults(
+        let fileIDs = viewModel.autoGeneratePromptResults(
             transcript: transcript,
             transcriptionId: UUID(),
-            sourceType: .youtube
+            sourceType: .file
         )
-        XCTAssertEqual(youtubeIDs.count, 1, "Meeting-only prompt must not auto-run on a YouTube transcription.")
+        XCTAssertEqual(fileIDs.count, 1, "Meeting-only prompt must not auto-run on a file transcription.")
 
         let meetingIDs = viewModel.autoGeneratePromptResults(
             transcript: transcript,

@@ -667,7 +667,7 @@ final class DatabaseManagerTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: dbPath)
     }
 
-    func testSourceTypeMigrationBackfillsYouTubeRows() throws {
+    func testSourceTypeMigrationRemapsLegacyURLRowsToFile() throws {
         let tempDir = FileManager.default.temporaryDirectory
         let dbPath = tempDir.appendingPathComponent("source_type_migration_\(UUID().uuidString).db").path
 
@@ -748,14 +748,17 @@ final class DatabaseManagerTests: XCTestCase {
                     INSERT INTO transcriptions (id, createdAt, fileName, updatedAt, sourceURL)
                     VALUES (?, ?, ?, ?, ?)
                 """,
-                arguments: [UUID(), now, "youtube.mp3", now, "https://youtube.com/watch?v=test"]
+                arguments: [UUID(), now, "legacy-url.mp3", now, "https://example.com/watch?v=test"]
             )
         }
 
+        // The v0.6 migration backfilled URL-bearing rows as `youtube`; the later
+        // v0.21 migration (YouTube support removed) remaps every such row to
+        // `file`, which is the end state after all migrations run.
         let manager = try DatabaseManager(path: dbPath)
         try manager.dbQueue.read { db in
             let sourceType = try String.fetchOne(db, sql: "SELECT sourceType FROM transcriptions LIMIT 1")
-            XCTAssertEqual(sourceType, Transcription.SourceType.youtube.rawValue)
+            XCTAssertEqual(sourceType, Transcription.SourceType.file.rawValue)
         }
 
         try? FileManager.default.removeItem(atPath: dbPath)

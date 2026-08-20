@@ -27,8 +27,6 @@ public protocol TranscriptionServiceProtocol: Sendable {
         recording: MeetingRecordingOutput,
         onProgress: (@Sendable (TranscriptionProgress) -> Void)?
     ) async throws -> Transcription
-    func transcribeURL(urlString: String, onProgress: (@Sendable (TranscriptionProgress) -> Void)?) async throws -> Transcription
-    func transcribeURLTransient(urlString: String, onProgress: (@Sendable (TranscriptionProgress) -> Void)?) async throws -> Transcription
 }
 
 public protocol SpeechEngineOverrideTranscriptionService: TranscriptionServiceProtocol {
@@ -75,14 +73,6 @@ extension TranscriptionServiceProtocol {
         source: TelemetryTranscriptionSource
     ) async throws -> Transcription {
         try await transcribeTransient(fileURL: fileURL, source: source, onProgress: nil)
-    }
-
-    public func transcribeURL(urlString: String) async throws -> Transcription {
-        try await transcribeURL(urlString: urlString, onProgress: nil)
-    }
-
-    public func transcribeURLTransient(urlString: String) async throws -> Transcription {
-        try await transcribeURLTransient(urlString: urlString, onProgress: nil)
     }
 
     public func transcribeMeeting(recording: MeetingRecordingOutput) async throws -> Transcription {
@@ -200,11 +190,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
     private let aiFormatterPromptTemplate: @Sendable () -> String
     private let shouldKeepDownloadedAudio: @Sendable () -> Bool
     private let shouldDiarize: @Sendable () -> Bool
-    private let youtubeDownloader: YouTubeDownloading?
     private let diarizationService: DiarizationServiceProtocol?
     private let mediaMetadataExtractor: MediaMetadataExtracting
     private let thumbnailCache: ThumbnailCaching
-    private let playbackConverter: YouTubeAudioPlaybackConverting
 
     public init(
         audioProcessor: AudioProcessorProtocol,
@@ -220,11 +208,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
         aiFormatterPromptTemplate: (@Sendable () -> String)? = nil,
         shouldKeepDownloadedAudio: (@Sendable () -> Bool)? = nil,
         shouldDiarize: (@Sendable () -> Bool)? = nil,
-        youtubeDownloader: YouTubeDownloading? = nil,
         diarizationService: DiarizationServiceProtocol? = nil,
         mediaMetadataExtractor: MediaMetadataExtracting = AVMediaMetadataExtractor(),
-        thumbnailCache: ThumbnailCaching = ThumbnailCacheService.shared,
-        playbackConverter: YouTubeAudioPlaybackConverting = YouTubeAudioPlaybackConverter()
+        thumbnailCache: ThumbnailCaching = ThumbnailCacheService.shared
     ) {
         self.audioProcessor = audioProcessor
         self.sttTranscriber = sttTranscriber
@@ -240,11 +226,9 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
         self.aiFormatterPromptTemplate = aiFormatterPromptTemplate ?? { AIFormatter.defaultPromptTemplate }
         self.shouldKeepDownloadedAudio = shouldKeepDownloadedAudio ?? { true }
         self.shouldDiarize = shouldDiarize ?? { true }
-        self.youtubeDownloader = youtubeDownloader
         self.diarizationService = diarizationService
         self.mediaMetadataExtractor = mediaMetadataExtractor
         self.thumbnailCache = thumbnailCache
-        self.playbackConverter = playbackConverter
     }
 
     public func transcribe(
@@ -280,8 +264,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
         onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
     ) async throws -> Transcription {
         let sourceType: Transcription.SourceType = switch source {
-        case .youtube:
-            .youtube
         case .meeting:
             .meeting
         case .file, .dragDrop:
@@ -480,7 +462,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
         }
         let operation = TranscriptionOperationContext(
             source: source,
-            inputKind: source == .youtube ? .youtube : Observability.inputKind(for: fileURL),
+            inputKind: Observability.inputKind(for: fileURL),
             mediaExtension: Observability.mediaExtension(for: fileURL),
             fileSizeBucket: Observability.fileSizeBucket(bytes: fileSize)
         )
@@ -540,247 +522,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
                 persistResult: persistResult,
                 onProgress: onProgress
             )
-        }
-    }
-
-    public func transcribeURL(urlString: String, onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil) async throws -> Transcription {
-        try await transcribeURL(
-            urlString: urlString,
-            persistResult: true,
-            onProgress: onProgress
-        )
-    }
-
-    public func transcribeURLTransient(urlString: String, onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil) async throws -> Transcription {
-        try await transcribeURL(
-            urlString: urlString,
-            persistResult: false,
-            onProgress: onProgress
-        )
-    }
-
-    private func transcribeURL(
-        urlString: String,
-        persistResult: Bool,
-        onProgress: (@Sendable (TranscriptionProgress) -> Void)? = nil
-    ) async throws -> Transcription {
-        let operation = TranscriptionOperationContext(
-            source: .youtube,
-            inputKind: .youtube,
-            mediaExtension: nil,
-            fileSizeBucket: nil
-        )
-
-        return try await Observability.withOperationContext(operation.operationContext) {
-            guard let downloader = youtubeDownloader else {
-                sendTranscriptionOperation(
-                    operation,
-                    outcome: .unavailable,
-                    stage: .download,
-                    errorType: Self.errorType(for: YouTubeDownloadError.ytDlpNotFound)
-                )
-                throw YouTubeDownloadError.ytDlpNotFound
-            }
-
-            try await assertCanTranscribeOrEmitPreflight(operation)
-
-            var unownedDownloadedAudioURL: URL?
-            defer {
-                if let unownedDownloadedAudioURL {
-                    try? FileManager.default.removeItem(at: unownedDownloadedAudioURL)
-                }
-            }
-
-            let downloadResult: YouTubeDownloader.DownloadResult
-            do {
-                onProgress?(.downloading(percent: 0))
-                downloadResult = try await downloader.download(url: urlString) { percent in
-                    onProgress?(.downloading(percent: percent))
-                }
-            } catch {
-                if error is CancellationError {
-                    Telemetry.send(.transcriptionCancelled(
-                        source: .youtube,
-                        audioDurationSeconds: nil,
-                        stage: .download
-                    ))
-                    sendTranscriptionOperation(
-                        operation,
-                        outcome: .cancelled,
-                        stage: .download
-                    )
-                } else {
-                    Telemetry.send(.transcriptionFailed(
-                        source: .youtube,
-                        stage: .download,
-                        errorType: Self.errorType(for: error),
-                        errorDetail: TelemetryErrorClassifier.errorDetail(error)
-                    ))
-                    sendTranscriptionOperation(
-                        operation,
-                        outcome: .failure,
-                        stage: .download,
-                        errorType: Self.errorType(for: error)
-                    )
-                }
-                throw error
-            }
-            unownedDownloadedAudioURL = downloadResult.audioFileURL
-            onProgress?(.downloading(percent: 100))
-            do {
-                try Task.checkCancellation()
-            } catch {
-                Telemetry.send(.transcriptionCancelled(
-                    source: .youtube,
-                    audioDurationSeconds: downloadResult.durationSeconds.map(Double.init),
-                    stage: .download
-                ))
-                sendTranscriptionOperation(
-                    operation,
-                    outcome: .cancelled,
-                    stage: .download,
-                    audioDurationSeconds: downloadResult.durationSeconds.map(Double.init)
-                )
-                throw error
-            }
-            let keepDownloadedAudio = shouldKeepDownloadedAudio()
-                && persistResult
-            let embeddedMetadata = await mediaMetadataExtractor.metadata(for: downloadResult.audioFileURL)
-            let title = Self.firstNonEmpty(
-                downloadResult.title == "Untitled" ? nil : downloadResult.title,
-                embeddedMetadata.title,
-                downloadResult.title
-            ) ?? "Untitled"
-            let durationMs = downloadResult.durationSeconds
-                .flatMap { $0 > 0 ? $0 * 1000 : nil }
-                ?? embeddedMetadata.durationMs
-            let channelName = Self.firstNonEmpty(downloadResult.channelName, embeddedMetadata.author)
-            let videoDescription = Self.firstNonEmpty(downloadResult.videoDescription, embeddedMetadata.description)
-            let artifactMetadata = YouTubeAudioArtifactMetadata(
-                title: title,
-                artist: channelName,
-                description: videoDescription,
-                thumbnailURL: downloadResult.thumbnailURL
-            )
-
-            var transcription = Transcription(
-                fileName: title,
-                filePath: keepDownloadedAudio ? downloadResult.audioFileURL.path : nil,
-                durationMs: durationMs,
-                language: nil,
-                status: .processing,
-                sourceURL: urlString,
-                thumbnailURL: downloadResult.thumbnailURL,
-                channelName: channelName,
-                videoDescription: videoDescription,
-                sourceType: .youtube
-            )
-            if persistResult {
-                do {
-                    try transcriptionRepo.save(transcription)
-                } catch {
-                    sendTranscriptionOperation(
-                        operation,
-                        outcome: .failure,
-                        stage: .persistence,
-                        audioDurationSeconds: downloadResult.durationSeconds.map(Double.init),
-                        errorType: Self.errorType(for: error)
-                    )
-                    throw error
-                }
-            }
-            if persistResult, downloadResult.thumbnailURL == nil {
-                await cacheEmbeddedArtworkIfPresent(embeddedMetadata, for: transcription.id)
-            }
-            if keepDownloadedAudio {
-                unownedDownloadedAudioURL = nil
-            }
-            Telemetry.send(.transcriptionStarted(
-                source: .youtube,
-                audioDurationSeconds: downloadResult.durationSeconds.map(Double.init)
-            ))
-
-            // Cache YouTube thumbnail locally (non-blocking)
-            if persistResult, let thumbURL = downloadResult.thumbnailURL {
-                let transcriptionId = transcription.id
-                let logger = self.logger
-                let thumbnailCache = self.thumbnailCache
-                Task.detached(priority: .utility) {
-                    do {
-                        _ = try await thumbnailCache.downloadThumbnail(from: thumbURL, for: transcriptionId)
-                    } catch {
-                        logger.error("transcription_thumbnail_download_failed id=\(transcriptionId, privacy: .public) error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
-                    }
-                }
-            }
-
-            onProgress?(.transcribing(percent: 0))
-            if !keepDownloadedAudio {
-                unownedDownloadedAudioURL = nil
-            }
-            let completed = try await transcribeAudio(
-                fileURL: downloadResult.audioFileURL,
-                source: .youtube,
-                sttJob: .fileTranscription,
-                transcription: &transcription,
-                operation: operation,
-                tempFiles: [downloadResult.audioFileURL],
-                cleanUpDownloadedFiles: !keepDownloadedAudio,
-                persistResult: persistResult,
-                onProgress: onProgress
-            )
-
-            // Issue #237: "Best available" yt-dlp downloads (Opus-in-WebM)
-            // measurably improve Parakeet WER, but AVFoundation has no
-            // WebM/Opus decoder, so the saved file silently fails on the
-            // in-app audio scrubber. Transcode the retained file to .m4a
-            // off the main return so the scrubber can play it. Skip when
-            // audio retention is off — no point spending CPU to convert a
-            // file the user wants deleted.
-            if keepDownloadedAudio,
-               let storedPath = completed.filePath,
-               YouTubeAudioPlaybackConverter.needsConversion(forPath: storedPath) {
-                schedulePlaybackConversion(
-                    transcriptionId: completed.id,
-                    inputPath: storedPath,
-                    metadata: artifactMetadata
-                )
-            }
-
-            return completed
-        }
-    }
-
-    /// Fire-and-forget post-STT transcode of an unplayable YouTube audio
-    /// file into AVPlayer-compatible `.m4a`. Failures are non-fatal — the
-    /// transcript is already saved, the worst case is the audio scrubber
-    /// stays inert for that file (current behavior pre-fix).
-    ///
-    /// Source-file deletion happens only after the DB has been updated to
-    /// point at the new `.m4a`. The reverse order would orphan the m4a if
-    /// the DB write failed — the row would still reference a deleted webm
-    /// and the audio scrubber would be empty.
-    private func schedulePlaybackConversion(
-        transcriptionId: UUID,
-        inputPath: String,
-        metadata: YouTubeAudioArtifactMetadata?
-    ) {
-        let converter = playbackConverter
-        let repo = transcriptionRepo
-        let logger = self.logger
-        Task.detached(priority: .utility) {
-            do {
-                let newPath = try await converter.convertToPlayableM4AIfNeeded(
-                    inputPath: inputPath,
-                    metadata: metadata
-                )
-                guard newPath != inputPath else { return }
-                try repo.updateFilePath(id: transcriptionId, filePath: newPath)
-                try? FileManager.default.removeItem(atPath: inputPath)
-                logger.info("youtube_audio_postprocessed id=\(transcriptionId, privacy: .public)")
-            } catch {
-                logger.error("youtube_audio_postprocess_failed id=\(transcriptionId, privacy: .public) error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
-            }
         }
     }
 

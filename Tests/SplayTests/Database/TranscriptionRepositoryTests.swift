@@ -319,10 +319,10 @@ final class TranscriptionRepositoryTests: XCTestCase {
 
     func testFetchLibraryPageFiltersBySourceType() throws {
         let local = Transcription(fileName: "local.mp3", status: .completed, sourceType: .file)
-        let youtube = Transcription(fileName: "video.mp3", status: .completed, sourceType: .youtube)
+        let localVideo = Transcription(fileName: "video.mp3", status: .completed, sourceType: .file)
         let meeting = Transcription(fileName: "meeting.m4a", status: .completed, sourceType: .meeting)
         try repo.save(local)
-        try repo.save(youtube)
+        try repo.save(localVideo)
         try repo.save(meeting)
 
         let page = try repo.fetchLibraryPage(query: TranscriptionLibraryQuery(
@@ -694,17 +694,17 @@ final class TranscriptionRepositoryTests: XCTestCase {
 
     func testVideoMetadataRoundTrip() throws {
         let transcription = Transcription(
-            fileName: "YouTube Video Title",
+            fileName: "Video Title",
             status: .completed,
-            sourceURL: "https://www.youtube.com/watch?v=abc123",
-            thumbnailURL: "https://i.ytimg.com/vi/abc123/maxresdefault.jpg",
+            sourceURL: "https://videos.example.com/watch?v=abc123",
+            thumbnailURL: "https://img.example.com/abc123/maxresdefault.jpg",
             channelName: "Tech Channel",
             videoDescription: "A great video about Swift"
         )
         try repo.save(transcription)
 
         let fetched = try repo.fetch(id: transcription.id)
-        XCTAssertEqual(fetched?.thumbnailURL, "https://i.ytimg.com/vi/abc123/maxresdefault.jpg")
+        XCTAssertEqual(fetched?.thumbnailURL, "https://img.example.com/abc123/maxresdefault.jpg")
         XCTAssertEqual(fetched?.channelName, "Tech Channel")
         XCTAssertEqual(fetched?.videoDescription, "A great video about Swift")
     }

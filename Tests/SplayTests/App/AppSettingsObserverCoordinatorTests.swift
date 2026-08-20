@@ -21,7 +21,6 @@ final class AppSettingsObserverCoordinatorTests: XCTestCase {
         var pushToTalkHotkeyTriggerCount = 0
         var meetingHotkeyTriggerCount = 0
         var fileTranscriptionHotkeyTriggerCount = 0
-        var youtubeTranscriptionHotkeyTriggerCount = 0
         var appearanceModeCount = 0
         var menuBarOnlyCount = 0
         var showIdlePillCount = 0
@@ -54,10 +53,6 @@ final class AppSettingsObserverCoordinatorTests: XCTestCase {
                 self.fileTranscriptionHotkeyTriggerCount += 1
                 self.onCallback?()
             },
-            onYouTubeTranscriptionHotkeyTriggerChanged: { [unowned self] in
-                self.youtubeTranscriptionHotkeyTriggerCount += 1
-                self.onCallback?()
-            },
             onAppearanceModeChanged: { [unowned self] in
                 self.appearanceModeCount += 1
                 self.onCallback?()
@@ -78,7 +73,7 @@ final class AppSettingsObserverCoordinatorTests: XCTestCase {
     func test_startObserving_routesEachNotificationToItsCallback() async {
         let fx = Fixture()
         let callbacks = expectation(description: "all callbacks fire")
-        callbacks.expectedFulfillmentCount = 10
+        callbacks.expectedFulfillmentCount = 9
         fx.onCallback = { callbacks.fulfill() }
         fx.coordinator.startObserving()
 
@@ -88,7 +83,6 @@ final class AppSettingsObserverCoordinatorTests: XCTestCase {
         fx.center.post(name: .macParakeetPushToTalkHotkeyTriggerDidChange, object: nil)
         fx.center.post(name: .macParakeetMeetingHotkeyTriggerDidChange, object: nil)
         fx.center.post(name: .macParakeetFileTranscriptionHotkeyTriggerDidChange, object: nil)
-        fx.center.post(name: .macParakeetYouTubeTranscriptionHotkeyTriggerDidChange, object: nil)
         fx.center.post(name: .macParakeetAppearanceModeDidChange, object: nil)
         fx.center.post(name: .macParakeetMenuBarOnlyModeDidChange, object: nil)
         fx.center.post(name: .macParakeetShowIdlePillDidChange, object: nil)
@@ -102,7 +96,6 @@ final class AppSettingsObserverCoordinatorTests: XCTestCase {
         XCTAssertEqual(fx.pushToTalkHotkeyTriggerCount, 1)
         XCTAssertEqual(fx.meetingHotkeyTriggerCount, 1)
         XCTAssertEqual(fx.fileTranscriptionHotkeyTriggerCount, 1)
-        XCTAssertEqual(fx.youtubeTranscriptionHotkeyTriggerCount, 1)
         XCTAssertEqual(fx.appearanceModeCount, 1)
         XCTAssertEqual(fx.menuBarOnlyCount, 1)
         XCTAssertEqual(fx.showIdlePillCount, 1)
@@ -122,7 +115,6 @@ final class AppSettingsObserverCoordinatorTests: XCTestCase {
         fx.center.post(name: .macParakeetPushToTalkHotkeyTriggerDidChange, object: nil)
         fx.center.post(name: .macParakeetMeetingHotkeyTriggerDidChange, object: nil)
         fx.center.post(name: .macParakeetFileTranscriptionHotkeyTriggerDidChange, object: nil)
-        fx.center.post(name: .macParakeetYouTubeTranscriptionHotkeyTriggerDidChange, object: nil)
         fx.center.post(name: .macParakeetAppearanceModeDidChange, object: nil)
         fx.center.post(name: .macParakeetMenuBarOnlyModeDidChange, object: nil)
         fx.center.post(name: .macParakeetShowIdlePillDidChange, object: nil)
@@ -136,7 +128,6 @@ final class AppSettingsObserverCoordinatorTests: XCTestCase {
         XCTAssertEqual(fx.pushToTalkHotkeyTriggerCount, 0)
         XCTAssertEqual(fx.meetingHotkeyTriggerCount, 0)
         XCTAssertEqual(fx.fileTranscriptionHotkeyTriggerCount, 0)
-        XCTAssertEqual(fx.youtubeTranscriptionHotkeyTriggerCount, 0)
         XCTAssertEqual(fx.appearanceModeCount, 0)
         XCTAssertEqual(fx.menuBarOnlyCount, 0)
         XCTAssertEqual(fx.showIdlePillCount, 0)
@@ -215,7 +206,6 @@ final class AppSettingsObserverCoordinatorTests: XCTestCase {
         XCTAssertEqual(fx.pushToTalkHotkeyTriggerCount, 0)
         XCTAssertEqual(fx.meetingHotkeyTriggerCount, 0)
         XCTAssertEqual(fx.fileTranscriptionHotkeyTriggerCount, 0)
-        XCTAssertEqual(fx.youtubeTranscriptionHotkeyTriggerCount, 0)
         XCTAssertEqual(fx.appearanceModeCount, 0)
         XCTAssertEqual(fx.menuBarOnlyCount, 0)
         XCTAssertEqual(fx.showIdlePillCount, 0)

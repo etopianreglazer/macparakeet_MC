@@ -125,23 +125,12 @@ done < <(
 )
 
 # Sign helper binaries under Resources.
-NODE_RUNTIME_ENTITLEMENTS="$ROOT_DIR/scripts/dist/NodeRuntime.entitlements"
-YTDLP_RUNTIME_ENTITLEMENTS="$ROOT_DIR/scripts/dist/YtDlpRuntime.entitlements"
 while IFS= read -r -d '' bin; do
-  base="$(basename "$bin")"
   echo "Signing: $bin"
-  if [[ "$base" == "node" || "$base" == "node-arm64" || "$base" == "node-x86_64" ]]; then
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
-      --entitlements "$NODE_RUNTIME_ENTITLEMENTS" "$bin"
-  elif [[ "$base" == "yt-dlp" ]]; then
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp \
-      --entitlements "$YTDLP_RUNTIME_ENTITLEMENTS" "$bin"
-  else
-    codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
-  fi
+  codesign --force --sign "$SIGN_IDENTITY" --options runtime --timestamp "$bin"
 done < <(
   find "$APP_PATH/Contents/Resources" -maxdepth 1 -type f -perm -111 \
-    \( -name "ffmpeg" -o -name "yt-dlp" -o -name "node" -o -name "node-arm64" -o -name "node-x86_64" \) -print0 2>/dev/null || true
+    \( -name "ffmpeg" \) -print0 2>/dev/null || true
 )
 
 while IFS= read -r -d '' bin; do

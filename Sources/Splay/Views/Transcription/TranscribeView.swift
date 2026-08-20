@@ -113,18 +113,15 @@ struct TranscribeView: View {
                 Spacer()
 
                 VStack(spacing: DesignSystem.Spacing.xl) {
-                    HStack(alignment: .top, spacing: DesignSystem.Spacing.lg) {
-                        youTubeCard
-                        PortalDropZone(
-                            isDragging: $viewModel.isDragging,
-                            onDrop: { providers in
-                                viewModel.handleFileDrop(providers: providers) {
-                                    SoundManager.shared.play(.fileDropped)
-                                }
-                            },
-                            onBrowse: { openFilePicker() }
-                        )
-                    }
+                    PortalDropZone(
+                        isDragging: $viewModel.isDragging,
+                        onDrop: { providers in
+                            viewModel.handleFileDrop(providers: providers) {
+                                SoundManager.shared.play(.fileDropped)
+                            }
+                        },
+                        onBrowse: { openFilePicker() }
+                    )
                     .padding(.horizontal, DesignSystem.Spacing.xl)
 
                     if AppFeatures.meetingRecordingEnabled {
@@ -160,113 +157,6 @@ struct TranscribeView: View {
         }
     }
 
-    // MARK: - YouTube Card
-
-    private var youTubeCard: some View {
-        ZStack {
-            // Card background — matches PortalDropZone styling
-            RoundedRectangle(cornerRadius: DesignSystem.Layout.dropZoneCornerRadius)
-                .fill(DesignSystem.Colors.surfaceElevated)
-                .cardShadow(DesignSystem.Shadows.cardRest)
-
-            VStack(spacing: DesignSystem.Spacing.md) {
-                // YouTube icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 14)
-                        .fill(DesignSystem.Colors.youtubeRed.opacity(0.1))
-                        .frame(width: 56, height: 56)
-
-                    Image(systemName: "play.rectangle.fill")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundStyle(DesignSystem.Colors.youtubeRed.opacity(0.7))
-                }
-
-                Text("Transcribe a YouTube video")
-                    .font(DesignSystem.Typography.pageTitle)
-
-                // URL input row
-                HStack(spacing: DesignSystem.Spacing.sm) {
-                    HStack(spacing: 8) {
-                        Image(systemName: viewModel.isValidURL ? "checkmark.circle.fill" : "link")
-                            .font(.system(size: 14))
-                            .foregroundStyle(viewModel.isValidURL ? DesignSystem.Colors.successGreen : .secondary)
-                            .contentTransition(.symbolEffect(.replace))
-
-                        TextField("Paste a YouTube link", text: $viewModel.urlInput)
-                            .textFieldStyle(.plain)
-                            .font(DesignSystem.Typography.body)
-                            .onSubmit {
-                                if viewModel.isValidURL {
-                                    viewModel.transcribeURL()
-                                }
-                            }
-
-                        Button {
-                            if let clip = NSPasteboard.general.string(forType: .string) {
-                                viewModel.urlInput = clip.trimmingCharacters(in: .whitespacesAndNewlines)
-                            }
-                        } label: {
-                            Text("Paste")
-                                .font(DesignSystem.Typography.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .layoutPriority(1)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule()
-                                        .fill(DesignSystem.Colors.cardBackground)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .help("Paste from clipboard")
-                        .accessibilityLabel("Paste URL from clipboard")
-                        .accessibilityHint("Pastes clipboard text into the YouTube link field")
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                            .fill(DesignSystem.Colors.cardBackground)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                            .strokeBorder(
-                                viewModel.isValidURL ? DesignSystem.Colors.successGreen.opacity(0.35) : DesignSystem.Colors.border,
-                                lineWidth: 0.8
-                            )
-                    )
-
-                    Button {
-                        viewModel.transcribeURL()
-                    } label: {
-                        Label("Transcribe", systemImage: "arrow.right")
-                            .font(DesignSystem.Typography.caption.weight(.semibold))
-                            .foregroundStyle(DesignSystem.Colors.onAccent)
-                            .lineLimit(1)
-                            .layoutPriority(1)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 9)
-                            .background(
-                                RoundedRectangle(cornerRadius: DesignSystem.Layout.buttonCornerRadius)
-                                    .fill(viewModel.isValidURL ? DesignSystem.Colors.accent : DesignSystem.Colors.accent.opacity(0.35))
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!viewModel.isValidURL)
-                    .accessibilityLabel("Start transcription")
-                    .accessibilityHint("Starts transcribing the YouTube link")
-                }
-                .padding(.horizontal, DesignSystem.Spacing.md)
-
-                Text("Downloads from YouTube, then transcribes entirely on your Mac.")
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.vertical, DesignSystem.Spacing.xl)
-        }
-        .frame(minHeight: 220)
-    }
 
     // MARK: - Error Banner
 
@@ -482,8 +372,6 @@ struct TranscribeView: View {
 
     private var pipelineSteps: [PipelineStep] {
         switch viewModel.sourceKind {
-        case .youtubeURL:
-            return [.download, .convert, .transcribe]
         case .localFile:
             return [.convert, .transcribe]
         }

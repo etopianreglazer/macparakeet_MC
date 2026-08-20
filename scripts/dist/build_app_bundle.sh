@@ -6,7 +6,7 @@ set -euo pipefail
 # This script:
 # - builds the `Splay` app in Release
 # - assembles a minimal .app bundle (Info.plist + executables + bundled helper binaries)
-# - bundles FFmpeg and yt-dlp into Resources and optionally bundles `node` for yt-dlp JS runtime support
+# - bundles FFmpeg into Resources
 #
 # Outputs:
 #   dist/MacParakeet.app
@@ -27,10 +27,6 @@ set -euo pipefail
 #   FFMPEG_PATH         (default: auto-download static build) source ffmpeg binary to bundle
 #   FFMPEG_VERSION      (default: release) 'release' or 'snapshot' from ffmpeg.martin-riedl.de
 #   ALLOW_NON_PORTABLE_FFMPEG (default: 0) allow bundling ffmpeg with non-system dylib deps
-#   BUNDLE_YTDLP       (default: 1) bundle yt-dlp helper seed
-#   YTDLP_PATH         (default: auto-download latest) source yt-dlp binary to bundle
-#   BUNDLE_NODE        (default: 1) bundle Node runtime for yt-dlp
-#   NODE_VERSION       (default: 24.13.1) Node version used when downloading
 #   BUNDLE_MEETING_ECHO_ASSETS (default: 1 when echo library+model paths are set, else 0)
 #   REQUIRE_MEETING_ECHO_ASSETS (default: 0) fail if echo assets are not bundled
 #   MACPARAKEET_MEETING_ECHO_LIBRARY source dylib for meeting echo suppression
@@ -255,120 +251,6 @@ if [[ "$ALLOW_NON_PORTABLE_FFMPEG" != "1" ]] && command -v otool >/dev/null 2>&1
     echo "Use the default auto-download (remove FFMPEG_PATH), provide a static build, or set ALLOW_NON_PORTABLE_FFMPEG=1 to override." >&2
     exit 1
   fi
-fi
-
-# Bundle yt-dlp as a helper seed. The app/CLI copies this signed bundle copy
-# into Application Support before use, so future updates never mutate the
-# signed app bundle.
-BUNDLE_YTDLP="${BUNDLE_YTDLP:-1}"
-YTDLP_ASSET="yt-dlp_macos"
-YTDLP_LATEST_BASE_URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download"
-
-download_ytdlp() {
-  local out="$1"
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-  trap 'rm -rf "$tmp_dir"' EXIT
-  local binary_path="$tmp_dir/$YTDLP_ASSET"
-  local checksums_path="$tmp_dir/SHA2-256SUMS"
-
-  echo "Downloading yt-dlp helper from GitHub releases…"
-  curl -LsSf "$YTDLP_LATEST_BASE_URL/$YTDLP_ASSET" -o "$binary_path"
-  curl -LsSf "$YTDLP_LATEST_BASE_URL/SHA2-256SUMS" -o "$checksums_path"
-
-  local expected_sha
-  expected_sha="$(awk -v target="$YTDLP_ASSET" '$2 == target {print $1}' "$checksums_path" | head -n 1)"
-  local actual_sha
-  actual_sha="$(shasum -a 256 "$binary_path" | awk '{print $1}')"
-
-  if [[ -z "$expected_sha" || "$expected_sha" != "$actual_sha" ]]; then
-    echo "Error: yt-dlp SHA256 verification failed." >&2
-    echo "  Expected: $expected_sha" >&2
-    echo "  Actual:   $actual_sha" >&2
-    exit 1
-  fi
-  echo "SHA256 verified: $actual_sha"
-
-  install -m 0755 "$binary_path" "$out"
-  rm -rf "$tmp_dir"
-  trap - EXIT
-}
-
-if [[ "$BUNDLE_YTDLP" == "1" ]]; then
-  if [[ -n "${YTDLP_PATH:-}" ]]; then
-    if [[ ! -x "$YTDLP_PATH" ]]; then
-      echo "Error: YTDLP_PATH not executable: $YTDLP_PATH" >&2
-      exit 1
-    fi
-    cp "$YTDLP_PATH" "$RESOURCES_DIR/yt-dlp"
-    chmod +x "$RESOURCES_DIR/yt-dlp"
-    echo "Bundled yt-dlp from: $YTDLP_PATH"
-  else
-    download_ytdlp "$RESOURCES_DIR/yt-dlp"
-    echo "Bundled yt-dlp helper seed"
-  fi
-else
-  echo "Skipping yt-dlp bundling (BUNDLE_YTDLP=0)"
-fi
-
-# Optionally bundle `node` for yt-dlp JavaScript runtime support.
-#
-# We always download official Node builds here. Homebrew-installed `node`
-# links to external dylibs and is not reliably portable inside app bundles.
-#
-# For universal builds, bundle both arch binaries as `node-arm64` and `node-x86_64`.
-BUNDLE_NODE="${BUNDLE_NODE:-1}"
-NODE_VERSION="${NODE_VERSION:-24.13.1}"
-if [[ "$BUNDLE_NODE" == "1" ]]; then
-  echo "Bundling Node.js ${NODE_VERSION}…"
-  TMP_NODE="$(mktemp -d)"
-
-  download_node() {
-    local asset="$1"
-    local out="$2"
-    local tarball="$TMP_NODE/$asset"
-    local extract_dir="$TMP_NODE/extract"
-    local shasums="$TMP_NODE/SHASUMS256.txt"
-    curl -LsSf "https://nodejs.org/dist/v${NODE_VERSION}/${asset}" -o "$tarball"
-    if [[ ! -f "$shasums" ]]; then
-      curl -LsSf "https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt" -o "$shasums"
-    fi
-    local expected_sha
-    expected_sha="$(awk -v target="$asset" '$2 == target {print $1}' "$shasums" | head -n 1)"
-    local actual_sha
-    actual_sha="$(shasum -a 256 "$tarball" | awk '{print $1}')"
-    if [[ -z "$expected_sha" || "$expected_sha" != "$actual_sha" ]]; then
-      echo "Node SHA256 verification failed for $asset" >&2
-      exit 1
-    fi
-    rm -rf "$extract_dir"
-    mkdir -p "$extract_dir"
-    tar -xzf "$tarball" -C "$extract_dir"
-    local node_bin
-    node_bin="$(find "$extract_dir" -maxdepth 3 -type f -path '*/bin/node' | head -n 1)"
-    if [[ -z "${node_bin:-}" || ! -f "$node_bin" ]]; then
-      echo "Failed to locate node binary inside ${asset}" >&2
-      exit 1
-    fi
-    install -m 0755 "$node_bin" "$out"
-  }
-
-  if [[ "$UNIVERSAL" == "1" ]]; then
-    download_node "node-v${NODE_VERSION}-darwin-arm64.tar.gz" "$RESOURCES_DIR/node-arm64"
-    download_node "node-v${NODE_VERSION}-darwin-x64.tar.gz" "$RESOURCES_DIR/node-x86_64"
-  else
-    ARCH="$(uname -m)"
-    if [[ "$ARCH" == "arm64" ]]; then
-      NODE_ASSET="node-v${NODE_VERSION}-darwin-arm64.tar.gz"
-    else
-      NODE_ASSET="node-v${NODE_VERSION}-darwin-x64.tar.gz"
-    fi
-    download_node "$NODE_ASSET" "$RESOURCES_DIR/node"
-  fi
-
-  rm -rf "$TMP_NODE"
-else
-  echo "Skipping Node bundling (BUNDLE_NODE=0)"
 fi
 
 bundle_meeting_echo_assets() {

@@ -2,7 +2,7 @@ import Foundation
 
 /// Pure-function deriver that produces a display-ready title string from a raw
 /// transcript. The first substantive sentence (filler-stripped) becomes the
-/// headline for file/YouTube rows in the Library thumbnail grid — sources that
+/// headline for file rows in the Library thumbnail grid — sources that
 /// have no inherent title. Meeting rows use their own editable meeting name
 /// (`Transcription.fileName`) instead; for meetings this derived value only
 /// feeds the snippet preview and the "Save Audio As…" export-filename helper.

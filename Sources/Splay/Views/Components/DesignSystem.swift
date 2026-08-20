@@ -85,9 +85,6 @@ enum DesignSystem {
             speakerColors[index % speakerColors.count]
         }
 
-        // YouTube badge
-        static let youtubeRed = Color.red
-
         // Pill / overlay
         static let pillBackground = Color.black.opacity(0.7)
         static let pillBorder = Color.white.opacity(0.15)

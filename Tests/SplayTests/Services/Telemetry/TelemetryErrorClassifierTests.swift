@@ -114,10 +114,10 @@ struct TelemetryErrorClassifierTests {
     @Test("errorDetail replaces http(s) URLs with <url>")
     func errorDetailStripsHTTPURL() {
         let error = NSError(domain: "Test", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "Download failed: https://youtube.com/watch?v=dQw4w9WgXcQ returned 403"
+            NSLocalizedDescriptionKey: "Download failed: https://example.com/watch?v=dQw4w9WgXcQ returned 403"
         ])
         let detail = TelemetryErrorClassifier.errorDetail(error)
-        #expect(!detail.contains("youtube.com"))
+        #expect(!detail.contains("example.com"))
         #expect(!detail.contains("dQw4w9WgXcQ"))
         #expect(detail.contains("<url>"))
     }
