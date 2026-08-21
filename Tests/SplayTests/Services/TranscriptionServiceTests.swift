@@ -84,14 +84,12 @@ final class TranscriptionServiceTests: XCTestCase {
     var mockAudio: MockAudioProcessor!
     var mockSTT: MockSTTClient!
     var transcriptionRepo: TranscriptionRepository!
-    var llmRunRepo: LLMRunRepository!
 
     override func setUp() async throws {
         let dbManager = try DatabaseManager()
         mockAudio = MockAudioProcessor()
         mockSTT = MockSTTClient()
         transcriptionRepo = TranscriptionRepository(dbQueue: dbManager.dbQueue)
-        llmRunRepo = LLMRunRepository(dbQueue: dbManager.dbQueue)
         Telemetry.configure(NoOpTelemetryService())
 
         service = TranscriptionService(
@@ -186,27 +184,6 @@ final class TranscriptionServiceTests: XCTestCase {
         XCTAssertEqual(result.status, .completed)
         XCTAssertNil(try transcriptionRepo.fetch(id: result.id))
         XCTAssertTrue(try transcriptionRepo.fetchAll(limit: nil).isEmpty)
-    }
-
-    func testTranscribeTransientFileDoesNotPersistLLMRun() async throws {
-        await mockSTT.configure(result: STTResult(text: "private transcript"))
-        let mockLLMService = MockLLMService()
-        mockLLMService.formatTranscriptResult = "Private transcript."
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            llmService: mockLLMService,
-            llmRunRepo: llmRunRepo,
-            shouldUseAIFormatter: { true },
-            aiFormatterPromptTemplate: { AIFormatter.defaultPromptTemplate }
-        )
-
-        _ = try await service.transcribeTransient(fileURL: URL(fileURLWithPath: "/tmp/private.mp3"))
-
-        XCTAssertEqual(mockLLMService.formatTranscriptCallCount, 1)
-        XCTAssertEqual(try llmRunRepo.count(), 0)
     }
 
     func testTranscribeTransientFileDoesNotPersistFailureRow() async throws {
@@ -387,128 +364,6 @@ final class TranscriptionServiceTests: XCTestCase {
 
         let lastURL = await mockAudio.lastConvertURL
         XCTAssertEqual(lastURL?.path, "/tmp/test.mp3")
-    }
-
-    func testTranscribeAppliesAIFormatterAsFinalStep() async throws {
-        await mockSTT.configure(result: STTResult(text: "hello world"))
-        let mockLLMService = MockLLMService()
-        mockLLMService.formatTranscriptResult = "Hello, world."
-        mockLLMService.formatTranscriptProvider = "lmstudio"
-        mockLLMService.formatTranscriptModel = "sotto-cleanup"
-        mockLLMService.formatTranscriptUsage = LLMUsage(promptTokens: 10, completionTokens: 4, totalTokens: 14)
-        mockLLMService.formatTranscriptStopReason = "stop"
-        mockLLMService.formatTranscriptLatencyMs = 42
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            llmService: mockLLMService,
-            llmRunRepo: llmRunRepo,
-            shouldUseAIFormatter: { true },
-            aiFormatterPromptTemplate: { AIFormatter.defaultPromptTemplate }
-        )
-
-        let result = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.mp3"))
-
-        XCTAssertEqual(result.rawTranscript, "hello world")
-        XCTAssertEqual(result.cleanTranscript, "Hello, world.")
-        XCTAssertEqual(mockLLMService.formatTranscriptCallCount, 1)
-        XCTAssertEqual(mockLLMService.lastFormattedTranscript, "hello world")
-
-        let runs = try llmRunRepo.fetchForTranscription(id: result.id)
-        XCTAssertEqual(runs.count, 1)
-        XCTAssertEqual(runs.first?.feature, .formatterTranscription)
-        XCTAssertEqual(runs.first?.status, .succeeded)
-        XCTAssertEqual(runs.first?.provider, "lmstudio")
-        XCTAssertEqual(runs.first?.model, "sotto-cleanup")
-        XCTAssertEqual(runs.first?.promptTokens, 10)
-        XCTAssertEqual(runs.first?.completionTokens, 4)
-        XCTAssertEqual(runs.first?.totalTokens, 14)
-        XCTAssertEqual(runs.first?.latencyMs, 42)
-        XCTAssertEqual(runs.first?.inputChars, "hello world".count)
-        XCTAssertEqual(runs.first?.outputChars, "Hello, world.".count)
-        XCTAssertEqual(runs.first?.stopReason, "stop")
-        XCTAssertEqual(runs.first?.defaultPromptUsed, true)
-        XCTAssertEqual(runs.first?.messageCount, 2)
-    }
-
-    func testTranscribeFallsBackWhenAIFormatterFailsAndPostsWarning() async throws {
-        await mockSTT.configure(result: STTResult(text: "hello world"))
-        let mockLLMService = MockLLMService()
-        mockLLMService.errorToThrow = LLMError.formatterTruncated
-
-        let warningPosted = expectation(description: "AI formatter warning posted")
-        var warningMessage: String?
-        let observer = NotificationCenter.default.addObserver(
-            forName: .macParakeetAIFormatterWarning,
-            object: nil,
-            queue: nil
-        ) { notification in
-            guard let source = notification.userInfo?["source"] as? String, source == "transcription" else { return }
-            warningMessage = notification.userInfo?["message"] as? String
-            warningPosted.fulfill()
-        }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            llmService: mockLLMService,
-            llmRunRepo: llmRunRepo,
-            shouldUseAIFormatter: { true },
-            aiFormatterPromptTemplate: { AIFormatter.defaultPromptTemplate }
-        )
-
-        let result = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.mp3"))
-
-        XCTAssertEqual(result.rawTranscript, "hello world")
-        XCTAssertNil(result.cleanTranscript)
-        XCTAssertEqual(mockLLMService.formatTranscriptCallCount, 1)
-        await fulfillment(of: [warningPosted], timeout: 1.0)
-        XCTAssertEqual(warningMessage, "AI formatter output was incomplete. Used standard cleanup.")
-
-        let runs = try llmRunRepo.fetchForTranscription(id: result.id)
-        XCTAssertEqual(runs.count, 1)
-        XCTAssertEqual(runs.first?.feature, .formatterTranscription)
-        XCTAssertEqual(runs.first?.status, .failed)
-        XCTAssertEqual(runs.first?.inputChars, "hello world".count)
-        XCTAssertEqual(runs.first?.outputChars, 0)
-        XCTAssertNotNil(runs.first?.errorType)
-    }
-
-    func testTranscribePostsAuthenticationWarningWhenAIFormatterAuthFails() async throws {
-        await mockSTT.configure(result: STTResult(text: "hello world"))
-        let mockLLMService = MockLLMService()
-        mockLLMService.errorToThrow = LLMError.authenticationFailed(nil)
-
-        let warningPosted = expectation(description: "AI formatter auth warning posted")
-        var warningMessage: String?
-        let observer = NotificationCenter.default.addObserver(
-            forName: .macParakeetAIFormatterWarning,
-            object: nil,
-            queue: nil
-        ) { notification in
-            guard let source = notification.userInfo?["source"] as? String, source == "transcription" else { return }
-            warningMessage = notification.userInfo?["message"] as? String
-            warningPosted.fulfill()
-        }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
-        let service = TranscriptionService(
-            audioProcessor: mockAudio,
-            sttTranscriber: mockSTT,
-            transcriptionRepo: transcriptionRepo,
-            llmService: mockLLMService,
-            shouldUseAIFormatter: { true },
-            aiFormatterPromptTemplate: { AIFormatter.defaultPromptTemplate }
-        )
-
-        _ = try await service.transcribe(fileURL: URL(fileURLWithPath: "/tmp/test.mp3"))
-
-        await fulfillment(of: [warningPosted], timeout: 1.0)
-        XCTAssertEqual(warningMessage, "Authentication failed. Check your API key. Used standard cleanup.")
     }
 
     func testTranscribeMeetingUsesFinalizeLaneAndMergesFreshSourceTranscriptsByAlignment() async throws {

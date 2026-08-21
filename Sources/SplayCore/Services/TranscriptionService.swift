@@ -45,13 +45,6 @@ public protocol SpeechEngineOverrideTranscriptionService: TranscriptionServicePr
     ) async throws -> Transcription
 }
 
-private struct FormatterOutcome: Sendable {
-    let text: String?
-    let run: LLMRun?
-
-    static let skipped = FormatterOutcome(text: nil, run: nil)
-}
-
 extension TranscriptionServiceProtocol {
     public func transcribe(fileURL: URL) async throws -> Transcription {
         try await transcribe(fileURL: fileURL, source: .file, onProgress: nil)
@@ -184,10 +177,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
     private let snippetRepo: TextSnippetRepositoryProtocol?
     private let processingMode: @Sendable () -> Dictation.ProcessingMode
     private let textRefinementService: TextRefinementService
-    private let llmService: LLMServiceProtocol?
-    private let llmRunRecorder: LLMRunRecorder
-    private let shouldUseAIFormatter: @Sendable () -> Bool
-    private let aiFormatterPromptTemplate: @Sendable () -> String
     private let shouldKeepDownloadedAudio: @Sendable () -> Bool
     private let shouldDiarize: @Sendable () -> Bool
     private let diarizationService: DiarizationServiceProtocol?
@@ -202,10 +191,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
         customWordRepo: CustomWordRepositoryProtocol? = nil,
         snippetRepo: TextSnippetRepositoryProtocol? = nil,
         processingMode: (@Sendable () -> Dictation.ProcessingMode)? = nil,
-        llmService: LLMServiceProtocol? = nil,
-        llmRunRepo: LLMRunRepositoryProtocol? = nil,
-        shouldUseAIFormatter: (@Sendable () -> Bool)? = nil,
-        aiFormatterPromptTemplate: (@Sendable () -> String)? = nil,
         shouldKeepDownloadedAudio: (@Sendable () -> Bool)? = nil,
         shouldDiarize: (@Sendable () -> Bool)? = nil,
         diarizationService: DiarizationServiceProtocol? = nil,
@@ -220,10 +205,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
         self.snippetRepo = snippetRepo
         self.processingMode = processingMode ?? { .raw }
         self.textRefinementService = TextRefinementService()
-        self.llmService = llmService
-        self.llmRunRecorder = LLMRunRecorder(repository: llmRunRepo)
-        self.shouldUseAIFormatter = shouldUseAIFormatter ?? { false }
-        self.aiFormatterPromptTemplate = aiFormatterPromptTemplate ?? { AIFormatter.defaultPromptTemplate }
         self.shouldKeepDownloadedAudio = shouldKeepDownloadedAudio ?? { true }
         self.shouldDiarize = shouldDiarize ?? { true }
         self.diarizationService = diarizationService
@@ -1078,13 +1059,7 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
             customWords: customWords,
             snippets: snippets
         )
-        let baseText = refinement.text ?? rawText
-        let formatterOutcome = try await formatTranscriptIfNeeded(
-            baseText,
-            runSource: persistResult ? LLMRunSource(transcriptionId: transcription.id) : nil
-        )
-        let formattedTranscript = formatterOutcome.text
-        transcription.cleanTranscript = formattedTranscript ?? refinement.text
+        transcription.cleanTranscript = refinement.text
 
         if persistResult, !refinement.expandedSnippetIDs.isEmpty {
             try? snippetRepo?.incrementUseCount(ids: refinement.expandedSnippetIDs)
@@ -1101,7 +1076,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
         transcription.updatedAt = Date()
         if persistResult {
             try transcriptionRepo.save(transcription)
-            await llmRunRecorder.record(formatterOutcome.run)
         }
 
         let outputText = transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
@@ -1136,63 +1110,6 @@ public actor TranscriptionService: SpeechEngineOverrideTranscriptionService {
         )
 
         return transcription
-    }
-
-    private func formatTranscriptIfNeeded(
-        _ text: String,
-        runSource: LLMRunSource?
-    ) async throws -> FormatterOutcome {
-        guard shouldUseAIFormatter(), let llmService else {
-            return .skipped
-        }
-
-        let promptTemplate = aiFormatterPromptTemplate()
-        // Normalize before comparing: `AIFormatter.renderPrompt` passes the
-        // template through `normalizedPromptTemplate` before sending, which
-        // trims whitespace and folds legacy-v1 prompts back onto the current
-        // default. Raw comparison would report those cases as custom prompts
-        // even though the LLM sees the shipped default.
-        let defaultPromptUsed = AIFormatter.normalizedPromptTemplate(promptTemplate)
-            == AIFormatter.defaultPromptTemplate
-        let startedAt = Date()
-        do {
-            let result = try await llmService.formatTranscriptDetailed(
-                transcript: text,
-                promptTemplate: promptTemplate,
-                source: .transcription,
-                defaultPromptUsed: defaultPromptUsed
-            )
-            let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-            let run = runSource.map {
-                LLMRun(formatterResult: result, source: $0, feature: .formatterTranscription)
-            }
-            return FormatterOutcome(text: trimmed.isEmpty ? nil : trimmed, run: run)
-        } catch {
-            if error is CancellationError {
-                throw error
-            }
-            logger.warning("transcription_ai_formatter_failed fallback=standard_cleanup error_type=\(Self.errorType(for: error), privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)")
-            let message = "\(error.localizedDescription) Used standard cleanup."
-            NotificationCenter.default.post(
-                name: .macParakeetAIFormatterWarning,
-                object: nil,
-                userInfo: [
-                    "source": "transcription",
-                    "message": message,
-                ]
-            )
-            let run = runSource.map {
-                LLMRun.failedFormatterRun(
-                    source: $0,
-                    feature: .formatterTranscription,
-                    errorType: Self.errorType(for: error),
-                    inputChars: text.count,
-                    defaultPromptUsed: defaultPromptUsed,
-                    startedAt: startedAt
-                )
-            }
-            return FormatterOutcome(text: nil, run: run)
-        }
     }
 
     private static func errorType(for error: Error) -> String {

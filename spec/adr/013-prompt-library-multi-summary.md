@@ -1,6 +1,6 @@
 # ADR-013: Prompt Library + Multi-Summary Architecture
 
-> Status: **Accepted**
+> Status: **SUPERSEDED for Splay (2026-08-21)** — Splay removed the in-app LLM: the prompt library, multi-summary generation, and their UI/view models were deleted (prompt tables remain as dormant schema). Splay’s product line: record/dictate → clean transcript; the user analyzes it with their own LLM. Original status: **Accepted**
 > Date: 2026-04-03
 > Related: ADR-011 (LLM providers), spec/12-processing-layer.md, ADR-022 (Transforms)
 > Implementation Note (2026-04-04): The current branch seeds built-in/community prompts from `Prompt.builtInPrompts()` in Swift. `community-prompts.json` exists as a contribution/reference artifact, but runtime JSON loading has not shipped.

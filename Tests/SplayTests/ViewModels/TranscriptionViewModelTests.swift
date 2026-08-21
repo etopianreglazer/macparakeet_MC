@@ -7,7 +7,6 @@ final class TranscriptionViewModelTests: XCTestCase {
     var viewModel: TranscriptionViewModel!
     var mockService: MockTranscriptionService!
     var mockRepo: MockTranscriptionRepository!
-    var mockPromptResultRepo: MockPromptResultRepository!
 
     private func waitUntil(
         timeout: Duration = .seconds(1),
@@ -30,7 +29,6 @@ final class TranscriptionViewModelTests: XCTestCase {
     override func setUp() {
         mockService = MockTranscriptionService()
         mockRepo = MockTranscriptionRepository()
-        mockPromptResultRepo = MockPromptResultRepository()
         viewModel = TranscriptionViewModel()
     }
 
@@ -300,66 +298,12 @@ final class TranscriptionViewModelTests: XCTestCase {
     func testShowInputPortalClearsCurrentTranscriptionAndResetsSelection() {
         let t = Transcription(fileName: "test.mp3", rawTranscript: "Hello", status: .completed)
         viewModel.currentTranscription = t
-        viewModel.selectedTab = .chat
-        viewModel.hasConversations = true
         viewModel.errorMessage = "Stale error"
 
         viewModel.showInputPortal()
 
         XCTAssertNil(viewModel.currentTranscription)
-        XCTAssertEqual(viewModel.selectedTab, .transcript)
-        XCTAssertFalse(viewModel.hasConversations)
         XCTAssertNil(viewModel.errorMessage)
-    }
-
-    func testSelectingDifferentTranscriptionResetsTabAndConversationState() {
-        let first = Transcription(fileName: "first.mp3", rawTranscript: "First", status: .completed)
-        let second = Transcription(fileName: "second.mp3", rawTranscript: "Second", status: .completed)
-
-        viewModel.currentTranscription = first
-        viewModel.selectedTab = .chat
-        viewModel.hasConversations = true
-
-        viewModel.presentCompletedTranscription(second, autoSave: false, runAutoPrompts: false)
-
-        XCTAssertEqual(viewModel.currentTranscription?.id, second.id)
-        XCTAssertEqual(viewModel.selectedTab, .transcript)
-        XCTAssertFalse(viewModel.hasConversations)
-    }
-
-    func testRefreshingSameTranscriptionDoesNotResetSelectedTab() {
-        let id = UUID()
-        let first = Transcription(id: id, fileName: "first.mp3", rawTranscript: "First", status: .completed)
-        let refreshed = Transcription(id: id, fileName: "renamed.mp3", rawTranscript: "First", status: .completed)
-
-        viewModel.currentTranscription = first
-        viewModel.selectedTab = .chat
-        viewModel.hasConversations = true
-
-        viewModel.currentTranscription = refreshed
-
-        XCTAssertEqual(viewModel.currentTranscription?.fileName, "renamed.mp3")
-        XCTAssertEqual(viewModel.selectedTab, .chat)
-        XCTAssertTrue(viewModel.hasConversations)
-    }
-
-    func testFailedRegenerationRestoresOriginalResultTab() {
-        let generationID = UUID()
-        let promptResultID = UUID()
-        viewModel.selectedTab = .generation(id: generationID)
-
-        viewModel.handleGenerationFailed(generationID, replacingPromptResultID: promptResultID)
-
-        XCTAssertEqual(viewModel.selectedTab, .result(id: promptResultID))
-    }
-
-    func testFailedNewGenerationFallsBackToTranscriptTab() {
-        let generationID = UUID()
-        viewModel.selectedTab = .generation(id: generationID)
-
-        viewModel.handleGenerationFailed(generationID, replacingPromptResultID: nil)
-
-        XCTAssertEqual(viewModel.selectedTab, .transcript)
     }
 
     // MARK: - File Drop
@@ -455,24 +399,6 @@ final class TranscriptionViewModelTests: XCTestCase {
     }
 
     // MARK: - LLM Integration
-
-    func testLLMAvailableReflectsConfigState() {
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        XCTAssertFalse(viewModel.llmAvailable, "No LLM service = not available")
-
-        let llm = MockLLMService()
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo, llmService: llm)
-        XCTAssertTrue(viewModel.llmAvailable, "With LLM service = available")
-    }
-
-    func testUpdateLLMAvailability() {
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        XCTAssertFalse(viewModel.llmAvailable)
-
-        let llm = MockLLMService()
-        viewModel.updateLLMAvailability(true, llmService: llm)
-        XCTAssertTrue(viewModel.llmAvailable)
-    }
 
     // MARK: - Transcript Editing
 
@@ -750,94 +676,23 @@ final class TranscriptionViewModelTests: XCTestCase {
         XCTAssertTrue(mockRepo.updateFileNameCalls.isEmpty)
     }
 
-    // MARK: - Tab Visibility
-
-    func testShowTabsTrueWhenLLMAvailable() {
-        let llm = MockLLMService()
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo, llmService: llm)
-        XCTAssertTrue(viewModel.showTabs)
-    }
-
-    func testShowTabsTrueWhenSavedSummaryExists() {
-        let transcription = Transcription(fileName: "test.mp3", status: .completed)
-        mockPromptResultRepo.promptResults = [
-            PromptResult(
-                transcriptionId: transcription.id,
-                promptName: "Concise Summary",
-                promptContent: Prompt.defaultPrompt.content,
-                content: "A summary"
-            )
-        ]
-        viewModel.configure(
-            transcriptionService: mockService,
-            transcriptionRepo: mockRepo,
-            promptResultRepo: mockPromptResultRepo
-        )
-        viewModel.currentTranscription = transcription
-        XCTAssertFalse(viewModel.llmAvailable)
-        XCTAssertTrue(viewModel.showTabs)
-        XCTAssertTrue(viewModel.hasPromptResultTabs)
-    }
-
-    func testShowTabsTrueWhenHasConversations() {
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.currentTranscription = Transcription(
-            fileName: "test.mp3",
-            status: .completed
-        )
-        viewModel.hasConversations = true
-        XCTAssertFalse(viewModel.llmAvailable)
-        XCTAssertTrue(viewModel.showTabs)
-    }
-
-    func testShowTabsFalseWhenNothingAvailable() {
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        viewModel.currentTranscription = Transcription(fileName: "test.mp3", status: .completed)
-        XCTAssertFalse(viewModel.showTabs)
-    }
-
-    func testUpdateConversationStatusUpdatesShowTabs() {
-        viewModel.configure(transcriptionService: mockService, transcriptionRepo: mockRepo)
-        let transcription = Transcription(
-            fileName: "test.mp3",
-            status: .completed
-        )
-        viewModel.currentTranscription = transcription
-        viewModel.hasConversations = true
-
-        XCTAssertTrue(viewModel.showTabs)
-
-        viewModel.updateConversationStatus(id: transcription.id, hasConversations: false)
-
-        XCTAssertFalse(viewModel.showTabs)
-        XCTAssertFalse(viewModel.hasConversations)
-    }
-
     // MARK: - Persisted Content
 
     func testLoadPersistedContentRefreshesCurrentTranscriptionFromDB() {
-        let t = Transcription(fileName: "test.mp3", status: .completed)
-        mockRepo.transcriptions = [t]
+        let t = Transcription(id: UUID(), fileName: "test.mp3", status: .completed)
+        var renamed = t
+        renamed.fileName = "renamed.mp3"
+        mockRepo.transcriptions = [renamed]
 
         viewModel.configure(
             transcriptionService: mockService,
-            transcriptionRepo: mockRepo,
-            promptResultRepo: mockPromptResultRepo
+            transcriptionRepo: mockRepo
         )
         viewModel.currentTranscription = t
 
-        mockPromptResultRepo.promptResults = [
-            PromptResult(
-                transcriptionId: t.id,
-                promptName: "Concise Summary",
-                promptContent: Prompt.defaultPrompt.content,
-                content: "Migrated summary"
-            )
-        ]
-
         viewModel.loadPersistedContent()
 
-        XCTAssertTrue(viewModel.hasPromptResultTabs)
+        XCTAssertEqual(viewModel.currentTranscription?.fileName, "renamed.mp3")
     }
 
     // MARK: - Retranscribe
@@ -1207,96 +1062,6 @@ final class TranscriptionViewModelTests: XCTestCase {
         let callCount = await mockService.transcribeCallCount
         XCTAssertEqual(callCount, 0, "Should not call transcribe when file is missing")
         XCTAssertTrue(mockRepo.deleteCalledWith.isEmpty, "Should not delete anything")
-    }
-
-    func testRetranscribeDoesNotFireAutoRunPrompts() async throws {
-        let tmpFile = FileManager.default.temporaryDirectory.appendingPathComponent("retranscribe-no-autorun-\(UUID().uuidString).mp3")
-        FileManager.default.createFile(atPath: tmpFile.path, contents: Data([0]))
-        defer { try? FileManager.default.removeItem(at: tmpFile) }
-
-        let original = Transcription(
-            fileName: "lecture.mp3",
-            filePath: tmpFile.path,
-            rawTranscript: "Old transcript",
-            status: .completed
-        )
-        mockRepo.transcriptions = [original]
-
-        let longTranscript = String(repeating: "Long transcript ", count: 50)
-        let newResult = Transcription(
-            fileName: tmpFile.lastPathComponent,
-            rawTranscript: longTranscript,
-            status: .completed
-        )
-        await mockService.configure(result: newResult)
-
-        let llm = MockLLMService()
-        let promptRepo = MockPromptRepository()
-        promptRepo.prompts = Prompt.builtInPrompts()
-        XCTAssertTrue(promptRepo.prompts.contains(where: { $0.isAutoRun }),
-                      "Test fixture must include at least one auto-run prompt for this regression to be meaningful")
-        let promptResultsVM = PromptResultsViewModel()
-        promptResultsVM.configure(
-            llmService: llm,
-            promptRepo: promptRepo,
-            promptResultRepo: mockPromptResultRepo
-        )
-
-        viewModel.configure(
-            transcriptionService: mockService,
-            transcriptionRepo: mockRepo,
-            llmService: llm,
-            promptResultRepo: mockPromptResultRepo,
-            promptResultsViewModel: promptResultsVM
-        )
-
-        viewModel.retranscribe(original)
-
-        try await waitUntil { !self.viewModel.isTranscribing }
-        // Drain any pending main-actor work that the retranscribe completion path posts.
-        try await Task.sleep(for: .milliseconds(50))
-
-        XCTAssertTrue(promptResultsVM.pendingGenerations.isEmpty,
-                      "Retranscribe must not auto-queue prompt generations — that would duplicate existing tabs")
-        XCTAssertEqual(llm.summarizeCallCount, 0,
-                       "Retranscribe must not invoke the LLM service via auto-run")
-    }
-
-    func testFreshTranscribeStillFiresAutoRunPromptsForShortTranscript() async throws {
-        let shortTranscript = "brief but important"
-        let result = Transcription(
-            fileName: "audio.mp3",
-            rawTranscript: shortTranscript,
-            status: .completed
-        )
-        await mockService.configure(result: result)
-
-        let llm = MockLLMService()
-        llm.streamTokens = ["ok"]
-        let promptRepo = MockPromptRepository()
-        promptRepo.prompts = Prompt.builtInPrompts()
-        let promptResultsVM = PromptResultsViewModel()
-        promptResultsVM.configure(
-            llmService: llm,
-            promptRepo: promptRepo,
-            promptResultRepo: mockPromptResultRepo
-        )
-
-        viewModel.configure(
-            transcriptionService: mockService,
-            transcriptionRepo: mockRepo,
-            llmService: llm,
-            promptResultRepo: mockPromptResultRepo,
-            promptResultsViewModel: promptResultsVM
-        )
-
-        viewModel.transcribeFile(url: URL(fileURLWithPath: "/tmp/audio.mp3"))
-
-        try await waitUntil { !self.viewModel.isTranscribing }
-        try await waitUntil { llm.summarizeCallCount > 0 }
-
-        XCTAssertGreaterThan(llm.summarizeCallCount, 0,
-                             "Fresh transcribe must still fire auto-run prompts")
     }
 
     func testRetranscribeFailureLeavesOriginalIntact() async throws {

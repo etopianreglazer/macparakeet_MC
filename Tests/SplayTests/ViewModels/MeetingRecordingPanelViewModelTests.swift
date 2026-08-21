@@ -196,7 +196,7 @@ final class MeetingRecordingPanelViewModelTests: XCTestCase {
             ],
             isTranscriptionLagging: true
         )
-        viewModel.selectedTab = .ask
+        viewModel.selectedTab = .transcript
 
         viewModel.reset()
 
@@ -221,11 +221,11 @@ final class MeetingRecordingPanelViewModelTests: XCTestCase {
         )
     }
 
-    func testLivePanelTabAllCasesOrderedNotesTranscriptAsk() {
+    func testLivePanelTabAllCasesOrderedNotesTranscript() {
         XCTAssertEqual(
             MeetingRecordingPanelViewModel.LivePanelTab.allCases,
-            [.notes, .transcript, .ask],
-            "Tab order is Notes / Transcript / Ask — left-to-right matches ⌘1 / ⌘2 / ⌘3"
+            [.notes, .transcript],
+            "Tab order is Notes / Transcript — left-to-right matches ⌘1 / ⌘2"
         )
     }
 
@@ -278,28 +278,6 @@ final class MeetingRecordingPanelViewModelTests: XCTestCase {
         XCTAssertNil(
             viewModel.badge(for: .notes),
             "Notes tab stays plain even with content — word count is not surfaced on the tab strip"
-        )
-    }
-
-    func testAskTabHasNoStringBadgeAndExposesStreamingFlagInstead() {
-        let viewModel = MeetingRecordingPanelViewModel()
-
-        XCTAssertNil(
-            viewModel.badge(for: .ask),
-            "Ask tab no longer carries a numeric badge — message count is decoration, not information"
-        )
-        XCTAssertFalse(viewModel.isAskStreaming, "Default Ask state is idle (no breathing dot)")
-
-        viewModel.chatViewModel.isStreaming = true
-        XCTAssertTrue(
-            viewModel.isAskStreaming,
-            "isAskStreaming mirrors chatViewModel.isStreaming so the tab dot animates while an answer is forming"
-        )
-
-        viewModel.chatViewModel.isStreaming = false
-        XCTAssertFalse(
-            viewModel.isAskStreaming,
-            "Strictly bound to streaming — the dot vanishes the instant streaming ends so it can't decay into a stale notification badge"
         )
     }
 

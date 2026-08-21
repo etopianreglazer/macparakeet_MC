@@ -36,13 +36,8 @@ final class MeetingRecordingFlowCoordinator {
     private let transcriptionService: TranscriptionServiceProtocol
     private let permissionService: PermissionServiceProtocol
     private let transcriptionRepo: TranscriptionRepositoryProtocol
-    private let conversationRepo: ChatConversationRepositoryProtocol
-    private let quickPromptRepo: QuickPromptRepositoryProtocol
-    private let configStore: LLMConfigStoreProtocol
-    private let cliConfigStore: LocalCLIConfigStore
     private let sttManager: (any STTRuntimeManaging)?
     private let meetingAudioSourceModeProvider: @MainActor @Sendable () -> MeetingAudioSourceMode
-    private var llmService: LLMServiceProtocol?
     private let onMenuBarIconUpdate: (BreathWaveIcon.MenuBarState) -> Void
     private let onTranscriptionReady: (Transcription) -> Void
     private let onRecordingBegan: () -> Void
@@ -95,13 +90,8 @@ final class MeetingRecordingFlowCoordinator {
         transcriptionService: TranscriptionServiceProtocol,
         permissionService: PermissionServiceProtocol,
         transcriptionRepo: TranscriptionRepositoryProtocol,
-        conversationRepo: ChatConversationRepositoryProtocol,
-        quickPromptRepo: QuickPromptRepositoryProtocol,
-        configStore: LLMConfigStoreProtocol,
-        cliConfigStore: LocalCLIConfigStore = LocalCLIConfigStore(),
         sttManager: (any STTRuntimeManaging)? = nil,
         meetingAudioSourceModeProvider: @escaping @MainActor @Sendable () -> MeetingAudioSourceMode = { .microphoneAndSystem },
-        llmService: LLMServiceProtocol?,
         pillViewModel: MeetingRecordingPillViewModel,
         onMenuBarIconUpdate: @escaping (BreathWaveIcon.MenuBarState) -> Void,
         onTranscriptionReady: @escaping (Transcription) -> Void,
@@ -112,25 +102,13 @@ final class MeetingRecordingFlowCoordinator {
         self.transcriptionService = transcriptionService
         self.permissionService = permissionService
         self.transcriptionRepo = transcriptionRepo
-        self.conversationRepo = conversationRepo
-        self.quickPromptRepo = quickPromptRepo
-        self.configStore = configStore
-        self.cliConfigStore = cliConfigStore
         self.sttManager = sttManager
         self.meetingAudioSourceModeProvider = meetingAudioSourceModeProvider
-        self.llmService = llmService
         self.pillViewModel = pillViewModel
         self.onMenuBarIconUpdate = onMenuBarIconUpdate
         self.onTranscriptionReady = onTranscriptionReady
         self.onRecordingBegan = onRecordingBegan
         self.onFlowReturnedToIdle = onFlowReturnedToIdle
-    }
-
-    /// Updates the LLM service when the user changes providers. Mirrors what
-    /// AppEnvironmentConfigurer.refreshLLMAvailability does for the singleton chat VM.
-    func updateLLMService(_ service: LLMServiceProtocol?) {
-        self.llmService = service
-        panelViewModel?.chatViewModel.updateLLMService(service)
     }
 
     /// Trigger source for the *next* `.startRequested` event. Reset to nil
@@ -387,15 +365,6 @@ final class MeetingRecordingFlowCoordinator {
             panelVM.onPauseToggle = { [weak self] in self?.togglePause() }
             panelVM.onMicrophoneMuteToggle = { [weak self] in self?.toggleMicrophoneMute() }
             panelVM.onClose = { [weak self] in self?.hideMeetingPanel() }
-            // Configure live Ask: in-memory mode (no transcriptionId/conversationRepo).
-            // Promotion to a persisted ChatConversation happens in .navigateToTranscription.
-            panelVM.chatViewModel.configure(
-                llmService: llmService,
-                transcriptText: panelVM.chatTranscript,
-                configStore: configStore,
-                cliConfigStore: cliConfigStore
-            )
-            panelVM.quickPromptsViewModel.configure(repo: quickPromptRepo)
             // Wire the notepad's debounced persistence target through the
             // recording service. The service serializes lock-file writes and
             // carries the latest notes into MeetingRecordingOutput.userNotes,
@@ -714,21 +683,6 @@ final class MeetingRecordingFlowCoordinator {
 
         case .navigateToTranscription(let id):
             guard completedTranscription?.id == id, let transcription = completedTranscription else { return }
-            // Cancel any in-flight assistant response BEFORE binding. If the panel
-            // chat VM is destroyed (.hidePill, ~2s after this) while a stream is
-            // still arriving, the streamingTask's [weak self] kills it mid-write
-            // and the response is lost in a non-deterministic spot. Cancelling now
-            // gives a clean state to persist; the user loses an unfinished reply
-            // but the data on disk is consistent.
-            panelViewModel?.chatViewModel.cancelStreaming()
-            // If the user chatted while recording, promote the in-memory thread to a
-            // real ChatConversation linked to the finalized transcription so the live
-            // conversation appears on TranscriptResultView's Chat tab unbroken.
-            panelViewModel?.chatViewModel.bindPersistedConversation(
-                transcriptionId: transcription.id,
-                transcriptionRepo: transcriptionRepo,
-                conversationRepo: conversationRepo
-            )
             onTranscriptionReady(transcription)
 
         case .presentPermissionAlert(let reason):

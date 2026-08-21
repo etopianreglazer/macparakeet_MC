@@ -7,8 +7,6 @@ public protocol AppRuntimePreferencesProtocol: Sendable {
     var shouldSaveDictationHistory: Bool { get }
     var shouldSaveTranscriptionAudio: Bool { get }
     var shouldDiarize: Bool { get }
-    var aiFormatterEnabled: Bool { get }
-    var aiFormatterPrompt: String { get }
     var selectedMicrophoneDeviceUID: String? { get }
     var meetingAudioSourceMode: MeetingAudioSourceMode { get }
     var pauseMediaDuringDictation: Bool { get }
@@ -79,8 +77,6 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
     public static let saveAudioRecordingsKey = "saveAudioRecordings"
     public static let saveTranscriptionAudioKey = "saveTranscriptionAudio"
     public static let speakerDiarizationKey = "speakerDiarization"
-    public static let aiFormatterEnabledKey = "aiFormatterEnabled"
-    public static let aiFormatterPromptKey = "aiFormatterPrompt"
     public static let selectedMicrophoneDeviceUIDKey = "selectedMicrophoneDeviceUID"
     public static let meetingAudioSourceModeKey = "meetingAudioSourceMode"
     public static let pauseMediaDuringDictationKey = "pauseMediaDuringDictation"
@@ -122,15 +118,6 @@ public final class UserDefaultsAppRuntimePreferences: AppRuntimePreferencesProto
 
     public var shouldDiarize: Bool {
         defaults.object(forKey: Self.speakerDiarizationKey) as? Bool ?? false
-    }
-
-    public var aiFormatterEnabled: Bool {
-        defaults.object(forKey: Self.aiFormatterEnabledKey) as? Bool ?? false
-    }
-
-    public var aiFormatterPrompt: String {
-        let prompt = defaults.string(forKey: Self.aiFormatterPromptKey) ?? ""
-        return AIFormatter.normalizedPromptTemplate(prompt)
     }
 
     public var selectedMicrophoneDeviceUID: String? {

@@ -1,6 +1,6 @@
 # ADR-011: LLM via Cloud API Keys + Optional Local Providers
 
-> Status: **Accepted**
+> Status: **SUPERSEDED for Splay (2026-08-21)** — Splay removed the in-app LLM: the LLM provider layer (LLMService, config store, provider clients) was deleted. Splay’s product line: record/dictate → clean transcript; the user analyzes it with their own LLM. Original status: **Accepted**
 > Date: 2026-03-11
 > Supersedes: ADR-008 (local-only Qwen3-8B via mlx-swift-lm, removed 2026-02-23)
 

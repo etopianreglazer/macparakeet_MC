@@ -10,12 +10,6 @@ final class AppEnvironment {
     let transcriptionRepo: TranscriptionRepository
     let customWordRepo: CustomWordRepository
     let snippetRepo: TextSnippetRepository
-    let chatConversationRepo: ChatConversationRepository
-    let promptRepo: PromptRepository
-    let promptResultRepo: PromptResultRepository
-    let llmRunRepo: LLMRunRepository
-    let transformHistoryRepo: TransformHistoryRepository
-    let quickPromptRepo: QuickPromptRepository
     let sttRuntime: STTRuntime
     let sttScheduler: STTScheduler
     let sharedMicStream: SharedMicrophoneStream
@@ -40,9 +34,6 @@ final class AppEnvironment {
     let launchAtLoginService: LaunchAtLoginService
     let checkoutURL: URL?
     let telemetryService: TelemetryServiceProtocol
-    let llmClient: RoutingLLMClient
-    let llmConfigStore: LLMConfigStore
-    let llmService: LLMService
     let runtimePreferences: AppRuntimePreferencesProtocol
     let derivedFieldsBackfill: DerivedFieldsBackfillService
 
@@ -54,12 +45,6 @@ final class AppEnvironment {
         transcriptionRepo = TranscriptionRepository(dbQueue: databaseManager.dbQueue)
         customWordRepo = CustomWordRepository(dbQueue: databaseManager.dbQueue)
         snippetRepo = TextSnippetRepository(dbQueue: databaseManager.dbQueue)
-        chatConversationRepo = ChatConversationRepository(dbQueue: databaseManager.dbQueue)
-        promptRepo = PromptRepository(dbQueue: databaseManager.dbQueue)
-        promptResultRepo = PromptResultRepository(dbQueue: databaseManager.dbQueue)
-        llmRunRepo = LLMRunRepository(dbQueue: databaseManager.dbQueue)
-        transformHistoryRepo = TransformHistoryRepository(dbQueue: databaseManager.dbQueue)
-        quickPromptRepo = QuickPromptRepository(dbQueue: databaseManager.dbQueue)
 
         // Services
         let runtimePreferences = UserDefaultsAppRuntimePreferences()
@@ -163,24 +148,6 @@ final class AppEnvironment {
             runtimePreferences.voiceReturnTrigger
         }
 
-        let aiFormatterEnabledClosure: @Sendable () -> Bool = { [runtimePreferences] in
-            runtimePreferences.aiFormatterEnabled
-        }
-
-        let aiFormatterPromptClosure: @Sendable () -> String = { [runtimePreferences] in
-            runtimePreferences.aiFormatterPrompt
-        }
-
-        llmClient = RoutingLLMClient()
-        llmConfigStore = LLMConfigStore()
-        llmService = LLMService(
-            client: llmClient,
-            contextResolver: StoredLLMExecutionContextResolver(
-                configStore: llmConfigStore,
-                cliConfigStore: LocalCLIConfigStore()
-            )
-        )
-
         dictationService = DictationService(
             audioProcessor: audioProcessor,
             sttTranscriber: sttScheduler,
@@ -192,10 +159,6 @@ final class AppEnvironment {
             snippetRepo: snippetRepo,
             voiceReturnTrigger: voiceReturnTriggerClosure,
             processingMode: processingModeClosure,
-            llmService: llmService,
-            llmRunRepo: llmRunRepo,
-            shouldUseAIFormatter: aiFormatterEnabledClosure,
-            aiFormatterPromptTemplate: aiFormatterPromptClosure,
             markFirstDictationCompleted: { [runtimePreferences] in
                 // Fire the activation milestone exactly once, the first time a
                 // dictation ever completes on this install. `activation_window`
@@ -231,10 +194,6 @@ final class AppEnvironment {
             customWordRepo: customWordRepo,
             snippetRepo: snippetRepo,
             processingMode: processingModeClosure,
-            llmService: llmService,
-            llmRunRepo: llmRunRepo,
-            shouldUseAIFormatter: aiFormatterEnabledClosure,
-            aiFormatterPromptTemplate: aiFormatterPromptClosure,
             shouldKeepDownloadedAudio: { [runtimePreferences] in runtimePreferences.shouldSaveTranscriptionAudio },
             shouldDiarize: { [runtimePreferences] in runtimePreferences.shouldDiarize },
             diarizationService: diarizationService

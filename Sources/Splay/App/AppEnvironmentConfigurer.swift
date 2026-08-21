@@ -50,12 +50,6 @@ final class AppEnvironmentConfigurer {
     private let textSnippetsViewModel: TextSnippetsViewModel
     private let vocabularyBackupViewModel: VocabularyBackupViewModel
     private let libraryViewModel: TranscriptionLibraryViewModel
-    private let meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel
-    private let llmSettingsViewModel: LLMSettingsViewModel
-    private let chatViewModel: TranscriptChatViewModel
-    private let promptResultsViewModel: PromptResultsViewModel
-    private let promptsViewModel: PromptsViewModel
-    private let transformsViewModel: TransformsViewModel
     private let meetingPillViewModel: MeetingRecordingPillViewModel
     private weak var liveMeetingCoordinator: MeetingRecordingFlowCoordinator?
     /// Created by AppDelegate before slow bootstrap so the idle cue is immediate.
@@ -69,12 +63,6 @@ final class AppEnvironmentConfigurer {
         textSnippetsViewModel: TextSnippetsViewModel,
         vocabularyBackupViewModel: VocabularyBackupViewModel,
         libraryViewModel: TranscriptionLibraryViewModel,
-        meetingsWorkspaceViewModel: MeetingsWorkspaceViewModel,
-        llmSettingsViewModel: LLMSettingsViewModel,
-        chatViewModel: TranscriptChatViewModel,
-        promptResultsViewModel: PromptResultsViewModel,
-        promptsViewModel: PromptsViewModel,
-        transformsViewModel: TransformsViewModel,
         meetingPillViewModel: MeetingRecordingPillViewModel
     ) {
         self.transcriptionViewModel = transcriptionViewModel
@@ -84,12 +72,6 @@ final class AppEnvironmentConfigurer {
         self.textSnippetsViewModel = textSnippetsViewModel
         self.vocabularyBackupViewModel = vocabularyBackupViewModel
         self.libraryViewModel = libraryViewModel
-        self.meetingsWorkspaceViewModel = meetingsWorkspaceViewModel
-        self.llmSettingsViewModel = llmSettingsViewModel
-        self.chatViewModel = chatViewModel
-        self.promptResultsViewModel = promptResultsViewModel
-        self.promptsViewModel = promptsViewModel
-        self.transformsViewModel = transformsViewModel
         self.meetingPillViewModel = meetingPillViewModel
     }
 
@@ -104,27 +86,16 @@ final class AppEnvironmentConfigurer {
             await env.entitlementsService.refreshValidationIfNeeded()
         }
 
-        let hasLLMConfig = (try? env.llmConfigStore.loadConfig()) != nil
-
         transcriptionViewModel.configure(
             transcriptionService: env.transcriptionService,
-            transcriptionRepo: env.transcriptionRepo,
-            llmService: hasLLMConfig ? env.llmService : nil,
-            promptResultRepo: env.promptResultRepo,
-            promptResultsViewModel: promptResultsViewModel
+            transcriptionRepo: env.transcriptionRepo
         )
         historyViewModel.configure(dictationRepo: env.dictationRepo)
         libraryViewModel.configure(transcriptionRepo: env.transcriptionRepo)
-        meetingsWorkspaceViewModel.configure(
-            transcriptionRepo: env.transcriptionRepo,
-            quickPromptRepo: env.quickPromptRepo,
-            promptRepo: env.promptRepo
-        )
         settingsViewModel.configure(
             permissionService: env.permissionService,
             dictationRepo: env.dictationRepo,
             transcriptionRepo: env.transcriptionRepo,
-            transformHistoryRepo: env.transformHistoryRepo,
             entitlementsService: env.entitlementsService,
             launchAtLoginService: env.launchAtLoginService,
             checkoutURL: env.checkoutURL,
@@ -149,95 +120,8 @@ final class AppEnvironmentConfigurer {
             self?.textSnippetsViewModel.loadSnippets()
             self?.settingsViewModel.refreshStats()
         }
-        promptsViewModel.configure(repo: env.promptRepo)
-        transformsViewModel.configure(
-            repo: env.promptRepo,
-            historyRepo: env.transformHistoryRepo,
-            clipboardService: env.clipboardService,
-            hasLLMProvider: hasLLMConfig
-        )
-        llmSettingsViewModel.configure(
-            configStore: env.llmConfigStore,
-            llmClient: env.llmClient
-        )
-
         settingsViewModel.onDictationStateChanged = { [weak self] in
             self?.historyViewModel.loadDictations()
-        }
-        settingsViewModel.onTransformHistoryChanged = { [weak self] in
-            Task {
-                await self?.transformsViewModel.loadHistory()
-            }
-        }
-
-        llmSettingsViewModel.onConfigurationChanged = { [weak self] in
-            self?.refreshLLMAvailability(in: env)
-        }
-
-        chatViewModel.configure(
-            llmService: hasLLMConfig ? env.llmService : nil,
-            transcriptText: "",
-            transcriptionRepo: env.transcriptionRepo,
-            configStore: env.llmConfigStore,
-            llmClient: env.llmClient,
-            conversationRepo: env.chatConversationRepo
-        )
-
-        promptResultsViewModel.configure(
-            llmService: hasLLMConfig ? env.llmService : nil,
-            promptRepo: env.promptRepo,
-            promptResultRepo: env.promptResultRepo,
-            // Without this, `fetchUserNotes` short-circuits to `nil`, which
-            // would silently render `{{userNotes}}` as an empty string in any
-            // user-defined prompt that references it, and feed `nil` userNotes
-            // into the chat path that ADR-020's 2026-05-02 amendment relies on.
-            transcriptionRepo: env.transcriptionRepo,
-            configStore: env.llmConfigStore,
-            llmClient: env.llmClient
-        )
-
-        chatViewModel.onConversationsChanged = { [weak self] transcriptionID, hasConversations in
-            self?.transcriptionViewModel.updateConversationStatus(
-                id: transcriptionID,
-                hasConversations: hasConversations
-            )
-        }
-
-        chatViewModel.onModelChanged = { [weak self] in
-            self?.promptResultsViewModel.refreshModelInfo()
-        }
-
-        promptResultsViewModel.onModelChanged = { [weak self] in
-            self?.chatViewModel.refreshModelInfo()
-        }
-
-        promptResultsViewModel.onPromptResultsChanged = { [weak self] transcriptionID, hasPromptResults in
-            guard self?.transcriptionViewModel.currentTranscription?.id == transcriptionID else { return }
-            self?.transcriptionViewModel.hasPromptResultTabs = hasPromptResults
-        }
-
-        promptResultsViewModel.onGenerationCompleted = { [weak self] generationID, promptResultID in
-            self?.transcriptionViewModel.handleGenerationCompleted(generationID, promptResultID: promptResultID)
-        }
-
-        promptResultsViewModel.onGenerationFailed = { [weak self] generationID, replacingPromptResultID in
-            self?.transcriptionViewModel.handleGenerationFailed(
-                generationID,
-                replacingPromptResultID: replacingPromptResultID
-            )
-        }
-
-        promptResultsViewModel.onDeletedPromptResult = { [weak self] promptResultID in
-            self?.transcriptionViewModel.handlePromptResultDeleted(promptResultID)
-        }
-
-        promptResultsViewModel.shouldMarkPromptResultUnread = { [weak self] promptResultID in
-            guard let self else { return true }
-            if case .result(let id) = self.transcriptionViewModel.selectedTab,
-               id == promptResultID {
-                return false
-            }
-            return true
         }
 
         transcriptionViewModel.onTranscribingChanged = { _ in
@@ -289,12 +173,8 @@ final class AppEnvironmentConfigurer {
             transcriptionService: env.transcriptionService,
             permissionService: env.permissionService,
             transcriptionRepo: env.transcriptionRepo,
-            conversationRepo: env.chatConversationRepo,
-            quickPromptRepo: env.quickPromptRepo,
-            configStore: env.llmConfigStore,
             sttManager: env.sttScheduler,
             meetingAudioSourceModeProvider: { env.runtimePreferences.meetingAudioSourceMode },
-            llmService: hasLLMConfig ? env.llmService : nil,
             pillViewModel: meetingPillViewModel,
             onMenuBarIconUpdate: { _ in callbacks.onMenuBarIconUpdate() },
             onTranscriptionReady: { [weak self] transcription in
@@ -303,7 +183,6 @@ final class AppEnvironmentConfigurer {
                 // in the recents card — no window is opened to display it.
                 self.transcriptionViewModel.presentCompletedTranscription(transcription, autoSave: true)
                 self.libraryViewModel.loadTranscriptions()
-                self.meetingsWorkspaceViewModel.refreshRecentMeetings()
             },
             onRecordingBegan: {
                 coordinatorRefs.dictation?.hideIdlePill()
@@ -422,15 +301,5 @@ final class AppEnvironmentConfigurer {
             hotkeyCoordinator: hotkeyCoordinator,
             islandController: island
         )
-    }
-
-    func refreshLLMAvailability(in env: AppEnvironment) {
-        let hasConfig = (try? env.llmConfigStore.loadConfig()) != nil
-        let service: LLMService? = hasConfig ? env.llmService : nil
-        transcriptionViewModel.updateLLMAvailability(hasConfig, llmService: service)
-        chatViewModel.updateLLMService(service)
-        promptResultsViewModel.updateLLMService(service)
-        transformsViewModel.setHasLLMProvider(hasConfig)
-        liveMeetingCoordinator?.updateLLMService(service)
     }
 }

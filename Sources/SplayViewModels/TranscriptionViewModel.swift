@@ -30,33 +30,8 @@ public final class TranscriptionViewModel {
         case finalizing
     }
 
-    public enum TranscriptTab: Hashable, Sendable {
-        case transcript
-        case result(id: UUID)
-        case generation(id: UUID)
-        case chat
-    }
-
-    public enum LLMActionState: Equatable {
-        case idle
-        case streaming
-        case complete
-        case error(String)
-    }
-
     public var transcriptions: [Transcription] = []
-    public var currentTranscription: Transcription? {
-        didSet {
-            let transcriptionChanged = oldValue?.id != currentTranscription?.id
-            if transcriptionChanged {
-                selectedTab = .transcript
-            }
-            if transcriptionChanged || currentTranscription == nil {
-                hasConversations = false
-            }
-            refreshPromptResultStatus()
-        }
-    }
+    public var currentTranscription: Transcription?
     public var pendingDeleteTranscription: Transcription?
     public var isTranscribing = false
     public var progress: String = ""
@@ -68,11 +43,6 @@ public final class TranscriptionViewModel {
     public var errorMessage: String?
     public private(set) var transcribingFileName: String = ""
     public var isDragging = false
-    public var hasPromptResultTabs: Bool = false
-
-    // LLM state
-    public var llmAvailable: Bool = false
-    public var selectedTab: TranscriptTab = .transcript
 
     public var onTranscribingChanged: ((Bool) -> Void)?
 
@@ -106,37 +76,10 @@ public final class TranscriptionViewModel {
         return line
     }
 
-    public var hasConversations: Bool = false
-
-    public var showTabs: Bool {
-        llmAvailable
-            || hasPromptResultTabs
-            || hasConversations
-    }
     public private(set) var isConfigured = false
-
-    public func handlePromptResultDeleted(_ deletedID: UUID) {
-        guard case .result(let selectedID) = selectedTab, selectedID == deletedID else { return }
-        selectedTab = .transcript
-    }
-
-    public func handleGenerationCompleted(_ generationID: UUID, promptResultID: UUID) {
-        guard case .generation(let selectedID) = selectedTab, selectedID == generationID else { return }
-        selectedTab = .result(id: promptResultID)
-    }
-
-    public func handleGenerationFailed(_ generationID: UUID, replacingPromptResultID: UUID?) {
-        guard case .generation(let selectedID) = selectedTab, selectedID == generationID else { return }
-        if let replacingPromptResultID {
-            selectedTab = .result(id: replacingPromptResultID)
-        } else {
-            selectedTab = .transcript
-        }
-    }
 
     private var transcriptionService: TranscriptionServiceProtocol?
     private var transcriptionRepo: TranscriptionRepositoryProtocol?
-    private var promptResultRepo: PromptResultRepositoryProtocol?
     private var transcriptionTask: Task<Void, Never>?
     private var activeTranscriptionTaskID: UUID?
     private var activeProgressSpeechEngine: SpeechEngineSelection?
@@ -148,7 +91,6 @@ public final class TranscriptionViewModel {
     private let logger = Logger(subsystem: "com.macparakeet.viewmodels", category: "TranscriptionViewModel")
     private let defaults: UserDefaults
     private let isWhisperModelDownloaded: () -> Bool
-    public var promptResultsViewModel: PromptResultsViewModel?
 
     public init(
         defaults: UserDefaults = .standard,
@@ -164,16 +106,10 @@ public final class TranscriptionViewModel {
 
     public func configure(
         transcriptionService: TranscriptionServiceProtocol,
-        transcriptionRepo: TranscriptionRepositoryProtocol,
-        llmService: LLMServiceProtocol? = nil,
-        promptResultRepo: PromptResultRepositoryProtocol? = nil,
-        promptResultsViewModel: PromptResultsViewModel? = nil
+        transcriptionRepo: TranscriptionRepositoryProtocol
     ) {
         self.transcriptionService = transcriptionService
         self.transcriptionRepo = transcriptionRepo
-        self.llmAvailable = llmService != nil
-        self.promptResultRepo = promptResultRepo
-        self.promptResultsViewModel = promptResultsViewModel
         isConfigured = true
         errorMessage = nil
         loadTranscriptions()
@@ -416,8 +352,7 @@ public final class TranscriptionViewModel {
                 updatedResult.updatedAt = Date()
                 do {
                     try transcriptionRepo?.save(updatedResult)
-                    // Skip auto-run prompts on retranscribe — they would duplicate the existing tabs.
-                    completeSuccessfulTranscription(taskID: taskID, result: updatedResult, runAutoPrompts: false)
+                    completeSuccessfulTranscription(taskID: taskID, result: updatedResult)
                 } catch {
                     logger.error("Failed to save transcription result error=\(error.localizedDescription, privacy: .public)")
                     completeFailedTranscription(taskID: taskID, error: error)
@@ -585,8 +520,7 @@ public final class TranscriptionViewModel {
 
     private func completeSuccessfulTranscription(
         taskID: UUID,
-        result: Transcription,
-        runAutoPrompts: Bool = true
+        result: Transcription
     ) {
         guard activeTranscriptionTaskID == taskID else { return }
         transcriptionTask = nil
@@ -594,15 +528,15 @@ public final class TranscriptionViewModel {
         endTranscription()
 
         if isBatchActive {
-            // Ambient batch: don't present each file (no nav thrash) and don't
-            // auto-run prompts per file. Export-to-folder still honors its own
-            // toggle, and Library refreshes live so results appear as they land.
+            // Ambient batch: don't present each file (no nav thrash).
+            // Export-to-folder still honors its own toggle, and Library
+            // refreshes live so results appear as they land.
             batchCompletedCount += 1
             autoSaveIfEnabled(result)
             loadTranscriptions()
             advanceBatch()
         } else {
-            presentCompletedTranscription(result, autoSave: false, runAutoPrompts: runAutoPrompts)
+            presentCompletedTranscription(result, autoSave: false)
             autoSaveIfEnabled(result)
             emitCompletionSignal(
                 TranscriptionCompletionNotifier.singleContent(
@@ -621,35 +555,19 @@ public final class TranscriptionViewModel {
     }
 
     public func presentCompletedTranscription(_ transcription: Transcription) {
-        presentCompletedTranscription(transcription, autoSave: false, runAutoPrompts: true)
+        presentCompletedTranscription(transcription, autoSave: false)
     }
 
     public func presentCompletedTranscription(_ transcription: Transcription, autoSave: Bool) {
-        presentCompletedTranscription(transcription, autoSave: autoSave, runAutoPrompts: true)
-    }
-
-    public func presentCompletedTranscription(
-        _ transcription: Transcription,
-        autoSave: Bool,
-        runAutoPrompts: Bool
-    ) {
         currentTranscription = transcription
         loadTranscriptions()
         if autoSave {
             autoSaveIfEnabled(transcription)
         }
-        guard runAutoPrompts else { return }
-        let text = transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
-        promptResultsViewModel?.autoGeneratePromptResults(
-            transcript: text,
-            transcriptionId: transcription.id,
-            sourceType: transcription.sourceType
-        )
     }
 
     public func showInputPortal() {
         currentTranscription = nil
-        selectedTab = .transcript
         errorMessage = nil
     }
 
@@ -696,7 +614,6 @@ public final class TranscriptionViewModel {
         progressHeadline = Self.headline(for: .preparing)
         progressSubline = nil
         errorMessage = nil
-        selectedTab = .transcript
     }
 
     private func endTranscription() {
@@ -803,16 +720,6 @@ public final class TranscriptionViewModel {
            let fresh = try? transcriptionRepo?.fetch(id: id) {
             currentTranscription = fresh
         }
-        refreshPromptResultStatus()
-    }
-
-    public func updateConversationStatus(id: UUID, hasConversations: Bool) {
-        guard currentTranscription?.id == id else { return }
-        self.hasConversations = hasConversations
-    }
-
-    public func updateLLMAvailability(_ available: Bool, llmService: LLMServiceProtocol? = nil) {
-        self.llmAvailable = available
     }
 
     // MARK: - Transcript Editing
@@ -911,17 +818,4 @@ public final class TranscriptionViewModel {
         }
     }
 
-    private func refreshPromptResultStatus() {
-        guard let transcriptionID = currentTranscription?.id else {
-            hasPromptResultTabs = false
-            return
-        }
-
-        do {
-            hasPromptResultTabs = try promptResultRepo?.hasPromptResults(transcriptionId: transcriptionID) ?? false
-        } catch {
-            logger.error("Failed to query prompt results error=\(error.localizedDescription, privacy: .public)")
-            hasPromptResultTabs = false
-        }
-    }
 }

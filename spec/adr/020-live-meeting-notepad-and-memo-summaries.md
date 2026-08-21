@@ -1,6 +1,6 @@
 # ADR-020: Live Meeting Notepad + Memo-Steered Summaries
 
-> Status: Partially Implemented (notepad + template plumbing shipped; "Memo-Steered Notes" built-in prompt reverted 2026-05-02)
+> Status: **SUPERSEDED for Splay (2026-08-21)** — Splay removed the in-app LLM: memo-steered summaries and the {{userNotes}} LLM path were deleted; the live notepad itself (non-LLM) remains and notes still persist onto the saved transcription. Splay’s product line: record/dictate → clean transcript; the user analyzes it with their own LLM. Original status: Partially Implemented (notepad + template plumbing shipped; "Memo-Steered Notes" built-in prompt reverted 2026-05-02)
 > Date: 2026-04-25 (proposed) · Amended 2026-04-25 (post-review) · Implemented 2026-04-25 (Phases 1–4) · Amended 2026-05-02 (Notes + Transcript tab badges dropped — all three tabs plain) · Amended 2026-05-02 ("Memo-Steered Notes" built-in prompt reverted)
 > Related: ADR-013 (prompt library + multi-summary), ADR-014 (meeting recording), ADR-017 (calendar auto-start), ADR-018 (live meeting Ask tab), ADR-019 (crash-resilient meeting recording)
 > Naming Note (2026-04-28): The persisted table remains `summaries`, but the current Swift names are `PromptResult`, `PromptResultRepository`, and `PromptResultsViewModel`.

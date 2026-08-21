@@ -21,17 +21,15 @@ public final class MeetingRecordingPanelViewModel {
 
     /// Tab order chosen so the user lands in Notes by default — note-taking is
     /// the primary "active" surface in a live meeting (ADR-020 §1, §2). Transcript
-    /// is the rolling reference, Ask is the on-demand thinking-partner.
+    /// is the rolling reference.
     public enum LivePanelTab: String, Equatable, CaseIterable, Sendable {
         case notes
         case transcript
-        case ask
 
         public var title: String {
             switch self {
             case .notes: return "Notes"
             case .transcript: return "Transcript"
-            case .ask: return "Ask"
             }
         }
     }
@@ -53,9 +51,7 @@ public final class MeetingRecordingPanelViewModel {
     /// Default to `.notes` per ADR-020 §2 — opening the panel should put the
     /// cursor in the notepad, not stare the user down with raw transcript.
     public var selectedTab: LivePanelTab = .notes
-    public let chatViewModel: TranscriptChatViewModel = TranscriptChatViewModel()
     public let notesViewModel: MeetingNotesViewModel = MeetingNotesViewModel()
-    public let quickPromptsViewModel: QuickPromptsViewModel = QuickPromptsViewModel()
     public var onStop: (() -> Void)?
     public var onPauseToggle: (() -> Void)?
     public var onMicrophoneMuteToggle: (() -> Void)?
@@ -64,24 +60,7 @@ public final class MeetingRecordingPanelViewModel {
     private var copiedResetTask: Task<Void, Never>?
     private var previewLineWordCounts: [Int] = []
 
-    public init() {
-        // Mark the chat VM as the live in-meeting Ask surface so
-        // `llm_chat_used` telemetry distinguishes Ask chat from
-        // post-transcription transcript chat. Without this the two sources
-        // collapse into one bucket and Ask adoption is invisible.
-        chatViewModel.markAsMeetingAskSurface()
-
-        // Thread the live notepad into the live Ask chat: the closure is
-        // called by `TranscriptChatViewModel` at chat-send time, so the
-        // freshest keystroke up to the moment the user hits Send is what the
-        // LLM sees alongside the rolling transcript. See ADR-020 (post-revert
-        // amendment) for why this is safe even though we reverted the
-        // memo-steered auto-run prompt — chat is user-initiated, so empty
-        // notes don't produce nonsense output.
-        chatViewModel.bindUserNotesProvider { [weak notesViewModel] in
-            notesViewModel?.notesText
-        }
-    }
+    public init() {}
 
     /// Show "Copied" confirmation and auto-dismiss after 1.5s.
     /// Owns the timer so the View doesn't need @State Task.
@@ -115,20 +94,12 @@ public final class MeetingRecordingPanelViewModel {
             if !lines.isEmpty {
                 liveTranscriptStatus = .live
             }
-            // Keep the live Ask tab fed with the latest transcript without disturbing
-            // chat history. Bracketed timestamps stripped — LLMs do better without them.
-            chatViewModel.updateTranscriptText(chatTranscript)
         }
         self.isTranscriptionLagging = isTranscriptionLagging
     }
 
     public var transcriptText: String {
         previewLines.map { "[\($0.timestamp)] \($0.speakerLabel): \($0.text)" }.joined(separator: "\n")
-    }
-
-    /// Cleaner transcript shape for LLM consumption: speaker label + text, no timestamps.
-    public var chatTranscript: String {
-        previewLines.map { "\($0.speakerLabel): \($0.text)" }.joined(separator: "\n")
     }
 
     public var canCopy: Bool {
@@ -302,7 +273,7 @@ public final class MeetingRecordingPanelViewModel {
 
     // MARK: - Tab badges (ADR-020 §1)
 
-    /// All three tabs render as plain nouns. The badge taxonomy reduces to a
+    /// Both tabs render as plain nouns. The badge taxonomy reduces to a
     /// single rule: surface state the user can't see by switching tabs.
     ///
     /// - **Notes**: word count was decoration. The notes themselves are the
@@ -311,25 +282,12 @@ public final class MeetingRecordingPanelViewModel {
     /// - **Transcript**: recording state is already broadcast by the panel
     ///   header (orb, "Recording", elapsed timer, transcript word count,
     ///   Stop). A tab badge was the Nth instance of the same signal.
-    /// - **Ask**: a message count is decoration. The actionable state is
-    ///   "is an answer forming right now?" — covered by `isAskStreaming` and
-    ///   its breathing dot, which is rendered separately by the view layer
-    ///   (see `MeetingRecordingPanelView.tabLabel`).
     ///
     /// See ADR-020 §1 amendments (2026-05-02 and the Notes follow-on).
     public func badge(for tab: LivePanelTab) -> String? {
         switch tab {
-        case .notes, .transcript, .ask:
+        case .notes, .transcript:
             return nil
         }
-    }
-
-    /// True while the Ask conversation is mid-LLM-response. Drives the
-    /// breathing dot in the Ask tab label so a user reading Notes/Transcript
-    /// can see at a glance that their answer is forming. Strictly bound to
-    /// `chatViewModel.isStreaming` — vanishes the moment streaming ends so
-    /// the dot never decays into a stale notification badge.
-    public var isAskStreaming: Bool {
-        chatViewModel.isStreaming
     }
 }

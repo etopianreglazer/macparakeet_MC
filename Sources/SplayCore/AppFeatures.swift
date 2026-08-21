@@ -11,20 +11,6 @@ public enum AppFeatures {
     /// intact.
     public static let meetingRecordingEnabled: Bool = true
 
-    /// Transforms — productized Phase 2 (ADR-022). When `true`:
-    /// - the Transforms tab appears in the main sidebar
-    /// - `TransformsHotkeyRegistry` installs its event tap on launch
-    /// - the user's bound `.transform` prompts dispatch on hotkey press
-    ///
-    /// When `false`, the tab is hidden and no event tap is installed.
-    /// Data model + repository are migrated either way — built-in
-    /// Transforms exist in the DB so flipping this flag is a no-data
-    /// operation.
-    ///
-    /// Hidden in Splay: the two-surface product is a focused voice recorder, so
-    /// Transforms is flag-off (code kept dormant, trivially re-enabled).
-    public static let transformsEnabled: Bool = false
-
     /// VAD-guided meeting live chunking
     /// (`plans/active/2026-05-meeting-vad-guided-live-chunking.md`). When
     /// `false`, meeting live-preview chunks use the fixed 5s / 1s-overlap

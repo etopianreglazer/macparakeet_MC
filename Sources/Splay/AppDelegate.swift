@@ -45,10 +45,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The card surface (fork two-surface design): one centred modal over a
     /// dimmed scrim, reused for recents / settings / first-run / alerts.
     private let splayCardController = SplayCardController()
-    /// Productized Transforms coordinator (ADR-022). Owns the process-wide
-    /// `TransformsHotkeyRegistry` + dispatch from registered hotkeys to the
-    /// `TransformExecutor` pipeline. Gated on `AppFeatures.transformsEnabled`.
-    private var transformsCoordinator: TransformsCoordinator?
     private var hasPresentedHotkeyUnavailableAlert = false
     private var hasPresentedHotkeyConflictAlert = false
     private var environmentSetupTask: Task<Void, Never>?
@@ -66,22 +62,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let textSnippetsViewModel = TextSnippetsViewModel()
     private let vocabularyBackupViewModel = VocabularyBackupViewModel()
     private let libraryViewModel = TranscriptionLibraryViewModel()
-    private let meetingsLibraryViewModel = TranscriptionLibraryViewModel(scope: .meetings)
-    private let llmSettingsViewModel = LLMSettingsViewModel()
-    private let chatViewModel = TranscriptChatViewModel()
-    private let promptResultsViewModel = PromptResultsViewModel()
-    private let promptsViewModel = PromptsViewModel()
-    private let transformsViewModel = TransformsViewModel()
     /// Long-lived companion for the meeting recording pill + Transcribe-tab tile.
     /// `MeetingRecordingFlowCoordinator` writes state into it; both the floating
     /// pill and the tile bind to the same instance.
     private let meetingPillViewModel = MeetingRecordingPillViewModel()
-    private lazy var meetingsWorkspaceViewModel = MeetingsWorkspaceViewModel(
-        recentMeetingsViewModel: meetingsLibraryViewModel,
-        meetingPillViewModel: meetingPillViewModel,
-        settingsViewModel: settingsViewModel,
-        llmSettingsViewModel: llmSettingsViewModel
-    )
     private let onboardingWindowController = OnboardingWindowController()
 
     // MARK: - Coordinators
@@ -96,12 +80,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         textSnippetsViewModel: textSnippetsViewModel,
         vocabularyBackupViewModel: vocabularyBackupViewModel,
         libraryViewModel: libraryViewModel,
-        meetingsWorkspaceViewModel: meetingsWorkspaceViewModel,
-        llmSettingsViewModel: llmSettingsViewModel,
-        chatViewModel: chatViewModel,
-        promptResultsViewModel: promptResultsViewModel,
-        promptsViewModel: promptsViewModel,
-        transformsViewModel: transformsViewModel,
         meetingPillViewModel: meetingPillViewModel
     )
 
@@ -132,7 +110,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.menuBarCoordinator.refreshHotkeyTitle()
             self?.menuBarCoordinator.refreshMeetingHotkeyShortcut()
             self?.menuBarCoordinator.refreshTranscriptionHotkeyShortcuts()
-            self?.transformsCoordinator?.reloadBindings()
         },
         onOpenSettings: { [weak self] in
             self?.presentSettingsCard()
@@ -155,9 +132,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         settingsViewModel: settingsViewModel,
         libraryViewModel: libraryViewModel,
-        onRecoveredTranscriptionsChanged: { [weak self] in
-            self?.meetingsWorkspaceViewModel.refreshRecentMeetings()
-        },
         onPresentRecoveredTranscription: { [weak self] transcription in
             // Two-surface design: the recovered meeting is saved and appears in
             // the recents card — there is no window to route it into.
@@ -225,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.onboardingCoordinator.show(environment: self.appEnvironment)
         },
-        onOpenSettings: { [weak self] _ in
+        onOpenSettings: { [weak self] in
             self?.presentSettingsCard()
         },
         onHotkeyTriggerChanged: { [weak self] in
@@ -294,7 +268,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictationFlowCoordinator?.hideIdlePill()
         islandController?.hide()
         hotkeyCoordinator?.stopAll()
-        transformsCoordinator?.stop()
         settingsObserverCoordinator.stopObserving()
         environmentSetupTask?.cancel()
         speechPreWarmTask?.cancel()
@@ -410,34 +383,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyCoordinator = runtime.hotkeyCoordinator
         islandController = runtime.islandController
 
-        // Shared resolver for the user's LLM provider — returns the live
-        // service when a provider is configured, nil otherwise. Consumed by
-        // the Transforms coordinator below.
-        let configStore = env.llmConfigStore
-        let llmService = env.llmService
-        let llmServiceProvider: () -> LLMServiceProtocol? = { [weak configStore, llmService] in
-            guard let configStore else { return nil }
-            return (try? configStore.loadConfig()) != nil ? llmService : nil
-        }
-
-        // Productized Transforms coordinator (ADR-022). Reads `.transform`
-        // prompts from the shared `PromptRepository` and dispatches their
-        // bound hotkeys through `TransformsHotkeyRegistry`. No-op when the
-        // feature flag is off.
-        let transforms = TransformsCoordinator(
-            llmServiceProvider: llmServiceProvider,
-            promptRepository: env.promptRepo,
-            historyRepository: env.transformHistoryRepo,
-            reservedHotkeysProvider: { [weak self] in
-                self?.transformReservedHotkeysForTransforms() ?? []
-            },
-            onLLMProviderRequired: { [weak self] in
-                self?.presentSettingsCard()
-            }
-        )
-        transforms.start()
-        transformsCoordinator = transforms
-
         menuBarCoordinator.refreshHotkeyTitle()
         menuBarCoordinator.refreshMeetingHotkeyShortcut()
         menuBarCoordinator.refreshTranscriptionHotkeyShortcuts()
@@ -535,7 +480,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyCoordinator?.refreshAllHotkeys()
         menuBarCoordinator.refreshHotkeyTitle()
         menuBarCoordinator.refreshMeetingHotkeyShortcut()
-        transformsCoordinator?.reloadBindings()
     }
 
     /// Any auxiliary hotkey change refreshes all three auxiliary hotkeys so a
@@ -558,27 +502,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyCoordinator?.refreshFileTranscriptionHotkey()
         menuBarCoordinator.refreshMeetingHotkeyShortcut()
         menuBarCoordinator.refreshTranscriptionHotkeyShortcuts()
-        transformsCoordinator?.reloadBindings()
-    }
-
-    private func transformReservedHotkeysForTransforms() -> [TransformShortcutReservedHotkey] {
-        var reserved: [TransformShortcutReservedHotkey] = [
-            TransformShortcutReservedHotkey(
-                name: "hands-free dictation",
-                trigger: settingsViewModel.hotkeyTrigger,
-                conflictMode: .bareModifierDictation
-            ),
-            TransformShortcutReservedHotkey(
-                name: "push to talk",
-                trigger: settingsViewModel.pushToTalkHotkeyTrigger,
-                conflictMode: .bareModifierDictation
-            ),
-            TransformShortcutReservedHotkey(name: "file transcription", trigger: settingsViewModel.fileTranscriptionHotkeyTrigger),
-        ]
-        if AppFeatures.meetingRecordingEnabled {
-            reserved.append(TransformShortcutReservedHotkey(name: "meeting recording", trigger: settingsViewModel.meetingHotkeyTrigger))
-        }
-        return reserved.filter { !$0.trigger.isDisabled }
     }
 
     private func triggerFileTranscriptionFromHotkey() {

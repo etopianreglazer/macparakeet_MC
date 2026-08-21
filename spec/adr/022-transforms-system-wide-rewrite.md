@@ -1,6 +1,6 @@
 # ADR-022: Transforms — System-Wide LLM Rewrites on Selected Text
 
-> Status: **Accepted / Implemented**
+> Status: **SUPERSEDED for Splay (2026-08-21)** — Splay removed the in-app LLM: Transforms (coordinator, hotkey registry, executor, views) was deleted entirely (transform history table remains as dormant schema). Splay’s product line: record/dictate → clean transcript; the user analyzes it with their own LLM. Original status: **Accepted / Implemented**
 > Date: 2026-05-12
 > Implementation: Phase 2 merged to `main` on 2026-05-13; `AppFeatures.transformsEnabled` is now `true`.
 > Related: ADR-002 (local-first processing, BYO-key amendment), ADR-009 (custom hotkey support), ADR-011 (LLM via cloud + optional local providers), ADR-012 (telemetry), ADR-013 (Prompt Library + multi-summary)

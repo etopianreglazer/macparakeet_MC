@@ -591,11 +591,9 @@ public final class DatabaseManager: Sendable {
         }
 
         // v0.10 — Live meeting Ask tab quick prompts. User-customizable Ask
-        // shortcuts with an explicit `isPinned` presentation flag. Built-ins
-        // are seeded by the in-app reconciler
-        // (`QuickPromptRepository.seedIfNeeded()`), which is the single source
-        // of truth for canonical IDs and runs on both first launch and every
-        // subsequent launch.
+        // shortcuts with an explicit `isPinned` presentation flag. (The Ask
+        // tab and its quick-prompt reconciler were later removed with the
+        // in-app LLM; the table stays as dormant schema.)
         migrator.registerMigration("v0.10-quick-prompts") { db in
             try db.create(table: "quick_prompts") { t in
                 t.column("id", .text).primaryKey()
@@ -920,8 +918,9 @@ public final class DatabaseManager: Sendable {
         }
 
         try migrator.migrate(dbQueue)
-        try reconcileBuiltInPrompts()
-        try reconcileBuiltInQuickPrompts()
+        // The in-app LLM was removed from Splay: built-in prompt / quick-prompt
+        // reconciliation no longer runs. The prompt tables stay in the schema
+        // (dormant, no data loss) but new code neither seeds nor reads them.
     }
 
     private static func withMigrationLock<T>(forDatabasePath path: String, _ body: () throws -> T) throws -> T {
@@ -940,127 +939,4 @@ public final class DatabaseManager: Sendable {
         return try body()
     }
 
-    private func reconcileBuiltInQuickPrompts() throws {
-        let repo = QuickPromptRepository(dbQueue: dbQueue)
-        try repo.seedIfNeeded()
-    }
-
-    private func reconcileBuiltInPrompts() throws {
-        let builtInPrompts = Prompt.builtInPrompts(now: Date())
-        let canonicalIDs = builtInPrompts.map { $0.id }
-
-        try dbQueue.write { db in
-            // Auto-run insertion guard (ADR-020 §5): a brand-new built-in prompt
-            // whose canonical isAutoRun is `true` is only inserted with auto-run
-            // enabled if the user already has at least one auto-run prompt today.
-            // This preserves ADR-013's "zero auto-run is a valid state" invariant
-            // for users who have explicitly disabled every auto-run prompt.
-            let userHasAnyAutoRunPrompt = try Bool.fetchOne(
-                db,
-                sql: "SELECT EXISTS(SELECT 1 FROM prompts WHERE isAutoRun = 1)"
-            ) ?? false
-
-            for prompt in builtInPrompts {
-                if let existing = try Prompt.fetchOne(db, key: prompt.id) {
-                    if prompt.category == .transform {
-                        try db.execute(
-                            sql: """
-                                UPDATE prompts
-                                SET category = ?, isBuiltIn = 1, isVisible = 1, isAutoRun = 0, sortOrder = ?
-                                WHERE id = ?
-                                """,
-                            arguments: [
-                                prompt.category.rawValue,
-                                prompt.sortOrder,
-                                existing.id,
-                            ]
-                        )
-                    } else {
-                        try db.execute(
-                            sql: """
-                                UPDATE prompts
-                                SET name = ?, content = ?, category = ?, isBuiltIn = 1, sortOrder = ?, updatedAt = ?
-                                WHERE id = ?
-                                """,
-                            arguments: [
-                                prompt.name,
-                                prompt.content,
-                                prompt.category.rawValue,
-                                prompt.sortOrder,
-                                prompt.updatedAt,
-                                existing.id,
-                            ]
-                        )
-                    }
-                    continue
-                }
-
-                if let legacyPromptID = try String.fetchOne(
-                    db,
-                    sql: """
-                        SELECT id
-                        FROM prompts
-                        WHERE name = ? COLLATE NOCASE
-                          AND isBuiltIn = 1
-                        LIMIT 1
-                        """,
-                    arguments: [prompt.name]
-                ) {
-                    try db.execute(
-                        sql: """
-                            UPDATE prompts
-                            SET id = ?, name = ?, content = ?, category = ?, isBuiltIn = 1, sortOrder = ?, updatedAt = ?
-                            WHERE id = ?
-                            """,
-                        arguments: [
-                            prompt.id,
-                            prompt.name,
-                            prompt.content,
-                            prompt.category.rawValue,
-                            prompt.sortOrder,
-                            prompt.updatedAt,
-                            legacyPromptID,
-                        ]
-                    )
-                    continue
-                }
-
-                // A custom prompt already owns this name. Preserve the user's prompt and
-                // skip re-inserting the built-in because names are globally unique today.
-                let hasCustomPromptWithSameName = try Bool.fetchOne(
-                    db,
-                    sql: """
-                        SELECT EXISTS(
-                            SELECT 1
-                            FROM prompts
-                            WHERE name = ? COLLATE NOCASE
-                              AND isBuiltIn = 0
-                        )
-                        """,
-                    arguments: [prompt.name]
-                ) ?? false
-                if hasCustomPromptWithSameName {
-                    continue
-                }
-
-                // Apply the auto-run insertion guard (ADR-020 §5): if the user has
-                // explicitly disabled every auto-run prompt, do not silently
-                // re-introduce one via a new built-in.
-                var promptToInsert = prompt
-                if promptToInsert.isAutoRun && !userHasAnyAutoRunPrompt {
-                    promptToInsert.isAutoRun = false
-                }
-                try promptToInsert.insert(db)
-            }
-
-            // Delete any built-in prompts that are no longer in the canonical list
-            try db.execute(
-                sql: """
-                    DELETE FROM prompts
-                    WHERE isBuiltIn = 1 AND id NOT IN (\(canonicalIDs.map { _ in "?" }.joined(separator: ",")))
-                    """,
-                arguments: StatementArguments(canonicalIDs)
-            )
-        }
-    }
 }

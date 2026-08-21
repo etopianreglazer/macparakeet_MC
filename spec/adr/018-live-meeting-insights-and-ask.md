@@ -1,6 +1,6 @@
 # ADR-018: Live Meeting Ask Tab
 
-> Status: IMPLEMENTED (Ask half — Insights dropped per 2026-04-24 amendment; quick-prompt model unified per 2026-05-03 amendment; pin cap removed per 2026-05-03 amendment)
+> Status: **SUPERSEDED for Splay (2026-08-21)** — Splay removed the in-app LLM: the live Ask tab and its chat pipeline were deleted; the meeting panel keeps Notes + Transcript only. Splay’s product line: record/dictate → clean transcript; the user analyzes it with their own LLM. Original status: IMPLEMENTED (Ask half — Insights dropped per 2026-04-24 amendment; quick-prompt model unified per 2026-05-03 amendment; pin cap removed per 2026-05-03 amendment)
 > Date: 2026-04-19 (proposed) · Amended 2026-04-24, 2026-05-03, 2026-05-03 · Implemented 2026-04-24
 > Related: ADR-011 (LLM providers), ADR-013 (prompt library + multi-summary), ADR-014 (meeting recording), ADR-016 (centralized STT runtime), ADR-017 (calendar auto-start)
 
