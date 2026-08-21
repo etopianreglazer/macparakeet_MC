@@ -24,7 +24,6 @@ final class AppEnvironmentConfigurer {
     struct Callbacks {
         let onMenuBarIconUpdate: () -> Void
         let onPresentEntitlementsAlert: (Error) -> Void
-        let onOpenMainWindow: () -> Void
         /// The island mark click and the menu-bar "Open Splay" item present the
         /// menu card (the second surface), opened to its recents tab.
         let onOpenRecentCard: () -> Void
@@ -37,7 +36,6 @@ final class AppEnvironmentConfigurer {
         let onHotkeyUnavailable: () -> Void
         let onHotkeyConflict: (HotkeyTrigger, [HotkeyTrigger]) -> Void
         let onRecoverPendingMeetingRecordings: () -> Void
-        let isHotkeyRecordingActive: () -> Bool
         /// True while the onboarding window is showing. Used to gate the real
         /// dictation flow so a hotkey press during onboarding (e.g. the "Learn
         /// the Hotkey" rehearsal, or a returning user whose taps are armed)
@@ -58,7 +56,6 @@ final class AppEnvironmentConfigurer {
     private let promptResultsViewModel: PromptResultsViewModel
     private let promptsViewModel: PromptsViewModel
     private let transformsViewModel: TransformsViewModel
-    private let mainWindowState: MainWindowState
     private let meetingPillViewModel: MeetingRecordingPillViewModel
     private weak var liveMeetingCoordinator: MeetingRecordingFlowCoordinator?
     /// Created by AppDelegate before slow bootstrap so the idle cue is immediate.
@@ -78,7 +75,6 @@ final class AppEnvironmentConfigurer {
         promptResultsViewModel: PromptResultsViewModel,
         promptsViewModel: PromptsViewModel,
         transformsViewModel: TransformsViewModel,
-        mainWindowState: MainWindowState,
         meetingPillViewModel: MeetingRecordingPillViewModel
     ) {
         self.transcriptionViewModel = transcriptionViewModel
@@ -94,7 +90,6 @@ final class AppEnvironmentConfigurer {
         self.promptResultsViewModel = promptResultsViewModel
         self.promptsViewModel = promptsViewModel
         self.transformsViewModel = transformsViewModel
-        self.mainWindowState = mainWindowState
         self.meetingPillViewModel = meetingPillViewModel
     }
 
@@ -304,11 +299,11 @@ final class AppEnvironmentConfigurer {
             onMenuBarIconUpdate: { _ in callbacks.onMenuBarIconUpdate() },
             onTranscriptionReady: { [weak self] transcription in
                 guard let self else { return }
+                // Two-surface design: the finished meeting is saved and surfaces
+                // in the recents card — no window is opened to display it.
                 self.transcriptionViewModel.presentCompletedTranscription(transcription, autoSave: true)
                 self.libraryViewModel.loadTranscriptions()
                 self.meetingsWorkspaceViewModel.refreshRecentMeetings()
-                self.mainWindowState.navigateToTranscription(from: .library)
-                callbacks.onOpenMainWindow()
             },
             onRecordingBegan: {
                 coordinatorRefs.dictation?.hideIdlePill()
@@ -359,9 +354,6 @@ final class AppEnvironmentConfigurer {
             }
         )
 
-        if callbacks.isHotkeyRecordingActive() {
-            hotkeyCoordinator.suspend()
-        }
         hotkeyCoordinator.setupAllHotkeys()
         // No-op while `islandReplacesDictationPill` is on; the island owns the
         // idle surface in the fork.

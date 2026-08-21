@@ -14,22 +14,16 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     private let fileTranscriptionHotkeyTriggerProvider: () -> HotkeyTrigger
     private let meetingRecordingActiveProvider: () -> Bool
     private let dictationCaptureActiveProvider: () -> Bool
-    private let onOpenMainWindow: () -> Void
     private let onOpenSettings: () -> Void
     /// Menu-bar "Open Splay" presents the recents card (the second surface).
     private let onOpenRecent: () -> Void
-    private let onNavigate: (SidebarItem) -> Void
-    private let onNewTranscription: () -> Void
     private let onStartDictation: () -> Void
     private let onToggleMeetingRecording: () -> Void
-    private let onCreateTransform: () -> Void
     private let onQuit: () -> Void
     private let onShowAboutPanel: () -> Void
 
     private var statusItem: NSStatusItem?
-    private var newTranscriptionMenuItem: NSMenuItem?
     private var startDictationMenuItem: NSMenuItem?
-    private var createTransformMenuItem: NSMenuItem?
     private var pasteLastMenuItem: NSMenuItem?
     private var recentDictationsMenuItem: NSMenuItem?
     private var pasteLastTransformMenuItem: NSMenuItem?
@@ -47,14 +41,10 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         fileTranscriptionHotkeyTriggerProvider: @escaping () -> HotkeyTrigger,
         meetingRecordingActiveProvider: @escaping () -> Bool,
         dictationCaptureActiveProvider: @escaping () -> Bool,
-        onOpenMainWindow: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
         onOpenRecent: @escaping () -> Void,
-        onNavigate: @escaping (SidebarItem) -> Void,
-        onNewTranscription: @escaping () -> Void,
         onStartDictation: @escaping () -> Void,
         onToggleMeetingRecording: @escaping () -> Void,
-        onCreateTransform: @escaping () -> Void,
         onQuit: @escaping () -> Void,
         onShowAboutPanel: @escaping () -> Void
     ) {
@@ -66,14 +56,10 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         self.fileTranscriptionHotkeyTriggerProvider = fileTranscriptionHotkeyTriggerProvider
         self.meetingRecordingActiveProvider = meetingRecordingActiveProvider
         self.dictationCaptureActiveProvider = dictationCaptureActiveProvider
-        self.onOpenMainWindow = onOpenMainWindow
         self.onOpenSettings = onOpenSettings
         self.onOpenRecent = onOpenRecent
-        self.onNavigate = onNavigate
-        self.onNewTranscription = onNewTranscription
         self.onStartDictation = onStartDictation
         self.onToggleMeetingRecording = onToggleMeetingRecording
-        self.onCreateTransform = onCreateTransform
         self.onQuit = onQuit
         self.onShowAboutPanel = onShowAboutPanel
     }
@@ -171,13 +157,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         let captureMenu = NSMenu(title: "Capture")
         captureMenu.autoenablesItems = false
         captureMenu.delegate = self
-        let newTranscriptionItem = makeMenuItem(
-            title: "New Transcription",
-            action: #selector(newTranscription),
-            key: "n"
-        )
-        captureMenu.addItem(newTranscriptionItem)
-        newTranscriptionMenuItem = newTranscriptionItem
         let startDictationItem = makeMenuItem(
             title: "Start Dictation",
             action: #selector(startDictationFromMenu),
@@ -204,16 +183,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
             captureMenu.addItem(recordMeetingItem)
             recordMeetingMenuItems.append(recordMeetingItem)
         }
-        if AppFeatures.transformsEnabled {
-            captureMenu.addItem(NSMenuItem.separator())
-            let createTransformItem = makeMenuItem(
-                title: "New Transform",
-                action: #selector(createTransformFromMenu),
-                key: ""
-            )
-            captureMenu.addItem(createTransformItem)
-            createTransformMenuItem = createTransformItem
-        }
         captureMenuItem.submenu = captureMenu
         mainMenu.addItem(captureMenuItem)
 
@@ -228,23 +197,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
         editMenuItem.submenu = editMenu
         mainMenu.addItem(editMenuItem)
-
-        let goMenuItem = NSMenuItem()
-        let goMenu = NSMenu(title: "Go")
-        goMenu.addItem(makeMenuItem(title: "Transcribe", action: #selector(showTranscribe), key: ""))
-        goMenu.addItem(makeMenuItem(title: "Library", action: #selector(showLibrary), key: ""))
-        goMenu.addItem(makeMenuItem(title: "Dictations", action: #selector(showDictations), key: ""))
-        if AppFeatures.meetingRecordingEnabled {
-            goMenu.addItem(makeMenuItem(title: "Meetings", action: #selector(showMeetings), key: ""))
-        }
-        goMenu.addItem(NSMenuItem.separator())
-        goMenu.addItem(makeMenuItem(title: "Vocabulary", action: #selector(showVocabulary), key: ""))
-        if AppFeatures.transformsEnabled {
-            goMenu.addItem(makeMenuItem(title: "Transforms", action: #selector(showTransforms), key: ""))
-        }
-        goMenu.addItem(makeMenuItem(title: "Settings...", action: #selector(showSettingsWindow), key: ""))
-        goMenuItem.submenu = goMenu
-        mainMenu.addItem(goMenuItem)
 
         let windowMenuItem = NSMenuItem()
         let windowMenu = NSMenu(title: "Window")
@@ -264,8 +216,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
             action: #selector(NSWindow.performZoom(_:)),
             keyEquivalent: ""
         ))
-        windowMenu.addItem(NSMenuItem.separator())
-        windowMenu.addItem(makeMenuItem(title: "Show \(appName)", action: #selector(openMainWindow), key: ""))
         windowMenuItem.submenu = windowMenu
         mainMenu.addItem(windowMenuItem)
         NSApp.windowsMenu = windowMenu
@@ -445,18 +395,9 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         onShowAboutPanel()
     }
 
-    @objc private func openMainWindow() {
-        onOpenMainWindow()
-    }
-
     /// Menu-bar "Open Splay" → the recents card.
     @objc private func openRecentCard() {
         onOpenRecent()
-    }
-
-    @objc private func newTranscription() {
-        onNewTranscription()
-        onOpenMainWindow()
     }
 
     // Named to avoid matching the macOS 14+ `openSettings:` system action,
@@ -465,37 +406,8 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         onOpenSettings()
     }
 
-    @objc private func showTranscribe() {
-        navigate(to: .transcribe)
-    }
-
-    @objc private func showMeetings() {
-        navigate(to: .meetings)
-    }
-
-    @objc private func showLibrary() {
-        navigate(to: .library)
-    }
-
-    @objc private func showDictations() {
-        navigate(to: .dictations)
-    }
-
-    @objc private func showVocabulary() {
-        navigate(to: .vocabulary)
-    }
-
-    @objc private func showTransforms() {
-        navigate(to: .transforms)
-    }
-
     @objc private func startDictationFromMenu() {
         onStartDictation()
-    }
-
-    @objc private func createTransformFromMenu() {
-        onCreateTransform()
-        onOpenMainWindow()
     }
 
     @objc private func openHelp() {
@@ -508,11 +420,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
     @objc private func quitApp() {
         onQuit()
-    }
-
-    private func navigate(to item: SidebarItem) {
-        onNavigate(item)
-        onOpenMainWindow()
     }
 
     private func openExternalURL(_ raw: String) {
@@ -574,7 +481,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         }
 
         if panel.runModal() == .OK, !panel.urls.isEmpty {
-            onOpenMainWindow()
             transcriptionViewModel.transcribeFiles(urls: panel.urls)
             SoundManager.shared.play(.fileDropped)
         }
@@ -586,9 +492,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         let environmentReady = environmentProvider() != nil
-        newTranscriptionMenuItem?.isEnabled = environmentReady
         startDictationMenuItem?.isEnabled = environmentReady && !dictationCaptureActiveProvider()
-        createTransformMenuItem?.isEnabled = environmentReady
         transcribeFileMenuItems.forEach { $0.isEnabled = environmentReady }
         recordMeetingMenuItems.forEach {
             $0.isEnabled = environmentReady
@@ -617,7 +521,6 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     }
 
     private func handleDroppedFiles(_ urls: [URL]) {
-        onOpenMainWindow()
         // Route through the guarded batch entry point: it expands folders,
         // chooses single vs. batch, and no-ops while a transcription/batch is
         // already running (so an icon drop can't corrupt an active batch).

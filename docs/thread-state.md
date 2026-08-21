@@ -5,7 +5,98 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-19 **thread 8 — THE BIG CLEAN-UP: mostly DONE.** 10 cleanup commits
+> **Last updated:** 2026-08-19 **thread 9 — MAIN-WINDOW RETIREMENT: DONE (uncommitted). ⭐ NEXT THREAD =
+> REMOVE IN-APP LLM (owner decided; scope + plan in the ⭐⭐ block below).** The one
+> high-risk piece from thread 8's WHAT'S-LEFT #1 is cut. Key insight that made it low *behavioral* risk:
+> the main window was **already unreachable** — `AppWindowCoordinator.openMainWindow()` had a
+> `guard !AppFeatures.islandReplacesDictationPill else { return }`, so every one of the ~13 call sites was
+> already a **no-op** at runtime. So this was a dead-code + dead-menu removal, not a live-surface change.
+> **What landed:** (1) re-routed the call sites — onboarding's "Open Splay" now just closes (removed
+> `onOpenMainApp` through OnboardingFlowView→WindowController→Coordinator); every "Open Settings" (settings
+> observer, transforms `onLLMProviderRequired`, the 3 hotkey/entitlement `NSAlert`s) → `presentSettingsCard()`;
+> recovered + finished meetings save (`presentCompletedTranscription(autoSave:true)`) and surface in the
+> **recents card** instead of a window (dropped the paired `navigateToTranscription`/`openMainWindow`);
+> `applicationShouldHandleReopen` → `presentRecentCard()`. (2) **Menus rebuilt** in `MenuBarCoordinator`:
+> deleted the whole **Go** menu, `Window ▸ Show Splay`, `Capture ▸ New Transcription`, `Capture ▸ New
+> Transform`, and all their selectors/closures (`onOpenMainWindow`, `onNavigate`, `onNewTranscription`,
+> `onCreateTransform`, `navigate(to:)`, `show*`, `SidebarItem` wiring); stripped the `onOpenMainWindow()`
+> tails from `transcribeFileFlow`/`handleDroppedFiles`. (3) **`AppWindowCoordinator` slimmed** from a
+> 17-view-model window factory to just `applyActivationPolicyFromSettings()` (accessory/regular) + the Dock
+> menu (Open→recents card, Settings→settings card, Quit); deleted the Slice-4 overlay path with it. (4)
+> **Deleted files:** `MainWindowView.swift`, `SettingsView.swift`, `TranscribeView.swift`,
+> `MainWindowState.swift`, `IslandOverlayController.swift`, and 3 now-subjectless tests
+> (`MainWindowStateTests`, `SettingsHotkeyConflictMessageTests`, `SettingsDictationHotkeyDisplayTests` —
+> the latter two only tested `SettingsView`'s hotkey-picker helper enums, which the card has no equivalent
+> of). Relocated the still-live `extension Notification.Name { transformsBindingsChanged /
+> transformHistoryChanged }` out of the deleted `MainWindowState.swift` into `TransformsCoordinator.swift`.
+> **★ THE LAST UPSTREAM LINK IS GONE:** `grep -rn "macparakeet\.com\|moona3k" --include=*.swift Sources/`
+> is now **0** (was 1 — it lived in the deleted `SettingsView.swift:2407`). **Validation:** `swift build`
+> green; full suite **2548 XCTest + 16 swift-testing, 6 failures = the known environmental fork-debt only**
+ (4× `AppPaths`/`SettingsViewModel` pre-`-MC`-namespace asserts + AX-gated `AppHotkeyCoordinator`), **zero
+> new**; the old `MainWindowState` known-failure is gone with its test. **Uncommitted, not pushed.**
+> **Agentic Vet run — 7 findings, all dead-wiring/naming/doc (no correctness bugs); 6 fixed this thread:**
+> (a) removed the now-always-false `isHotkeyRecorderActive` flag + its `isHotkeyRecordingActive` callback +
+> the startup suspend gate + the now-callerless `TransformsCoordinator.suspendHotkeys/resumeHotkeys`
+> (the card has no hotkey recorder, so this whole suspend-taps-while-rebinding path was dead); (b) dropped
+> the always-false `originatesFromWindow:` param from `toggleMeetingRecording` and deleted the callerless
+> `startMeetingRecordingFromWorkspace()`; (c) **renamed `AppWindowCoordinator` → `AppActivationCoordinator`**
+> (file + class + the `windowCoordinator`→`activationCoordinator` var) — it coordinates no window now;
+> (d) fixed the relocated `.transformsBindingsChanged`/`.transformHistoryChanged` doc comments + the
+> `SettingsSearchIndex` maintenance note that pointed at the deleted `SettingsView.swift`. Build + suite
+> re-green after the cleanup.
+> **Vet finding #2 — RESOLVED into an owner decision (see ⭐ below):** the cut surfaced that there is now
+> **no reachable LLM/AI-provider config surface** in Splay (`LLMSettingsView(` is instantiated nowhere — it
+> lived only in the deleted `SettingsView`; the settings card has no AI section; already unreachable pre-cut,
+> the cut just made it explicit). Owner's call: **Splay does not need an LLM** — so the answer is *remove*, not
+> *add a setup section*. That expands into the next thread's task.
+>
+> ### ⭐⭐ NEXT THREAD = REMOVE IN-APP LLM (owner decision, this thread)
+> **Product line (owner, verbatim intent):** Splay's job is **record / dictate → clean transcript**; the user
+> then analyzes that with **their own** LLM. Splay must **not** run its own LLM pass on the transcript — "why
+> parse something twice and play chinese whispers." So: **strip all in-app LLM from Splay.** This is a real,
+> multi-subsystem cut — comparable in size to the main-window retirement — so **scope + confirm the DB call
+> before deleting** (same discipline as the window). **NOT started.**
+>
+> **The good news — most LLM *UI* is already dead** (0 instantiations, deleted with the main window; the
+> file-delete step is mostly a sweep): `TranscriptResultView`, `TranscriptChatView`, `PromptsView`,
+> `PromptResultsView`, `LLMSettingsView`, `TransformsView`.
+>
+> **Still LIVE — the two things whose removal actually changes behavior:**
+> 1. **Meeting Ask + memo-steered summaries.** `MeetingRecordingFlowCoordinator.swift:439` shows
+>    `MeetingRecordingPanelController` (Notes / Transcript / **Ask**) during recording; Ask + summaries call the
+>    LLM (ADR-018/020). **Remove the Ask tab + summary generation; KEEP Notes + live Transcript** (both
+>    non-LLM) — that leaves exactly the record→transcript workflow.
+> 2. **Dictation "AI clean" mode.** `TranscriptionService` (`shouldUseAIFormatter`/`aiFormatterPromptTemplate`/
+>    `processingMode`, default off/`.raw`) runs `AIFormatter` (`Sources/SplayCore/TextProcessing/AIFormatter.swift`)
+>    as an opt-in LLM cleanup on dictated text. **Remove it → dictation is always the raw/deterministic pipeline
+>    (ADR-004).** Wired via `DictationFlowCoordinator` + `AppEnvironment`.
+>
+> **Machinery to sweep after the two above:** `LLMService` (`Sources/SplayCore/Services/LLM/`),
+> `LLMSettingsViewModel` + `LLMSettingsDraft`, the provider config store (`llmConfigStore`/`llmService` — ~38+10
+> refs), `AIFormatter`, and the now-orphaned prompt/quick-prompt/chat view models + repos. Plus the vestigial
+> `SettingsTab` / `SettingsRootViewModel` / `SettingsSearchIndex` / `SettingsTabBar` / `SettingsSearchResultsList`
+> and the Ask pane's "Set up AI" deep-link (`LiveAskPaneView.swift:290` posts `SettingsTab.ai`; producer side is
+> live + test-covered by `AppSettingsObserverCoordinatorTests` — update/delete that test with it).
+>
+> **Owner decisions captured (this thread):** (1) meeting Ask + summaries → **REMOVE** (panel keeps Notes +
+> Transcript). (2) dictation AI-clean → **REMOVE** (always raw). (3) chat/prompt/quick-prompt **DB tables** →
+> **recommendation: leave DORMANT** (remove code + UI, no migration, no data loss — same pattern as the kept
+> YouTube metadata columns); drop-with-migration only if the owner wants a clean schema — **CONFIRM this one at
+> kickoff** (it's the only open sub-decision). ⚠️ Licensing/entitlement plumbing stays (CLAUDE.md rule) —
+> LLM removal is orthogonal to it.
+> **ADRs to update / mark superseded-for-Splay after the cut:** 011 (LLM providers), 013 (prompt library /
+> multi-summary), 018 (live Ask), 020 (memo summaries), 022 (Transforms — already hidden). Note AI-clean removal
+> in the dictation/text-processing story too.
+> **Fold in the dead-view sweep:** the LLM cut and the orphaned-sub-view sweep (Dictations, Vocabulary, the full
+> Library grid, Meetings browse, History panels, the Settings sub-panels + the search-index trio above) overlap
+> heavily — do them together.
+>
+> **State at handoff:** this thread's work (main-window retirement + Vet cleanup) is **UNCOMMITTED, not pushed**;
+> build + full suite green (6 known-environmental failures only). LLM removal **not started**. `swift test`
+> baseline is now **2548 XCTest + 16 swift-testing / 6 failures** (was 3166/8 — dropped because deleted tests +
+> the retired MainWindowState failure).
+>
+> **Last updated (prior):** 2026-08-19 **thread 8 — THE BIG CLEAN-UP: mostly DONE.** 10 cleanup commits
 > landed (all build + full-suite green = the known-7 environmental failures only; **40 commits ahead
 > of `origin/main`, still NOT pushed**). Removed, each its own commit: upstream junk assets + About
 > reword; repointed the 4 surviving identity links → `github.com/etopianreglazer/splay`; **dropped the
@@ -24,12 +115,9 @@
 > to **1** — only `SettingsView.swift:2407` (telemetry-docs link), which dies with the main-window Settings.
 >
 > ### ⭐ WHAT'S LEFT (start here)
-> 1. **⏸️ Main-window retirement — the one high-risk piece, NOT started (awaiting owner go).** Re-route
->    the 10+ `AppWindowCoordinator.openMainWindow()/openMainWindowToSettings(tab:)` call sites to cards
->    or delete; rebuild the Go/Capture/Window menus for the two surfaces; delete the dead Slice-4 overlay
->    path (`IslandOverlayController`, `openSettingsOverlay`, `openLibraryOverlay`). Retiring the
->    main-window Settings also removes the last upstream link (`SettingsView.swift:2407`). Keep meeting
->    recording (`meetingRecordingEnabled`) + `islandReplacesDictationPill` ON — the island *is* the recorder.
+> 1. **✅ DONE (thread 9) — Main-window retirement.** See the thread-9 block at the very top for the full
+>    scope. The last upstream link went with the deleted `SettingsView.swift`. What now remains is the
+>    optional **dead-view sweep** of the orphaned sub-views SwiftPM still compiles.
 > 2. **`CLAUDE.md` / `AGENTS.md` rewrite** for Splay (owner chose "rewrite slim") — both still describe
 >    MacParakeet (3 modes, Transforms, calendar, the CLI, the 9-item nav). Now also reference many
 >    now-deleted `spec/`, `plans/`, `docs/` paths.

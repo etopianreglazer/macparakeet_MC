@@ -67,11 +67,11 @@ public struct SettingsSearchEntry: Identifiable, Hashable, Sendable {
 /// also the result ordering — there's no relevance score yet (substring
 /// matching with 20 entries doesn't need one).
 ///
-/// **Maintenance:** when a Settings card is added, renamed, or moved
-/// between tabs, update both the entries here and the `cardAnchor` on
-/// the corresponding view's `.id(...)` modifier in `SettingsView.swift`.
-/// Anchor drift is currently caught by manual review — the index and
-/// the view are coupled by string convention, not by a compiler check.
+/// **Status:** currently unused. Its only consumer was the main-window
+/// `SettingsView`, retired with the main window in the two-surface cut; this
+/// index (and the `SettingsTabBar` / `SettingsSearchResultsList` it feeds) is
+/// slated for the dead-view sweep. If a searchable Settings surface returns,
+/// keep these entries in sync with that view's `cardAnchor` `.id(...)` values.
 ///
 /// **Feature flags:** entries pointing at meeting-recording surfaces
 /// are filtered out when `AppFeatures.meetingRecordingEnabled` is

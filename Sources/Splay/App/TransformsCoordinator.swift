@@ -3,6 +3,18 @@ import Foundation
 import SplayCore
 import OSLog
 
+// Transforms is currently dormant (`AppFeatures.transformsEnabled == false`) and
+// its editor/tab UI was retired with the main window, so nothing posts these at
+// present. They are kept as the reload contract for if Transforms is resurfaced.
+extension Notification.Name {
+    /// A Transforms save/delete/reset should post this so `TransformsCoordinator`
+    /// reloads bindings into the hotkey registry.
+    static let transformsBindingsChanged = Notification.Name("com.macparakeet.transforms.bindingsChanged")
+    /// A successful Transform saved to local history should post this so any
+    /// visible Transforms history surface can refresh.
+    static let transformHistoryChanged = Notification.Name("com.macparakeet.transforms.historyChanged")
+}
+
 /// Wires the productized Transforms feature to the app surface (ADR-022):
 ///
 /// - reads `.transform` prompts from `PromptRepository`
@@ -83,7 +95,8 @@ final class TransformsCoordinator {
         if registry.start() {
             self.registry = registry
             reloadBindings()
-            // Save/delete/reset on the Transforms tab posts this notification.
+            // Reloads bindings when `.transformsBindingsChanged` is posted (no
+            // poster exists while Transforms is dormant — see the name's doc).
             bindingsChangedObserver = NotificationCenter.default.addObserver(
                 forName: .transformsBindingsChanged,
                 object: nil,
@@ -113,20 +126,6 @@ final class TransformsCoordinator {
         }
     }
 
-    func suspendHotkeys() {
-        registry?.stop()
-    }
-
-    func resumeHotkeys() {
-        guard AppFeatures.transformsEnabled else { return }
-        if let registry {
-            if registry.start() {
-                reloadBindings()
-            }
-        } else {
-            start()
-        }
-    }
 
     /// Re-read `.transform` prompts from the repository and rebuild the
     /// registry's dispatch table. Call after any save/delete/import.

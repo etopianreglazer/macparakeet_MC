@@ -5,7 +5,6 @@ import SplayViewModels
 struct OnboardingFlowView: View {
     @Bindable var viewModel: OnboardingViewModel
     let onFinish: () -> Void
-    let onOpenMainApp: () -> Void
     let onOpenSettings: () -> Void
     /// Arms/disarms the no-STT hotkey rehearsal while the "Learn the Hotkey"
     /// step is on screen. Defaults to no-ops so previews/tests can omit them.
@@ -302,7 +301,6 @@ struct OnboardingFlowView: View {
                     accentButton("Open Splay", icon: "arrow.right", large: true, disabled: false, isDefault: true) {
                         _ = viewModel.markOnboardingCompleted()
                         onFinish()
-                        onOpenMainApp()
                     }
                 } else {
                     let disabled = continueButtonDisabled

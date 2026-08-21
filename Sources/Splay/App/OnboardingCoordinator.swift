@@ -6,7 +6,6 @@ import SplayViewModels
 final class OnboardingCoordinator {
     private let onboardingWindowController: OnboardingWindowController
     private let onRefreshHotkeys: () -> Void
-    private let onOpenMainWindow: () -> Void
     private let onOpenSettings: () -> Void
     private let onCompleted: () -> Void
     private let onHotkeyPreviewArm: () -> Void
@@ -17,7 +16,6 @@ final class OnboardingCoordinator {
     init(
         onboardingWindowController: OnboardingWindowController,
         onRefreshHotkeys: @escaping () -> Void,
-        onOpenMainWindow: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
         onCompleted: @escaping () -> Void = {},
         onHotkeyPreviewArm: @escaping () -> Void = {},
@@ -25,7 +23,6 @@ final class OnboardingCoordinator {
     ) {
         self.onboardingWindowController = onboardingWindowController
         self.onRefreshHotkeys = onRefreshHotkeys
-        self.onOpenMainWindow = onOpenMainWindow
         self.onOpenSettings = onOpenSettings
         self.onCompleted = onCompleted
         self.onHotkeyPreviewArm = onHotkeyPreviewArm
@@ -84,9 +81,6 @@ final class OnboardingCoordinator {
             },
             onHotkeyPreviewArm: { [weak self] in self?.onHotkeyPreviewArm() },
             onHotkeyPreviewDisarm: { [weak self] in self?.onHotkeyPreviewDisarm() },
-            onOpenMainApp: { [weak self] in
-                self?.onOpenMainWindow()
-            },
             onOpenSettings: { [weak self] in
                 self?.onOpenSettings()
             },

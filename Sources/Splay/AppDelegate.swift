@@ -54,7 +54,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var environmentSetupTask: Task<Void, Never>?
     private var meetingQuitTask: Task<Void, Never>?
     private var speechPreWarmTask: Task<Void, Never>?
-    private var isHotkeyRecorderActive = false
     // Let first paint and onboarding routing settle before starting CoreML cache work.
     private let preWarmDeferralMs: Int = 1500
 
@@ -73,7 +72,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let promptResultsViewModel = PromptResultsViewModel()
     private let promptsViewModel = PromptsViewModel()
     private let transformsViewModel = TransformsViewModel()
-    private let mainWindowState = MainWindowState()
     /// Long-lived companion for the meeting recording pill + Transcribe-tab tile.
     /// `MeetingRecordingFlowCoordinator` writes state into it; both the floating
     /// pill and the tile bind to the same instance.
@@ -104,7 +102,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         promptResultsViewModel: promptResultsViewModel,
         promptsViewModel: promptsViewModel,
         transformsViewModel: transformsViewModel,
-        mainWindowState: mainWindowState,
         meetingPillViewModel: meetingPillViewModel
     )
 
@@ -137,11 +134,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.menuBarCoordinator.refreshTranscriptionHotkeyShortcuts()
             self?.transformsCoordinator?.reloadBindings()
         },
-        onOpenMainWindow: { [weak self] in
-            self?.windowCoordinator.openMainWindow()
-        },
         onOpenSettings: { [weak self] in
-            self?.windowCoordinator.openMainWindowToSettings()
+            self?.presentSettingsCard()
         },
         onCompleted: { [weak self] in
             guard let self, let env = self.appEnvironment else { return }
@@ -165,58 +159,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.meetingsWorkspaceViewModel.refreshRecentMeetings()
         },
         onPresentRecoveredTranscription: { [weak self] transcription in
-            guard let self else { return }
-            self.transcriptionViewModel.presentCompletedTranscription(transcription, autoSave: true)
-            self.mainWindowState.navigateToTranscription(from: .library)
-            self.windowCoordinator.openMainWindow()
+            // Two-surface design: the recovered meeting is saved and appears in
+            // the recents card — there is no window to route it into.
+            self?.transcriptionViewModel.presentCompletedTranscription(transcription, autoSave: true)
         }
     )
 
-    private lazy var windowCoordinator = AppWindowCoordinator(
-        mainWindowState: mainWindowState,
-        transcriptionViewModel: transcriptionViewModel,
-        historyViewModel: historyViewModel,
+    private lazy var activationCoordinator = AppActivationCoordinator(
         settingsViewModel: settingsViewModel,
-        llmSettingsViewModel: llmSettingsViewModel,
-        chatViewModel: chatViewModel,
-        promptResultsViewModel: promptResultsViewModel,
-        promptsViewModel: promptsViewModel,
-        transformsViewModel: transformsViewModel,
-        customWordsViewModel: customWordsViewModel,
-        textSnippetsViewModel: textSnippetsViewModel,
-        vocabularyBackupViewModel: vocabularyBackupViewModel,
-        libraryViewModel: libraryViewModel,
-        meetingsWorkspaceViewModel: meetingsWorkspaceViewModel,
-        meetingPillViewModel: meetingPillViewModel,
-        updaterController: updaterController,
-        onRecordMeeting: { [weak self] in
-            self?.toggleMeetingRecording(originatesFromWindow: true)
+        onOpenRecent: { [weak self] in
+            self?.presentRecentCard()
         },
-        onRecordMeetingFromWorkspace: { [weak self] in
-            self?.startMeetingRecordingFromWorkspace()
-        },
-        onPauseToggleMeeting: { [weak self] in
-            self?.meetingRecordingFlowCoordinator?.togglePause()
-        },
-        onHotkeyRecordingStateChanged: { [weak self] isRecording in
-            self?.isHotkeyRecorderActive = isRecording
-            // While Settings is recording a new hotkey, stand the global
-            // CGEvent taps down so they can't swallow the user's keyDown
-            // and silently fire their own actions (e.g. start a meeting
-            // recording from inside Settings).
-            if isRecording {
-                self?.hotkeyCoordinator?.suspend()
-                self?.transformsCoordinator?.suspendHotkeys()
-            } else {
-                self?.hotkeyCoordinator?.resume()
-                self?.transformsCoordinator?.resumeHotkeys()
-            }
+        onOpenSettings: { [weak self] in
+            self?.presentSettingsCard()
         },
         onQuit: { [weak self] in
             self?.quitApp()
-        },
-        isOnboardingVisible: { [weak self] in
-            self?.onboardingWindowController.isVisible ?? false
         }
     )
 
@@ -241,9 +199,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dictationCaptureActiveProvider: { [weak self] in
             self?.dictationFlowCoordinator?.isCapturingAudio == true
         },
-        onOpenMainWindow: { [weak self] in
-            self?.windowCoordinator.openMainWindow()
-        },
         onOpenSettings: { [weak self] in
             // Two-surface design: Settings is a card, not a window.
             self?.presentSettingsCard()
@@ -251,21 +206,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onOpenRecent: { [weak self] in
             self?.presentRecentCard()
         },
-        onNavigate: { [weak self] item in
-            self?.mainWindowState.navigate(to: item)
-        },
-        onNewTranscription: { [weak self] in
-            self?.transcriptionViewModel.showInputPortal()
-            self?.mainWindowState.startNewTranscription()
-        },
         onStartDictation: { [weak self] in
             self?.dictationFlowCoordinator?.startDictation(mode: .persistent, trigger: .menuBar)
         },
         onToggleMeetingRecording: { [weak self] in
-            self?.toggleMeetingRecording(originatesFromWindow: false)
-        },
-        onCreateTransform: { [weak self] in
-            self?.mainWindowState.beginCreatingTransform()
+            self?.toggleMeetingRecording()
         },
         onQuit: { [weak self] in
             self?.quitApp()
@@ -280,8 +225,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.onboardingCoordinator.show(environment: self.appEnvironment)
         },
-        onOpenSettings: { [weak self] tab in
-            self?.windowCoordinator.openMainWindowToSettings(tab: tab)
+        onOpenSettings: { [weak self] _ in
+            self?.presentSettingsCard()
         },
         onHotkeyTriggerChanged: { [weak self] in
             self?.handleHotkeyTriggerChange()
@@ -299,7 +244,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.applyAppAppearance()
         },
         onMenuBarOnlyModeChanged: { [weak self] in
-            self?.windowCoordinator.applyActivationPolicyFromSettings()
+            self?.activationCoordinator.applyActivationPolicyFromSettings()
             self?.islandController?.restoreAmbientVisibility()
         },
         onShowIdlePillChanged: { [weak self] in
@@ -338,7 +283,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBarCoordinator.setupMainMenu()
         menuBarCoordinator.setupMenuBar()
         settingsObserverCoordinator.startObserving()
-        windowCoordinator.applyActivationPolicyFromSettings()
+        activationCoordinator.applyActivationPolicyFromSettings()
         islandController?.restoreAmbientVisibility()
     }
 
@@ -384,15 +329,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows _: Bool) -> Bool {
-        if AppFeatures.islandReplacesDictationPill {
-            presentRecentCard()
-            return true
-        }
-        return windowCoordinator.handleAppReopen()
+        // Two-surface design: reopening the app (Dock click) surfaces the recents card.
+        presentRecentCard()
+        return true
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
-        windowCoordinator.makeDockMenu()
+        activationCoordinator.makeDockMenu()
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -429,10 +372,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onPresentEntitlementsAlert: { [weak self] error in
                     self?.presentEntitlementsAlert(error)
                 },
-                onOpenMainWindow: {
-                    // Two-surface design: a finished recording lights the island
-                    // (done) and the file is waiting — no modal is forced open.
-                },
                 onOpenRecentCard: { [weak self] in
                     self?.presentRecentCard()
                 },
@@ -441,7 +380,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 onToggleMeetingRecordingFromHotkey: { [weak self] in
                     guard let self, !self.onboardingWindowController.isVisible else { return }
-                    self.toggleMeetingRecording(originatesFromWindow: false, trigger: .hotkey)
+                    self.toggleMeetingRecording(trigger: .hotkey)
                 },
                 onTriggerFileTranscriptionFromHotkey: { [weak self] in
                     guard let self, !self.onboardingWindowController.isVisible else { return }
@@ -459,9 +398,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 onRecoverPendingMeetingRecordings: { [weak self] in
                     self?.meetingRecoveryCoordinator.presentPendingMeetingRecoveryDialog()
-                },
-                isHotkeyRecordingActive: { [weak self] in
-                    self?.isHotkeyRecorderActive == true
                 },
                 isOnboardingVisible: { [weak self] in
                     self?.onboardingWindowController.isVisible ?? false
@@ -496,7 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.transformReservedHotkeysForTransforms() ?? []
             },
             onLLMProviderRequired: { [weak self] in
-                self?.windowCoordinator.openMainWindowToSettings(tab: .ai)
+                self?.presentSettingsCard()
             }
         )
         transforms.start()
@@ -792,7 +728,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Meeting Recording
 
     private func toggleMeetingRecording(
-        originatesFromWindow: Bool,
         trigger: TelemetryMeetingRecordingTrigger = .manual
     ) {
         guard appEnvironment != nil else { return }
@@ -805,17 +740,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Two-surface design: the island itself lights up on the record/recording
         // transition — no separate surface needs to be summoned.
         meetingRecordingFlowCoordinator?.toggleRecording(trigger: trigger)
-    }
-
-    private func startMeetingRecordingFromWorkspace() {
-        guard appEnvironment != nil else { return }
-
-        if meetingRecordingFlowCoordinator?.isMeetingRecordingActive == true {
-            meetingRecordingFlowCoordinator?.toggleRecording()
-            return
-        }
-
-        meetingRecordingFlowCoordinator?.startRecording(trigger: .manual)
     }
 
     private func presentActiveMeetingQuitAlert() -> NSApplication.TerminateReply {
@@ -902,7 +826,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            windowCoordinator.openMainWindowToSettings()
+            presentSettingsCard()
         }
     }
 
@@ -925,7 +849,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            windowCoordinator.openMainWindowToSettings()
+            presentSettingsCard()
         }
         #endif
     }
@@ -948,7 +872,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let response = alert.runModal()
         if response == .alertFirstButtonReturn {
-            windowCoordinator.openMainWindowToSettings()
+            presentSettingsCard()
         }
         #endif
     }

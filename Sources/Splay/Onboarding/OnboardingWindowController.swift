@@ -19,7 +19,6 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
         onFinish: @escaping () -> Void,
         onHotkeyPreviewArm: @escaping () -> Void = {},
         onHotkeyPreviewDisarm: @escaping () -> Void = {},
-        onOpenMainApp: @escaping () -> Void,
         onOpenSettings: @escaping () -> Void,
         onIncompleteDismiss: @escaping () -> Void
     ) {
@@ -47,7 +46,6 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
                 self?.close()
                 onFinish()
             },
-            onOpenMainApp: onOpenMainApp,
             onOpenSettings: onOpenSettings,
             onHotkeyPreviewArm: onHotkeyPreviewArm,
             onHotkeyPreviewDisarm: onHotkeyPreviewDisarm
