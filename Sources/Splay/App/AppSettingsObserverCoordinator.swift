@@ -5,7 +5,6 @@ import SplayViewModels
 final class AppSettingsObserverCoordinator {
     private let notificationCenter: NotificationCenter
     private let onOpenOnboarding: () -> Void
-    private let onOpenSettings: () -> Void
     private let onHotkeyTriggerChanged: () -> Void
     private let onPushToTalkHotkeyTriggerChanged: () -> Void
     private let onMeetingHotkeyTriggerChanged: () -> Void
@@ -15,7 +14,6 @@ final class AppSettingsObserverCoordinator {
     private let onShowIdlePillChanged: () -> Void
 
     private var onboardingObserver: Any?
-    private var settingsObserver: Any?
     private var hotkeyTriggerObserver: Any?
     private var pushToTalkHotkeyTriggerObserver: Any?
     private var meetingHotkeyTriggerObserver: Any?
@@ -27,7 +25,6 @@ final class AppSettingsObserverCoordinator {
     init(
         notificationCenter: NotificationCenter = .default,
         onOpenOnboarding: @escaping () -> Void,
-        onOpenSettings: @escaping () -> Void,
         onHotkeyTriggerChanged: @escaping () -> Void,
         onPushToTalkHotkeyTriggerChanged: @escaping () -> Void,
         onMeetingHotkeyTriggerChanged: @escaping () -> Void,
@@ -38,7 +35,6 @@ final class AppSettingsObserverCoordinator {
     ) {
         self.notificationCenter = notificationCenter
         self.onOpenOnboarding = onOpenOnboarding
-        self.onOpenSettings = onOpenSettings
         self.onHotkeyTriggerChanged = onHotkeyTriggerChanged
         self.onPushToTalkHotkeyTriggerChanged = onPushToTalkHotkeyTriggerChanged
         self.onMeetingHotkeyTriggerChanged = onMeetingHotkeyTriggerChanged
@@ -58,16 +54,6 @@ final class AppSettingsObserverCoordinator {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.onOpenOnboarding()
-            }
-        }
-
-        settingsObserver = notificationCenter.addObserver(
-            forName: .macParakeetOpenSettings,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.onOpenSettings()
             }
         }
 
@@ -146,10 +132,6 @@ final class AppSettingsObserverCoordinator {
         if let onboardingObserver {
             notificationCenter.removeObserver(onboardingObserver)
             self.onboardingObserver = nil
-        }
-        if let settingsObserver {
-            notificationCenter.removeObserver(settingsObserver)
-            self.settingsObserver = nil
         }
         if let hotkeyTriggerObserver {
             notificationCenter.removeObserver(hotkeyTriggerObserver)

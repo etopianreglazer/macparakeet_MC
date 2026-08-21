@@ -1,8 +1,8 @@
 # Text Processing
 
-> Deterministic post-processing for raw STT output. No LLM in the
-> default path; the AI formatter is opt-in and lives behind a separate
-> entry point.
+> Deterministic post-processing for raw STT output. There is no LLM
+> anywhere in this path — Splay removed the in-app LLM (including the
+> old opt-in AI formatter) entirely.
 
 ## Entry point
 
@@ -21,9 +21,6 @@ mode.
 - `TextRefinementService.swift` — small coordinator for Raw vs Clean
   text refinement. Raw mode skips full cleanup but still extracts
   trailing action snippets; Clean mode runs `TextProcessingPipeline`.
-- `AIFormatter.swift` — supporting prompt/rendering types for the
-  opt-in provider-based AI formatter used after deterministic cleanup
-  in dictation and file/URL transcription flows.
 - `TranscriptDerivers.swift` — derives display-side fields
   (search-friendly text, summaries' rendering helpers, etc.) from
   stored transcripts. Read-only; doesn't mutate the canonical text.
@@ -35,8 +32,6 @@ mode.
   fast. (The ADR's step table predates the trailing-action step; the
   code below is authoritative on step count.)
 - `spec/07-text-processing.md` — narrative spec.
-- ADR-011 — the LLM provider model that the separate AI formatter
-  rides on.
 
 ## What to know before editing
 
@@ -78,12 +73,10 @@ it at the call site, not inside the pipeline.
 it doesn't change meaning. "I want to like Slack the team" must not
 become "I want to Slack the team."
 
-**The AI formatter is a different code path.** `TextRefinementService`
-does not call an LLM. It returns deterministic cleanup (plus any
-post-paste action) first; dictation and transcription services may
-then invoke the opt-in AI formatter through `LLMService`. Don't
-conflate those two stages — the deterministic pipeline must remain
-LLM-free per ADR-004.
+**There is no AI formatter anymore.** `TextRefinementService` returns
+deterministic cleanup (plus any post-paste action) and that result is
+final — the old opt-in LLM formatter was removed with the rest of the
+in-app LLM. The pipeline must remain LLM-free per ADR-004.
 
 ## How to verify a change
 

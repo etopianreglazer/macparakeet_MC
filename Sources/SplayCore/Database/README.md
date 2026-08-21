@@ -20,20 +20,19 @@ process.
   - `TranscriptionRepository.swift` — file/YouTube/meeting transcriptions.
   - `CustomWordRepository.swift` — vocabulary entries.
   - `TextSnippetRepository.swift` — snippets (text + action).
-  - `PromptRepository.swift` — prompt-library entries.
-  - `PromptResultRepository.swift` — saved prompt outputs.
-  - `QuickPromptRepository.swift` — quick-prompt entries (Ask tab).
-  - `ChatConversationRepository.swift` — multi-turn chat history.
-  - `TransformHistoryRepository.swift` — local Transform run history (input/output/source app/timings; ADR-022).
-  - `LLMRunRepository.swift` — local metadata ledger for persisted LLM runs (provider/model/tokens/latency/status/required source link; no prompt/input/output content).
+
+The in-app LLM was removed from Splay (2026-08): the prompt /
+quick-prompt / chat / transform-history / llm-run repositories are
+gone with it. Their tables remain in the schema as dormant data
+(historic migrations still create them; nothing reads or writes them).
 
 ## Cross-references
 
 - `spec/01-data-model.md` — the canonical schema spec; mirrors
   what's in `DatabaseManager`'s migrator. Update both when schema
   changes.
-- ADR-013 — prompt library + multi-summary architecture (drives
-  several of the repositories above).
+- ADR-013 — prompt library + multi-summary architecture
+  (superseded for Splay; explains the dormant prompt tables).
 - `Sources/SplayCore/Models/` — the row types each repository
   reads and writes.
 

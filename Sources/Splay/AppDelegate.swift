@@ -56,11 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - View Models
 
     private let transcriptionViewModel = TranscriptionViewModel()
-    private let historyViewModel = DictationHistoryViewModel()
     private let settingsViewModel = SettingsViewModel()
-    private let customWordsViewModel = CustomWordsViewModel()
-    private let textSnippetsViewModel = TextSnippetsViewModel()
-    private let vocabularyBackupViewModel = VocabularyBackupViewModel()
     private let libraryViewModel = TranscriptionLibraryViewModel()
     /// Long-lived companion for the meeting recording pill + Transcribe-tab tile.
     /// `MeetingRecordingFlowCoordinator` writes state into it; both the floating
@@ -74,11 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private lazy var environmentConfigurer = AppEnvironmentConfigurer(
         transcriptionViewModel: transcriptionViewModel,
-        historyViewModel: historyViewModel,
         settingsViewModel: settingsViewModel,
-        customWordsViewModel: customWordsViewModel,
-        textSnippetsViewModel: textSnippetsViewModel,
-        vocabularyBackupViewModel: vocabularyBackupViewModel,
         libraryViewModel: libraryViewModel,
         meetingPillViewModel: meetingPillViewModel
     )
@@ -198,9 +190,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onOpenOnboarding: { [weak self] in
             guard let self else { return }
             self.onboardingCoordinator.show(environment: self.appEnvironment)
-        },
-        onOpenSettings: { [weak self] in
-            self?.presentSettingsCard()
         },
         onHotkeyTriggerChanged: { [weak self] in
             self?.handleHotkeyTriggerChange()

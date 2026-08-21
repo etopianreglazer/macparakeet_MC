@@ -154,7 +154,6 @@ final class DictationFlowCoordinator {
     /// its own no-STT rehearsal). Covers both the hotkey and idle-pill paths.
     private let isStartSuppressed: () -> Bool
     private let onMenuBarIconUpdate: (BreathWaveIcon.MenuBarState) -> Void
-    private let onHistoryReload: () -> Void
     private let onPresentEntitlementsAlert: (Error) -> Void
 
     // MARK: - State Machine
@@ -213,7 +212,6 @@ final class DictationFlowCoordinator {
         shouldSuppressIdlePill: @escaping () -> Bool = { false },
         isStartSuppressed: @escaping () -> Bool = { false },
         onMenuBarIconUpdate: @escaping (BreathWaveIcon.MenuBarState) -> Void,
-        onHistoryReload: @escaping () -> Void,
         onPresentEntitlementsAlert: @escaping (Error) -> Void
     ) {
         self.serviceSession = DictationServiceSession(service: dictationService)
@@ -230,7 +228,6 @@ final class DictationFlowCoordinator {
         self.shouldSuppressIdlePill = shouldSuppressIdlePill
         self.isStartSuppressed = isStartSuppressed
         self.onMenuBarIconUpdate = onMenuBarIconUpdate
-        self.onHistoryReload = onHistoryReload
         self.onPresentEntitlementsAlert = onPresentEntitlementsAlert
     }
 
@@ -584,7 +581,6 @@ final class DictationFlowCoordinator {
         // MARK: History
 
         case .reloadHistory:
-            onHistoryReload()
             currentDictation = nil
             pendingPostPasteAction = nil
 

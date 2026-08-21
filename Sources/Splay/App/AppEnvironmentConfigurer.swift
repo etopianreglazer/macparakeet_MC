@@ -44,33 +44,20 @@ final class AppEnvironmentConfigurer {
     }
 
     private let transcriptionViewModel: TranscriptionViewModel
-    private let historyViewModel: DictationHistoryViewModel
     private let settingsViewModel: SettingsViewModel
-    private let customWordsViewModel: CustomWordsViewModel
-    private let textSnippetsViewModel: TextSnippetsViewModel
-    private let vocabularyBackupViewModel: VocabularyBackupViewModel
     private let libraryViewModel: TranscriptionLibraryViewModel
     private let meetingPillViewModel: MeetingRecordingPillViewModel
-    private weak var liveMeetingCoordinator: MeetingRecordingFlowCoordinator?
     /// Created by AppDelegate before slow bootstrap so the idle cue is immediate.
     var earlyIslandController: IslandController?
 
     init(
         transcriptionViewModel: TranscriptionViewModel,
-        historyViewModel: DictationHistoryViewModel,
         settingsViewModel: SettingsViewModel,
-        customWordsViewModel: CustomWordsViewModel,
-        textSnippetsViewModel: TextSnippetsViewModel,
-        vocabularyBackupViewModel: VocabularyBackupViewModel,
         libraryViewModel: TranscriptionLibraryViewModel,
         meetingPillViewModel: MeetingRecordingPillViewModel
     ) {
         self.transcriptionViewModel = transcriptionViewModel
-        self.historyViewModel = historyViewModel
         self.settingsViewModel = settingsViewModel
-        self.customWordsViewModel = customWordsViewModel
-        self.textSnippetsViewModel = textSnippetsViewModel
-        self.vocabularyBackupViewModel = vocabularyBackupViewModel
         self.libraryViewModel = libraryViewModel
         self.meetingPillViewModel = meetingPillViewModel
     }
@@ -90,7 +77,6 @@ final class AppEnvironmentConfigurer {
             transcriptionService: env.transcriptionService,
             transcriptionRepo: env.transcriptionRepo
         )
-        historyViewModel.configure(dictationRepo: env.dictationRepo)
         libraryViewModel.configure(transcriptionRepo: env.transcriptionRepo)
         settingsViewModel.configure(
             permissionService: env.permissionService,
@@ -108,22 +94,6 @@ final class AppEnvironmentConfigurer {
             sharedMicStream: env.sharedMicStream
         )
         settingsViewModel.onRecoverPendingMeetingRecordings = callbacks.onRecoverPendingMeetingRecordings
-        customWordsViewModel.configure(repo: env.customWordRepo)
-        textSnippetsViewModel.configure(repo: env.snippetRepo)
-        let vocabularyBackupService = VocabularyImportExportService(
-            customWordRepo: env.customWordRepo,
-            snippetRepo: env.snippetRepo,
-            dbQueue: env.databaseManager.dbQueue
-        )
-        vocabularyBackupViewModel.configure(service: vocabularyBackupService) { [weak self] in
-            self?.customWordsViewModel.loadWords()
-            self?.textSnippetsViewModel.loadSnippets()
-            self?.settingsViewModel.refreshStats()
-        }
-        settingsViewModel.onDictationStateChanged = { [weak self] in
-            self?.historyViewModel.loadDictations()
-        }
-
         transcriptionViewModel.onTranscribingChanged = { _ in
             callbacks.onMenuBarIconUpdate()
         }
@@ -163,7 +133,6 @@ final class AppEnvironmentConfigurer {
             // and the "Learn the Hotkey" step runs its own no-STT rehearsal.
             isStartSuppressed: { callbacks.isOnboardingVisible() },
             onMenuBarIconUpdate: { _ in callbacks.onMenuBarIconUpdate() },
-            onHistoryReload: { [weak self] in self?.historyViewModel.loadDictations() },
             onPresentEntitlementsAlert: callbacks.onPresentEntitlementsAlert
         )
         coordinatorRefs.dictation = dictationCoordinator
@@ -195,7 +164,6 @@ final class AppEnvironmentConfigurer {
             }
         )
         coordinatorRefs.meeting = meetingCoordinator
-        liveMeetingCoordinator = meetingCoordinator
 
         let hotkeyCoordinator = AppHotkeyCoordinator(
             settingsViewModel: settingsViewModel,

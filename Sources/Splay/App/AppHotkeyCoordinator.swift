@@ -26,11 +26,10 @@ final class AppHotkeyCoordinator {
     private var fnRecordingHotkeyManager: HotkeyManager?
     private var meetingHotkeyManager: GlobalShortcutManager?
     private var fileTranscriptionHotkeyManager: GlobalShortcutManager?
-    /// Count of active `HotkeyRecorderView` sessions that have asked for the
-    /// global CGEvent taps to stand down so the recorder can capture the
-    /// user's keyDown. Reaches > 1 only across pathological re-entry — the
-    /// counter exists so balanced suspend/resume calls never desync the
-    /// underlying taps.
+    /// Count of active suspenders (today only `OnboardingHotkeyPreviewController`'s
+    /// hotkey rehearsal) that have asked for the global CGEvent taps to stand
+    /// down. Reaches > 1 only across pathological re-entry — the counter exists
+    /// so balanced suspend/resume calls never desync the underlying taps.
     private var suspendCount = 0
 
     init(

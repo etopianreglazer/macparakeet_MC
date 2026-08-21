@@ -239,7 +239,6 @@ final class DictationFlowCoordinatorTests: XCTestCase {
             permissionService: permissionService,
             overlayControllerFactory: { MicPermissionSpyDictationOverlayController(viewModel: $0) },
             onMenuBarIconUpdate: { _ in },
-            onHistoryReload: {},
             onPresentEntitlementsAlert: { _ in }
         )
 
@@ -284,7 +283,6 @@ final class DictationFlowCoordinatorTests: XCTestCase {
             permissionService: MockPermissionService(),
             overlayControllerFactory: { MicPermissionSpyDictationOverlayController(viewModel: $0) },
             onMenuBarIconUpdate: { _ in },
-            onHistoryReload: {},
             onPresentEntitlementsAlert: { _ in }
         )
 

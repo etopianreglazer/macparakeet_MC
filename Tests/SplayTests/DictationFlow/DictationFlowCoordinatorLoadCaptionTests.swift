@@ -277,7 +277,6 @@ final class DictationFlowCoordinatorLoadCaptionTests: XCTestCase {
             captionTiming: timing ?? self.timing,
             overlayControllerFactory: { SpyDictationOverlayController(viewModel: $0) },
             onMenuBarIconUpdate: { _ in },
-            onHistoryReload: {},
             onPresentEntitlementsAlert: { _ in }
         )
 
