@@ -5,7 +5,50 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-19 **thread 9 — MAIN-WINDOW RETIREMENT: DONE (uncommitted). ⭐ NEXT THREAD =
+> **Last updated:** 2026-08-21 **thread 10 — IN-APP LLM REMOVED: DONE (3 commits, not pushed). ⭐ NEXT
+> THREAD = CLAUDE.md / AGENTS.md / README rewrite (now urgent — see below), then the launch gate.**
+> This thread: (1) **committed thread 9's uncommitted main-window retirement** as `5995519d` (verified
+> build + suite first). (2) **The LLM cut, `4d2e54b4`** (−42,001 lines): meeting **Ask tab removed**
+> (panel keeps Notes + Transcript; live notepad still persists onto the saved transcription); dictation/
+> transcription **AI-clean removed** (DictationService + TranscriptionService always run the
+> deterministic pipeline; formatter notifications, the overlay `.formatting` beat, and the aiFormatter
+> defaults keys are gone); **Transforms deleted entirely** (coordinator, hotkey registry/alias/adapter,
+> executor, views, VMs, menu items, the `transformsEnabled` flag); **LLM machinery deleted**
+> (`Services/LLM/`, AIFormatter, prompt/chat/quick-prompt/transform-history/llm-run models + repos,
+> their VMs, the vestigial SettingsTab/SettingsRootViewModel/SettingsSearchIndex/SettingsTabBar layer —
+> the live settings card in `Views/Island/SplayCards.swift` needs only `SettingsViewModel`).
+> **DB sub-decision taken per the handoff's recommendation (owner not present): tables left DORMANT** —
+> no migration, no data loss; built-in prompt/quick-prompt startup reconciliation removed; the minimal
+> model set historic migrations still need (`Prompt`, `KeyboardShortcut`, `ChatConversation`, new
+> extracted `ChatMessage.swift`) is kept as data-layer-only. ⚠️ If the owner wants a clean schema
+> instead, that's a new drop-with-migration task. Licensing/entitlement plumbing untouched.
+> ADRs 011/013/018/020/022 headers marked **SUPERSEDED for Splay**.
+> (3) **Dead-view sweep + Vet follow-through, `a6ed3a2e`** (−9,679 lines): agentic Vet on the LLM cut
+> returned 7 findings (all dead-wiring/docs, zero correctness bugs), all fixed: deleted the last two
+> Transforms services (`SelectionCaptureService`/`SelectionReplacementService` — ADR-022 names them),
+> the History + Vocabulary view folders and their VMs (+`VocabularyImportExportService`/`VocabularyBundle`;
+> the word/snippet **repos and the dictation pipeline that consumes them are untouched** — vocabulary
+> editing UI was already unreachable), 12 orphaned components (ModelSelector, MarkdownContent, FlowLayout,
+> badges, scrubber/player, mandala, gallery…; **ParticleSystem stays** — onboarding uses `ParticleField`),
+> dead wiring (write-only `liveMeetingCoordinator`, no-op `onRecoveredTranscriptionsChanged`, poster-less
+> `.macParakeetOpenSettings`, `onHistoryReload`), and the stale Database/TextProcessing subsystem READMEs.
+> **Validation:** every commit build-green; full suite after each = the **same 5 known environmental
+> fork-debt failures** (AppPaths + 3× SettingsViewModel pre-`-MC`-namespace asserts + AX-gated
+> AppHotkeyCoordinator), zero new. Suite is now **1760 XCTest + 16 swift-testing** (was 2548 — deleted
+> tests went with their subjects).
+>
+> ### ⭐ WHAT'S NEXT (thread 11)
+> 1. **CLAUDE.md / AGENTS.md / README.md rewrite** (owner already chose "rewrite slim", thread 8) — now
+>    *actively wrong*, not just stale: CLAUDE.md still documents Transforms as enabled, the 3-modes+
+>    Transforms model, `AppFeatures.transformsEnabled`, `Views/Transforms/`, the CLI, and dozens of
+>    deleted paths. Vet flagged this as its highest-severity finding. Rewrite for the two-surface
+>    recorder.
+> 2. **Launch gate** (`docs/launch-checklist.md` §A2/§C): build, sign, notarize, second-Mac test —
+>    plus the deferred glow nudges / talk-glow live verdict (§C4).
+> 3. Minor deferred polish: stale `plans/active/…`/`docs/research/…` comment pointers in source;
+>    `meetingVadLiveChunkingEnabled` left ON (not in any cut list).
+>
+> **Last updated (prior):** 2026-08-19 **thread 9 — MAIN-WINDOW RETIREMENT: DONE (uncommitted). ⭐ NEXT THREAD =
 > REMOVE IN-APP LLM (owner decided; scope + plan in the ⭐⭐ block below).** The one
 > high-risk piece from thread 8's WHAT'S-LEFT #1 is cut. Key insight that made it low *behavioral* risk:
 > the main window was **already unreachable** — `AppWindowCoordinator.openMainWindow()` had a
