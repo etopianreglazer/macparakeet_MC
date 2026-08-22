@@ -138,21 +138,6 @@ final class SplayCardController: NSObject {
         DispatchQueue.main.async { [weak self] in
             self?.presentation.visible = true
         }
-        // TEMP diagnostic: snapshot the panel's real state shortly after the
-        // entrance settles, so an invisible-or-self-dismissed card is
-        // distinguishable in the log (strip once the menu-reopen bug is closed).
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            guard let self else { return }
-            if let p = self.panel {
-                AudioCaptureDiagnostics.append(
-                    "splay_card post_present visible=\(p.isVisible) key=\(p.isKeyWindow) frame=\(p.frame) "
-                    + "entry_flag=\(self.presentation.visible) app_active=\(NSApp.isActive) "
-                    + "screens=\(NSScreen.screens.map { $0.frame })"
-                )
-            } else {
-                AudioCaptureDiagnostics.append("splay_card post_present panel=nil (torn down within 0.6s)")
-            }
-        }
     }
 
     func dismiss(reason: String = "api") {

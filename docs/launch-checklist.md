@@ -64,7 +64,7 @@ Accepting one downloads `MacParakeet.dmg` **over `/Applications/Splay.app`**.
 - [ ] **Back up the private key** — it exists in exactly one place. Losing it means no
       existing install can ever be updated. See `docs/releasing.md` Part 4.
 - [ ] Stand up GitHub Pages so the feed URL actually resolves (see `docs/releasing.md` 2.2).
-- [ ] Verify a freshly built bundle resolves no upstream URL.
+- [x] Verify a freshly built bundle resolves no upstream URL (source sweep = 0; re-check on the artifact).
 
 ### A2. The build is not distributable — 🟡 Apple setup DONE, build not yet cut
 - [x] **Developer ID Application certificate created 2026-08-19** via Xcode's Manage
@@ -81,10 +81,10 @@ Accepting one downloads `MacParakeet.dmg` **over `/Applications/Splay.app`**.
       `com.apple.security.cs.disable-library-validation` — see `CLAUDE.md`).
 
 ### A3. Identity still says MacParakeet
-- [ ] `README.md` is still upstream's (MacParakeet icon, name, macparakeet.com,
+- [x] `README.md` is still upstream's (MacParakeet icon, name, macparakeet.com,
       `downloads.macparakeet.com` DMG badge, DeepWiki badge) — rewrite as Splay's.
 - [ ] `CFBundleShortVersionString` is `0.6.0` (upstream's) — pick Splay's own version.
-- [ ] `NSCalendarsFullAccessUsageDescription` is still in `Info.plist` though calendar is
+- [x] `NSCalendarsFullAccessUsageDescription` is still in `Info.plist` though calendar is
       being cut — remove usage strings for permissions Splay no longer requests.
 - [ ] Decide the bundle id. `com.macparakeet.mc` and the `MacParakeet-MC` data namespace
       were deliberately kept for migration-free local rebranding
@@ -92,7 +92,7 @@ Accepting one downloads `MacParakeet.dmg` **over `/Applications/Splay.app`**.
       them and document why, or write a migration.
 - [x] `docs/distribution.md` (upstream R2/appcast) is superseded by **`docs/releasing.md`**,
       the GitHub Releases + Pages flow. Mark the old file HISTORICAL.
-- [ ] Repo-level docs (`CLAUDE.md`, `spec/`, `AGENTS.md`) describe MacParakeet. Decide
+- [x] Repo-level docs (`CLAUDE.md`, `spec/`, `AGENTS.md`) describe MacParakeet. (Rewritten for Splay 2026-08-21.) Decide
       what a public Splay repo should carry vs. what stays internal.
 
 ### A4. Telemetry reported to upstream's server 🚨 — ⚠️ MITIGATED 2026-08-18
@@ -103,10 +103,10 @@ without its agreement, and `README` privacy claims could not have been made trut
 
 - [x] Telemetry is now **opt-in** (`?? false`) in both `AppPreferences.isTelemetryEnabled`
       and `TelemetryService.init` — nothing is sent unless the user turns it on.
-- [ ] **Decide the endgame:** remove the reporting entirely (simplest, and honest for a
+- [x] **Decide the endgame:** removed entirely (thread 8). ~~remove the reporting entirely (simplest, and honest for a
       project this size), or point `baseURL` at infrastructure you own. Leaving an
       upstream URL in the binary is not acceptable at publish, even unreachable.
-- [ ] Same check for `CrashReporter`.
+- [x] Same check for `CrashReporter` (rides the same No-Op seam).
 - [ ] Confirm the Settings toggle reflects the new default sensibly.
 
 ### A6. Every remaining pointer at upstream infrastructure 🚨 — OPEN
@@ -128,12 +128,12 @@ A full sweep of shipping code (2026-08-19) found A1 and A4 were not isolated inc
 **`FeedbackView`'s "Issues" link** (sends users to file bugs upstream), and two CLI help
 strings (`transcribe`, `config`).
 
-- [ ] `FeedbackService` — remove the feature or repoint it. Do not ship a form that posts
+- [x] `FeedbackService` — remove the feature or repoint it. Do not ship a form that posts
       user content to someone else's backend.
-- [ ] `DiscoverService` / `DiscoverThoughtsService` — Discover is cut; remove the fetches.
-- [ ] Repoint or remove all 7 repo links, including the two CLI help strings.
-- [ ] Help menu → Splay's own repo or README.
-- [ ] Re-run this sweep before release:
+- [x] `DiscoverService` / `DiscoverThoughtsService` — Discover is cut; remove the fetches.
+- [x] Repoint or remove all 7 repo links, including the two CLI help strings.
+- [x] Help menu → Splay's own repo or README.
+- [x] Re-run this sweep before release (0 hits, 2026-08-21):
       `grep -rn "macparakeet\.com\|moona3k" --include="*.swift" Sources/`
 
 > **Note on `SparkleUpdateGuard`:** it blocks updates only for versions literally `0.0.0`,
@@ -147,8 +147,8 @@ strings (`transcribe`, `config`).
       and Daniel Moon, points users who want the broader feature set back upstream.
 - [ ] Owner review of the README draft — particularly the Status section, which states
       the no-onboarding gap plainly.
-- [ ] `LICENSE`: add Splay's copyright line **alongside** Daniel Moon's, do not replace.
-- [ ] Add a change-marking note (GPL-3.0 §5(a)) — the README's "Built on MacParakeet"
+- [x] `LICENSE`: add Splay's copyright line **alongside** Daniel Moon's, do not replace.
+- [x] Add a change-marking note (GPL-3.0 §5(a)) — the README's "Built on MacParakeet"
       section is most of it; make sure it is dated.
 
 ---
@@ -173,14 +173,14 @@ Record Meeting · Create Transform.
 **Feature flags all still on:** `meetingRecordingEnabled`, `calendarEnabled`,
 `transformsEnabled`, `meetingVadLiveChunkingEnabled`, `islandReplacesDictationPill`.
 
-- [ ] Re-route or delete every `openMainWindow` / `openMainWindowToSettings` call site.
-- [ ] Rebuild the app menus to the two-surface reality (keep Edit; keep About/Quit).
-- [ ] Turn off / hide the cut-list features: Transforms, calendar auto-start, YouTube,
+- [x] Re-route or delete every `openMainWindow` / `openMainWindowToSettings` call site.
+- [x] Rebuild the app menus to the two-surface reality (keep Edit; keep About/Quit).
+- [x] Turn off / hide the cut-list features: Transforms, calendar auto-start, YouTube,
       Discover, Dictations-as-separate-surface, prompts, chat, diarization, stats,
       provider config, engine picker.
-- [ ] Delete the now-dead Slice-4 overlay path (`IslandOverlayController`,
+- [x] Delete the now-dead Slice-4 overlay path (`IslandOverlayController`,
       `openSettingsOverlay` / `openLibraryOverlay`) the plan left in place for this phase.
-- [ ] **Hide before deleting.** `CLAUDE.md` forbids removing licensing/entitlement plumbing
+- [x] **Hide before deleting.** `CLAUDE.md` forbids removing licensing/entitlement plumbing
       and meeting-recovery artifacts as "dead code" without explicit owner sign-off.
 
 ---
@@ -231,7 +231,7 @@ Run against a **freshly installed, Developer-ID-signed** build.
 ### C6. Housekeeping
 - [ ] `swift build` clean; `swift test` = the known 7 environmental fork-debt failures only.
 - [ ] Agentic Vet clean on the release diff.
-- [ ] Strip the TEMP `f125f21d` diagnostic markers (keep the `src=` click tags — cheap and
+- [x] Strip the TEMP `f125f21d` diagnostic markers (done 2026-08-21; (keep the `src=` click tags — cheap and
       genuinely diagnostic).
 - [ ] `docs/thread-state.md` updated.
 

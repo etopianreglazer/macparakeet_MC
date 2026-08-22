@@ -72,7 +72,7 @@ struct CLIOperationPrivacyTests {
 
         let actual = Set((event.props ?? [:]).keys)
         let unexpected = actual.subtracting(allowed)
-        #expect(unexpected.isEmpty, "cli_operation introduced new prop key(s) \(unexpected) — review for privacy and update docs/telemetry.md + integrations/README.md before merging.")
+        #expect(unexpected.isEmpty, "cli_operation introduced new prop key(s) \(unexpected) — review for privacy before merging.")
 
         let requiredForTranscribeFailure: Set<String> = [
             "operation_id", "workflow_id",

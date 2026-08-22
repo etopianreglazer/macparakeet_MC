@@ -108,7 +108,7 @@ public enum TelemetryEventName: String, Sendable, CaseIterable {
     case meetingRecoveryDiscarded = "meeting_recovery_discarded"
     case meetingRecoveryFailed = "meeting_recovery_failed"
     /// Universal launch-time Silero VAD model prep for VAD-guided meeting live
-    /// chunking (`plans/active/2026-05-meeting-vad-guided-live-chunking.md` §6).
+    /// chunking (upstream MacParakeet plan "2026-05-meeting-vad-guided-live-chunking" §6).
     /// Confirms the installed base actually acquires the model once the feature
     /// is enabled — see `TelemetryVADModelPrepOutcome`. Gated on
     /// `AppFeatures.meetingVadLiveChunkingEnabled`, so it never fires in a
@@ -339,7 +339,7 @@ public enum TelemetryMeetingRecoverySource: String, Sendable, Equatable {
 }
 
 /// Outcome of a launch-time Silero VAD model prep attempt (Phase 4.5,
-/// `plans/active/2026-05-meeting-vad-guided-live-chunking.md` §6). The full
+/// upstream MacParakeet plan "2026-05-meeting-vad-guided-live-chunking" §6). The full
 /// vocabulary is modeled here, but the launch hook only transmits the
 /// *transitions* worth seeing: `prepared` (an install just acquired the model
 /// — the field-reach signal) and `failed` (a download problem). The
@@ -374,7 +374,7 @@ public enum TelemetryHotkeySurface: String, Sendable, Equatable {
 /// without forcing every prior value through a schema migration.
 ///
 /// We deliberately track structural category only — see
-/// `docs/telemetry.md` item 10: "track boolean, not which key." `kind` is
+/// upstream MacParakeet `docs/telemetry.md` item 10: "track boolean, not which key." `kind` is
 /// one step up from a boolean (4 categories of binding pattern); it does
 /// not reveal the actual modifier or keycode the user picked.
 public enum TelemetryHotkeyKind: String, Sendable, Equatable {

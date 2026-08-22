@@ -736,7 +736,7 @@ extension HotkeyTrigger {
     /// Maps `kind` to its telemetry counterpart. Kept inline here so callers
     /// don't have to translate by hand at every emit site.
     ///
-    /// We deliberately stop at the kind boundary — `docs/telemetry.md`
+    /// We deliberately stop at the kind boundary — upstream MacParakeet `docs/telemetry.md`
     /// item 10 commits to "track boolean, not which key." Reading the
     /// specific modifier name or keyCode out of `self` for telemetry
     /// would cross that line.

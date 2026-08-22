@@ -1,6 +1,6 @@
 # Distribution (Developer ID + Notarization)
 
-> Status: **ACTIVE** - Build, sign, notarize, and auto-update workflow
+> Status: **HISTORICAL** — upstream MacParakeet R2/appcast flow. Splay releases via GitHub: see `docs/releasing.md`.
 
 This repo is SwiftPM-based, so we assemble a `.app` bundle manually for Developer ID distribution.
 

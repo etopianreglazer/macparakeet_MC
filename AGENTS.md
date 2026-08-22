@@ -1,151 +1,68 @@
-# AGENTS.md -- MacParakeet
+# AGENTS.md — Splay
 
-> Read by coding agents (Claude Code, Codex CLI, Hermes, OpenClaw, etc.) working
-> *in this repo*. Deeper project context lives in [`CLAUDE.md`](./CLAUDE.md).
-> If your agent runs *outside* this repo and wants to *call* `macparakeet-cli`,
-> see [`integrations/README.md`](./integrations/README.md) instead.
+> For any coding agent working in this repo. The deeper context, rules, and gotchas are
+> in [`CLAUDE.md`](./CLAUDE.md); the live "you are here" is
+> [`docs/thread-state.md`](./docs/thread-state.md). Read both before editing.
 
-## What this project is
+## What this is
 
-MacParakeet is a fast, private, local-first voice app for macOS. The v0.6
-release has three co-equal capture modes: system-wide dictation, file
-transcription, and meeting recording, plus productized Transforms
-for selected-text rewrites. Parakeet TDT 0.6B via FluidAudio CoreML on the
-Apple Neural Engine is the default STT family: multilingual v3 is the default,
-and English-only v2 is an opt-in Parakeet model for users who want the fastest
-English path without v3 auto-detect. WhisperKit is also available as an optional
-local multilingual engine for languages Parakeet does not cover.
+Splay is a one-gesture, on-device voice recorder for Apple Silicon Macs (macOS 14.2+,
+GPL-3.0, derived from MacParakeet). Tap `fn` → mic recording; double-tap `fn` → mic +
+system audio; drop a file on the menu bar icon → file transcription. Every path writes a
+verbatim transcript `.md` (+ paired audio) to a folder. Two UI surfaces only: the **island**
+(notch-anchored indicator light) and the **card** (Recents · Settings · About).
 
-**Release status:** v0.6 ships system-wide dictation, file/URL transcription
-including local-file batches, meeting recording, Parakeet v3/v2 model
-selection, optional WhisperKit multilingual STT, and productized Transforms
-(shipping to stable since v0.6.7). Calendar reminders and auto-start are
-enabled (`AppFeatures.calendarEnabled = true`, shipping since v0.6.10);
-calendar auto-start defaults to mode `.off`, so it is strictly opt-in. Calendar-
-driven auto-stop was removed (ADR-017 amendment) — recordings stop manually.
-VAD-guided meeting live-preview chunking is enabled
-(`AppFeatures.meetingVadLiveChunkingEnabled = true`, shipping since v0.6.14):
-launch-time prep fetches the Silero VAD model in the background, Parakeet
-meetings cut live-preview chunks at speech boundaries when the model is cached,
-and missing/erroring VAD falls back to the fixed 5s / 1s-overlap chunker without
-affecting the final post-stop transcript. The Stable DMG and `main` ship the
-same feature set — the `AppFeatures` feature flags carry the same values on
-`main` and the latest release tag; `main` differs only by untagged in-progress fixes.
+Not in Splay, by decision: a main window, a CLI, in-app LLM features, YouTube, calendar,
+Transforms, telemetry reporting. Do not resurrect them.
 
-Free and open-source (GPL-3.0). Apple Silicon only. Requires macOS 14.2+.
-
-The repo ships two products:
-
-- **`macparakeet-cli`** -- versioned public surface
-  ([`Sources/CLI/`](./Sources/CLI/), semver tracked in
-  [`Sources/CLI/CHANGELOG.md`](./Sources/CLI/CHANGELOG.md)).
-- **`MacParakeet.app`** -- SwiftUI macOS app, one consumer of the CLI's
-  underlying core library.
-
-## Build & Test
+## Build & test
 
 ```bash
-# Build everything (app + CLI + core + viewmodels + tests)
 swift build
-
-# Run the test suite (Swift 6 language mode)
-swift test
-
-# Build, codesign, and launch the dev app
-scripts/dev/run_app.sh
-
-# Run the CLI against your local DB
-swift run macparakeet-cli --help
-swift run macparakeet-cli health
+swift test                      # baseline = 5 known environmental failures, zero new
+scripts/dev/install_local.sh    # → /Applications/Splay.app (then `open` it yourself)
 ```
 
-The full test suite is deterministic and normally finishes in roughly one to
-two minutes depending on SwiftPM cache state. Run `swift test` before declaring
-code-change work complete.
+`scripts/dev/run_app.sh` does not work on this machine. Run `swift test` before calling
+code-change work complete, and run the Vet review skill on each logical unit of change.
 
-## Code Style
-
-- Swift package tools-version 5.9; first-party Swift is kept Swift 6
-  language-mode / concurrency clean. SwiftUI for UI and GRDB for SQLite.
-- One repository per database table (see
-  [`Sources/MacParakeetCore/Database/`](./Sources/MacParakeetCore/Database/)).
-- Comments explain *why*, not *what* -- well-named identifiers carry the what.
-  Default to writing none.
-- `MacParakeetCore` has no SwiftUI/view dependencies. It is primarily
-  Foundation + GRDB + FluidAudio + optional WhisperKit, with small
-  AppKit-backed macOS adapter services where no Foundation-only API exists
-  (`ClipboardService`, `PermissionService`, `TelemetryService` termination
-  notification, `ExportService`). New AppKit use in Core should stay
-  adapter-shaped and must not introduce UI ownership.
-- ViewModels live in their own SPM target (`Sources/MacParakeetViewModels/`)
-  so they can be tested without the GUI.
-- Async/await for all I/O. No completion handlers, no Combine in new code.
-- Buttons use `.parakeetAction(.primary / .primaryProminent / .secondary / .destructive / .destructiveProminent / .subtle)` for semantic role + styling. Never apply `.tint(coral)` at NSHostingView roots or sheet wrappers — coral cascades only from `parakeetAction`. See `spec/04-ui-patterns.md` → Buttons.
-
-## Architecture Orientation
+## Layout
 
 ```
-Sources/
-  MacParakeetCore/        -- Pure Swift library: STT, DB, prompts, LLM, audio
-  MacParakeetViewModels/  -- @Observable view models, no UI
-  MacParakeet/            -- SwiftUI app target
-  CLI/                    -- macparakeet-cli; ArgumentParser commands
-Tests/
-  MacParakeetTests/       -- Unit, database, integration tests
-  CLITests/               -- CLI argument-parsing + helper tests
+Sources/Splay/             app target (AppKit shell, coordinators, SwiftUI views)
+  Views/Island/            the two surfaces
+Sources/SplayCore/         Foundation + GRDB + FluidAudio (+WhisperKit); no SwiftUI views
+  Audio/ STT/ Database/ TextProcessing/ Licensing/   each has a README.md — read it first
+Sources/SplayViewModels/   @MainActor @Observable view models, no UI
+Sources/SplayObjCShims/    NSException trampoline
+Tests/SplayTests/
+spec/adr/                  architectural record (binding vs superseded list in CLAUDE.md)
+docs/                      product model, thread state, launch checklist, releasing, plans/
 ```
 
-Full spec is in [`spec/`](./spec/). Architectural decisions (locked) are in
-[`spec/adr/`](./spec/adr/). Don't second-guess ADRs.
+## Code style
 
-**Subsystem READMEs.** Load-bearing folders inside
-[`Sources/MacParakeetCore/`](./Sources/MacParakeetCore/) carry their own
-`README.md` capturing non-obvious rules (threading, ordering,
-retention) that aren't visible from grep. **When you're about to edit
-inside one of these folders, read its README first.** Folders with
-READMEs today: `Audio/`, `STT/`, `TextProcessing/`, `Database/`,
-`Licensing/`.
+- Swift 6 language-mode / concurrency clean. Async/await for all I/O; no completion
+  handlers, no Combine in new code.
+- `SplayCore` never owns UI. Small AppKit adapter services are fine.
+- One GRDB repository per table. Migrations, never table drops.
+- Comments say *why*; identifiers say *what*. Default to none.
+- Delete old approaches entirely when switching; no `_ = unused` artifacts.
 
-## Security & Privacy
+## Do not
 
-- **Local-first speech.** STT runs on the Apple Neural Engine. Audio and
-  transcripts stay on-device for core dictation, transcription, and meeting
-  recording. Network surfaces are limited to user-triggered LLM providers,
-  media downloads, model/update flows, retained purchase activation endpoints
-  if explicitly invoked, and opt-out self-hosted telemetry/crash reporting.
-  Telemetry never includes audio or transcript content.
-- **Retained purchase activation is intentional.** The old
-  LemonSqueezy/trial entitlement code is dormant in current free/GPL builds,
-  but it is deliberate future-option plumbing. Do not delete or "clean up"
-  `EntitlementsService`, `LemonSqueezyLicenseAPI`, entitlement state, or
-  trial/license telemetry as dead code unless explicitly requested by the
-  project owner and reflected in an ADR/spec update.
-- **No accounts, no logins.** No identifying data is sent anywhere.
-- **The user database lives at**
-  `~/Library/Application Support/MacParakeet/macparakeet.db`. Treat it as user
-  data: never delete without explicit user confirmation; write migrations
-  rather than dropping tables.
+- Delete user data (DB, session folders, source audio) outside the recovery/discard flows.
+- Remove the licensing/entitlement plumbing (`Sources/SplayCore/Licensing/`,
+  `EntitlementsService`, `LemonSqueezyLicenseAPI`) — retained on purpose.
+- Rename the kept identifiers: bundle id `com.macparakeet.mc`, data namespace
+  `MacParakeet-MC`, log dir `~/Library/Logs/MacParakeet/` (see `docs/BRANDING.md`).
+- Make the island panel key, or let silence fail a recording (dead ≠ silent).
+- Push. The owner pushes.
 
-## Important Runtime Locations
+## Runtime locations
 
 | Item | Path |
-|------|------|
-| App bundle | `/Applications/MacParakeet.app` |
-| Database | `~/Library/Application Support/MacParakeet/macparakeet.db` |
-| Parakeet CoreML STT models (~465 MB per build) | FluidAudio default cache |
-| WhisperKit STT models | `~/Library/Application Support/MacParakeet/models/stt/whisper/` |
-| Settings | `~/Library/Preferences/com.macparakeet.plist` |
-| Logs | `~/Library/Logs/MacParakeet/` |
-
-## Where to Look Next
-
-- **Coding-agent context for this repo:** [`CLAUDE.md`](./CLAUDE.md) for deep
-  project context; [`spec/10-ai-coding-method.md`](./spec/10-ai-coding-method.md)
-  for spec precedence and lightweight kernel usage; ADRs in
-  [`spec/adr/`](./spec/adr/) for locked decisions.
-- **Calling macparakeet-cli from another agent (OpenClaw / Hermes / etc.):**
-  [`integrations/README.md`](./integrations/README.md) and the CLI changelog
-  at [`Sources/CLI/CHANGELOG.md`](./Sources/CLI/CHANGELOG.md).
-- **Commit format:** rich-format messages per
-  [`docs/commit-guidelines.md`](./docs/commit-guidelines.md) for significant
-  changes.
+|---|---|
+| Data | `~/Library/Application Support/MacParakeet-MC/` |
+| Default transcripts | `~/Documents/MacParakeet-MC/{Transcriptions,Meetings}` |
+| Logs | `~/Library/Logs/MacParakeet/dictation-audio.log` (shared dir — match `pid`/`commit`) |

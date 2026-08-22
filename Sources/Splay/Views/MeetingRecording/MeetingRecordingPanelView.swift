@@ -379,7 +379,7 @@ private struct LiveAudioOrb: View {
 /// `CABasicAnimation` on `CALayer`s is interpolated by the render server, so
 /// the rotation and breathing pulse cost ~0 app-side CPU per frame. This mirrors
 /// the floating pill's `MerkabaPillIconView`. See
-/// `plans/active/2026-05-meeting-recording-cpu-debug.md`.
+/// upstream MacParakeet plan "2026-05-meeting-recording-cpu-debug".
 ///
 /// `freeze`: when `true`, the animations halt at their current frame via the
 /// canonical Core Animation pause (`layer.speed = 0` + `timeOffset`) and resume

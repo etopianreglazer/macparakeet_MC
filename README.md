@@ -30,7 +30,7 @@ One key, two gestures:
 |---|---|---|
 | **Tap `fn`** | Microphone only | Transcript file |
 | **Double-tap `fn`** | Microphone **+** system audio | Transcript file |
-| **Drop a file on the island** | Any audio or video file | Transcript file |
+| **Drop a file on the menu bar icon** | Any audio or video file | Transcript file |
 
 Tap again to stop. The transcript is written to disk; the audio is kept beside it.
 
@@ -87,7 +87,6 @@ it is what I use every day. Things you should know before installing:
 
 - **There is no onboarding yet.** A fresh install drops you straight at the island with no
   guided setup. This README is the setup.
-- Some surfaces inherited from upstream are still being removed.
 - Sparkle auto-update is wired but the update feed goes live with the first release.
 
 ## Privacy
@@ -96,10 +95,11 @@ it is what I use every day. Things you should know before installing:
 - No account, no login.
 - **Telemetry is off** unless you turn it on. There is no persistent identifier and
   content is never included.
-- Recordings and transcripts are ordinary files in a folder you choose.
-- Network access happens only for: the one-time speech-model download, update checks,
-  and — if you use them — the optional YouTube import and any AI provider you configure
-  with your own key.
+- Recordings and transcripts are ordinary files in a folder you choose
+  (default `~/Documents/MacParakeet-MC/`).
+- Network access happens only for the one-time speech-model download and update checks.
+  Splay has no AI features and no cloud integrations — analyze your transcripts with
+  whatever tool you like; Splay never parses them twice.
 
 ## Built on MacParakeet
 

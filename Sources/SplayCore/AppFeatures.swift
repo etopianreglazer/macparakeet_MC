@@ -12,7 +12,7 @@ public enum AppFeatures {
     public static let meetingRecordingEnabled: Bool = true
 
     /// VAD-guided meeting live chunking
-    /// (`plans/active/2026-05-meeting-vad-guided-live-chunking.md`). When
+    /// (upstream MacParakeet plan "2026-05-meeting-vad-guided-live-chunking"). When
     /// `false`, meeting live-preview chunks use the fixed 5s / 1s-overlap
     /// `AudioChunker` path. When `true`, launch-time prep tries to cache the
     /// Silero VAD model, and cached-model Parakeet sessions cut live-preview
@@ -29,6 +29,6 @@ public enum AppFeatures {
     /// single/double-tap recording key (single = mic only, double = mic + system),
     /// paste-style dictation is no longer driven by Fn, and the old dictation idle
     /// pill is suppressed (the island's own idle/hover pill replaces it). See
-    /// docs/fork-product-model.md and plans/active/fn-rework.md.
+    /// docs/fork-product-model.md and docs/plans/fn-rework.md.
     public static let islandReplacesDictationPill: Bool = true
 }

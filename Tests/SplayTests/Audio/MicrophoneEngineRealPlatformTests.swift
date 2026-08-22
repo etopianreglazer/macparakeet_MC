@@ -14,7 +14,7 @@ import XCTest
 /// which exercise orchestration but cannot reach the real macOS HAL where
 /// the `2026-05-03` silent-tap-stall bug lives. See:
 ///   - `journal/2026-05-03-dictation-silent-stall.md` (diagnosis)
-///   - `plans/active/2026-05-dictation-stall-integration-tests.md` (this plan)
+///   - upstream MacParakeet plan "2026-05-dictation-stall-integration-tests" (this plan)
 ///   - PR #210 (passive instrumentation that paired with this work)
 ///
 /// ## Running
