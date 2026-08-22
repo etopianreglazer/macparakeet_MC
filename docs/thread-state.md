@@ -5,7 +5,38 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-21 **thread 10 — IN-APP LLM REMOVED: DONE (3 commits, not pushed). ⭐ NEXT
+> **Last updated:** 2026-08-21 **thread 11 — DOCS REWRITE + POLISH: DONE; RELEASE BUILD: NOTARIZED 0.1.0 CUT (not published).**
+> (1) **`CLAUDE.md` / `AGENTS.md` rewritten slim for Splay** (commit `eb757513`): two-surface recorder,
+> 4 SwiftPM targets, 3 remaining `AppFeatures` flags, the binding-vs-superseded ADR list, the kept
+> identifiers, the non-obvious rules (dead≠silent, island never key, STT via scheduler, licensing
+> plumbing stays), the 5-known-failures test baseline, `install_local.sh` as the dev loop. README fixed
+> (file drop = **menu bar icon**, not the island; no YouTube/AI-provider mention; default transcript
+> folder named). (2) **Polish:** 13 stale `plans/active/…`/`docs/telemetry.md`/`integrations/` comment
+> pointers reworded to "upstream MacParakeet plan …" (those files are not in this repo);
+> `AppFeatures` points at `docs/plans/fn-rework.md`; **TEMP `f125f21d` `post_present` snapshot stripped**
+> from `SplayCardController` (the `src=` click tags stay); `docs/distribution.md` → HISTORICAL;
+> `docs/launch-checklist.md` ticked for everything threads 8–10 landed. **`meetingVadLiveChunkingEnabled`
+> left ON by decision:** it only affects live-preview chunking, has a fixed-chunker fallback, and the
+> final transcript is unaffected — nothing to gain by cutting it. (3) **Launch gate §A2:** **`dist/Splay.dmg` is a notarized, stapled 0.1.0** — version `0.1.0`,
+> build `20260822010535`, commit `eb757513`, built via `build_app_bundle.sh` (xcodebuild, resource bundles
+> present) + `sign_notarize.sh`; app + DMG both `spctl` → `accepted / source=Notarized Developer ID`;
+> bundle sweep: the only upstream string left is the LICENSE attribution. **DMG = 44 MB** (was 136 MB).
+> Sparkle: `sparkle:edSignature="35aL+xrnFMvPhFPKCpk/6VQvKRPBPZ/d5GXUDWG7NjNiE9po0ISCN+1B7uGwwVmBG28KBLTjq54BzIm4wvh+Bg=="
+> length="44285355"`, sha256 `f2cebefc…4087` — **this exact file must be the one uploaded** (re-signing
+> after any rebuild). Publish steps (`docs/releasing.md` 3.6–3.7) are outward-facing and left to the owner.
+> **Validation:** build green; full suite 1760 tests / the same 5 known environmental failures, zero new.
+>
+> ### ⭐ WHAT'S NEXT (thread 12)
+> 1. **Second-Mac test** (`docs/launch-checklist.md` §C5) — the one check only the owner can run:
+>    copy `dist/Splay.dmg` to another Mac / fresh user, open without right-click bypass, record once.
+> 2. **§C4 visual pass** — glow nudges + the talk-glow live verdict (open since thread 6), dialled in
+>    the live HTML tuner, then ported to `SplayGlowTuning` / `SplayTalkGlowTuning`.
+> 3. **Owner-only pre-publish items:** back up the Sparkle private key + the Developer ID `.p12`
+>    (`docs/releasing.md` Part 4); stand up GitHub Pages for the appcast; rename/detach the repo;
+>    decide `--draft` vs public for `gh release create v0.1.0`. **Nothing is pushed** (46 commits ahead).
+> 4. Optional: the old `dist/MacParakeet*.app` / `.dSYM` leftovers are untracked junk — safe to delete.
+>
+> **Last updated (prior):** 2026-08-21 **thread 10 — IN-APP LLM REMOVED: DONE (3 commits, not pushed). ⭐ NEXT
 > THREAD = CLAUDE.md / AGENTS.md / README rewrite (now urgent — see below), then the launch gate.**
 > This thread: (1) **committed thread 9's uncommitted main-window retirement** as `5995519d` (verified
 > build + suite first). (2) **The LLM cut, `4d2e54b4`** (−42,001 lines): meeting **Ask tab removed**

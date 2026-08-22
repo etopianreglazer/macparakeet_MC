@@ -75,15 +75,14 @@ Accepting one downloads `MacParakeet.dmg` **over `/Applications/Splay.app`**.
       against Apple (empty submission history returned, not an auth error).
 - [ ] Back up the certificate + private key as a `.p12` off this machine (5 Developer ID
       certs exist per account, ever).
-- [ ] Actually build and sign a release bundle with that identity.
-- [ ] **Notarized + stapled**, then verified with `spctl -a -vv` on a clean path.
-- [ ] Confirm bundled helpers still validate after signing (`yt-dlp` needs
-      `com.apple.security.cs.disable-library-validation` — see `CLAUDE.md`).
+- [x] Actually build and sign a release bundle with that identity (0.1.0, build 20260822010535, 2026-08-21).
+- [x] **Notarized + stapled**, then verified with `spctl -a -vv` (app + DMG accepted, Notarized Developer ID).
+- [x] Confirm bundled helpers still validate after signing (only `ffmpeg` remains; yt-dlp/node are gone).
 
 ### A3. Identity still says MacParakeet
 - [x] `README.md` is still upstream's (MacParakeet icon, name, macparakeet.com,
       `downloads.macparakeet.com` DMG badge, DeepWiki badge) — rewrite as Splay's.
-- [ ] `CFBundleShortVersionString` is `0.6.0` (upstream's) — pick Splay's own version.
+- [x] `CFBundleShortVersionString` — Splay starts at `0.1.0`.
 - [x] `NSCalendarsFullAccessUsageDescription` is still in `Info.plist` though calendar is
       being cut — remove usage strings for permissions Splay no longer requests.
 - [ ] Decide the bundle id. `com.macparakeet.mc` and the `MacParakeet-MC` data namespace
@@ -229,11 +228,11 @@ Run against a **freshly installed, Developer-ID-signed** build.
 - [ ] First launch is *survivable* without Phase 5 onboarding — see Known gaps.
 
 ### C6. Housekeeping
-- [ ] `swift build` clean; `swift test` = the known 7 environmental fork-debt failures only.
+- [x] `swift build` clean; `swift test` = the known 5 environmental fork-debt failures only (2026-08-21).
 - [ ] Agentic Vet clean on the release diff.
 - [x] Strip the TEMP `f125f21d` diagnostic markers (done 2026-08-21; (keep the `src=` click tags — cheap and
       genuinely diagnostic).
-- [ ] `docs/thread-state.md` updated.
+- [x] `docs/thread-state.md` updated.
 
 ---
 
