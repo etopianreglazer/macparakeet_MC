@@ -177,6 +177,17 @@ decision above.
   bars in the island are a timeline pulse, not the live mic level (WidgetKit cannot update
   per frame); first launch downloads the Parakeet model with no progress UI yet.
 
+**First device run of the app (2026-09-13 20:37–20:38, owner's 16 Pro):** end to end **works** —
+23 s recorded, 44 words, `.md` + `.m4a` in Files ▸ Splay ▸ MacParakeet-MC ▸ Meetings. Two findings:
+1. **Background start was refused** five times: `AVAudioSession` activation failed with `'!int'`
+   (`cannotInterruptOthers`, 560557684) while the app was in the background; it worked once the app
+   was foregrounded. Fix: `.mixWithOthers` in the category options (mixable sessions may activate
+   in the background). Cost: other apps' audio keeps playing under the recording.
+2. **Clipboard write refused while locked** (`PBErrorDomain 11`). Fix: hold the text and flush on
+   `protectedDataDidBecomeAvailable` / `didBecomeActive`, verified by read-back.
+Also: the first launch compiles the encoder for the ANE (~41 s, cached by iOS afterwards) —
+bundling the model does not remove that; the app's launch warm-up hides it.
+
 ## Risks
 
 - **Back Tap may need the foreground flash.** Acceptable; Action Button is the primary.

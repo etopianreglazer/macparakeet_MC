@@ -36,11 +36,47 @@ final class RecordingCoordinator {
 
     private init() {}
 
+    /// Text that could not reach the clipboard yet (device locked); flushed
+    /// the moment protected data is available again.
+    private var pendingClipboard: String?
+    private var clipboardObservers: [NSObjectProtocol] = []
+
     func attach(_ environment: SplayEnvironment) {
         self.environment = environment
         // A previous process may have died mid-recording and left its activity
         // on the island. Nothing can drive it any more; end it.
         Task { await ActivityHandle.endAllLingering() }
+        // The general pasteboard is unavailable while the phone is locked
+        // (PBErrorDomain 11 "pasteboard name … is not valid" on the first device
+        // run). Flush a held transcript as soon as the data becomes reachable.
+        let center = NotificationCenter.default
+        for name in [UIApplication.protectedDataDidBecomeAvailableNotification, UIApplication.didBecomeActiveNotification] {
+            clipboardObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                Task { @MainActor in RecordingCoordinator.shared.flushClipboard() }
+            })
+        }
+    }
+
+    /// Write now if the clipboard is reachable, else hold the text. Always
+    /// verifies by reading back: a refused write fails silently otherwise.
+    private func deliverToClipboard(_ text: String) {
+        pendingClipboard = text
+        flushClipboard()
+    }
+
+    private func flushClipboard() {
+        guard let text = pendingClipboard else { return }
+        guard UIApplication.shared.isProtectedDataAvailable else {
+            AudioCaptureDiagnostics.append("ios_clipboard_deferred reason=device_locked")
+            return
+        }
+        UIPasteboard.general.string = text
+        if UIPasteboard.general.string == text {
+            pendingClipboard = nil
+            AudioCaptureDiagnostics.append("ios_clipboard_written chars=\(text.count)")
+        } else {
+            AudioCaptureDiagnostics.append("ios_clipboard_write_refused")
+        }
     }
 
     var isRecording: Bool {
@@ -193,7 +229,7 @@ final class RecordingCoordinator {
         await environment.meetingRecordingService.completeTranscription(for: output)
         environment.autoSaveService.saveIfEnabled(transcription, scope: .meeting)
         let text = transcription.cleanTranscript ?? transcription.rawTranscript ?? ""
-        UIPasteboard.general.string = text
+        deliverToClipboard(text)
         lastTranscript = text
         state.wordCount = text.split(whereSeparator: \.isWhitespace).count
         AudioCaptureDiagnostics.append("ios_recording_saved session=\(output.sessionID.uuidString) words=\(state.wordCount ?? 0)")

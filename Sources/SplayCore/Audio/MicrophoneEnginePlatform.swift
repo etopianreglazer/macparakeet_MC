@@ -607,9 +607,16 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     /// keeps the process alive while the session is active. `.default` mode
     /// keeps the system's speech-friendly input processing; `.measurement`
     /// would hand Parakeet a rawer, quieter signal.
+    ///
+    /// `.mixWithOthers` is not optional: a recording started from a Control
+    /// or the Action Button begins with the app in the background, and iOS
+    /// refuses to activate a *non-mixable* session there (`'!int'`,
+    /// `cannotInterruptOthers`, 560557684 — seen on the first device run,
+    /// 2026-09-13). Mixable sessions may activate in the background; the cost
+    /// is that another app's music keeps playing under the recording.
     private static func activateAudioSession() throws {
         let session = AVAudioSession.sharedInstance()
-        var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker]
+        var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .mixWithOthers]
         if #available(iOS 26.0, *) {
             options.insert(.allowBluetoothHFP)
         } else {
