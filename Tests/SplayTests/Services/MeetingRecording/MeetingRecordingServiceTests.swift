@@ -2551,3 +2551,103 @@ private actor ChunkRangeRecordingMeetingSTTClient: STTClientProtocol {
 
     func shutdown() async {}
 }
+
+
+// MARK: - Live VAD readiness budget
+
+/// A starting session waits at most `liveVADReadyBudget` for the shared VAD
+/// (live-preview chunking only; the final transcript never depends on it).
+/// On the phone the first VAD load after launch took 15 s while Parakeet was
+/// compiling, and the mic must start while the app still holds its window.
+extension MeetingRecordingServiceTests {
+    private actor CallCounter {
+        var calls = 0
+        func bump() { calls += 1 }
+    }
+
+    private func lastChunkingModeLine() throws -> String {
+        let log = try String(contentsOf: AudioCaptureDiagnostics.diagnosticLogURL(), encoding: .utf8)
+        return try XCTUnwrap(
+            log.split(whereSeparator: \.isNewline).last { $0.contains("meeting_live_chunking_mode") }.map(String.init)
+        )
+    }
+
+    func testStartFallsBackToFixedChunkingWhenVADIsNotReadyWithinBudget() async throws {
+        let captureService = MockMeetingAudioCaptureService()
+        let service = MeetingRecordingService(
+            audioCaptureService: captureService,
+            sttTranscriber: CountingMeetingSTTClient(),
+            lockFileStore: RecordingLockFileStore(),
+            isVadLiveChunkingEnabled: { true },
+            micConditionerFactory: { PassthroughMicConditioner() },
+            liveVADServiceFactory: {
+                try? await Task.sleep(for: .seconds(5))
+                return nil
+            },
+            liveVADReadyBudget: .milliseconds(50)
+        )
+
+        let clock = ContinuousClock()
+        let elapsed = try await clock.measure { try await service.startRecording() }
+
+        XCTAssertLessThan(elapsed, .seconds(2), "the press must not wait for the VAD load")
+        XCTAssertTrue(try lastChunkingModeLine().contains("mode=fixed reason=vad_not_ready"))
+        await service.cancelRecording()
+    }
+
+    func testStartSharesTheLoadPrepareLiveVADStarted() async throws {
+        let counter = CallCounter()
+        let captureService = MockMeetingAudioCaptureService()
+        let service = MeetingRecordingService(
+            audioCaptureService: captureService,
+            sttTranscriber: CountingMeetingSTTClient(),
+            lockFileStore: RecordingLockFileStore(),
+            isVadLiveChunkingEnabled: { true },
+            micConditionerFactory: { PassthroughMicConditioner() },
+            liveVADServiceFactory: {
+                await counter.bump()
+                try? await Task.sleep(for: .seconds(5))
+                return nil
+            },
+            liveVADReadyBudget: .milliseconds(50)
+        )
+
+        let prepare = Task { await service.prepareLiveVAD() }
+        try await Task.sleep(for: .milliseconds(100))   // let the load start
+        try await service.startRecording()
+
+        let calls = await counter.calls
+        XCTAssertEqual(calls, 1, "the starting session joins the in-flight load instead of starting another")
+        XCTAssertTrue(try lastChunkingModeLine().contains("reason=vad_not_ready"))
+        await service.cancelRecording()
+        prepare.cancel()
+    }
+
+    func testAbsentVADModelIsRecheckedOnTheNextSession() async throws {
+        let counter = CallCounter()
+        let captureService = MockMeetingAudioCaptureService()
+        let service = MeetingRecordingService(
+            audioCaptureService: captureService,
+            sttTranscriber: CountingMeetingSTTClient(),
+            lockFileStore: RecordingLockFileStore(),
+            isVadLiveChunkingEnabled: { true },
+            micConditionerFactory: { PassthroughMicConditioner() },
+            liveVADServiceFactory: {
+                await counter.bump()
+                return nil   // model not cached
+            },
+            liveVADReadyBudget: .seconds(1)
+        )
+
+        await service.prepareLiveVAD()
+        try await service.startRecording()
+        XCTAssertTrue(try lastChunkingModeLine().contains("reason=vad_unavailable"))
+        await service.cancelRecording()
+
+        try await service.startRecording()
+        await service.cancelRecording()
+
+        let calls = await counter.calls
+        XCTAssertEqual(calls, 2, "the prepare result serves the first session; the next session re-checks the cache")
+    }
+}

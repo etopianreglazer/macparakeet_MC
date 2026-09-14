@@ -241,6 +241,17 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     /// model is cached; stays nil (and is re-checked cheaply each meeting) until
     /// then. See `configureLiveChunkers`.
     private var sharedVADService: MeetingVADService?
+    /// The in-flight (or finished) load of the shared VAD; see `liveVADService()`.
+    private var vadLoadTask: Task<MeetingVADService?, Never>?
+    private let liveVADServiceFactory: @Sendable () async -> MeetingVADService?
+    /// How long a starting session waits for the shared VAD before it settles
+    /// for fixed chunking (live preview only; the final transcript is
+    /// unaffected). Chosen so a press never waits on a CoreML load: on the
+    /// phone the first load after launch took 15 s while Parakeet was
+    /// compiling for the Neural Engine (2026-09-14), and the mic must start
+    /// while the app still holds its foreground / intent window.
+    private let liveVADReadyBudget: Duration
+    static let defaultLiveVADReadyBudget: Duration = .milliseconds(250)
     private var transcriptAssembler = MeetingTranscriptAssembler()
     private var isTranscriptionLagging = false
     private var captureFailed = false
@@ -308,8 +319,12 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         lockFileStore: MeetingRecordingLockFileStoring = MeetingRecordingLockFileStore(),
         fileManager: FileManager = .default,
         isVadLiveChunkingEnabled: @escaping @Sendable () -> Bool = { false },
-        micConditionerFactory: @escaping @Sendable () -> any MicConditioning
+        micConditionerFactory: @escaping @Sendable () -> any MicConditioning,
+        liveVADServiceFactory: @escaping @Sendable () async -> MeetingVADService? = { await MeetingVADService.makeIfModelCached() },
+        liveVADReadyBudget: Duration = MeetingRecordingService.defaultLiveVADReadyBudget
     ) {
+        self.liveVADServiceFactory = liveVADServiceFactory
+        self.liveVADReadyBudget = liveVADReadyBudget
         self.requestedMicProcessingMode = micProcessingMode
         self.audioCaptureService = audioCaptureService
         self.audioConverter = audioConverter
@@ -413,7 +428,9 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         // the clock ticked over a minute boundary between them, which is
         // vanishingly rare but trivially avoidable.
         let now = Date()
+        let startClock = ContinuousClock.now
         let speechEngineLease = await speechEngineSessionManager?.beginSpeechEngineSession()
+        let leaseWait = ContinuousClock.now - startClock
         currentSpeechEngineLease = speechEngineLease
         let speechEngine = speechEngineLease?.selection ?? SpeechEngineSelection(engine: .parakeet)
         let session = Session(
@@ -476,6 +493,12 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             )
             try await validateStartStillCurrent(session)
 
+            // Everything above is pure setup; the mic is not live yet. A press
+            // must reach capture within a few hundred ms (phone: the intent /
+            // foreground window closes), so the split is logged every time.
+            AudioCaptureDiagnostics.append(
+                "meeting_recording_start_timing session=\(sessionID.uuidString) lease_ms=\(Self.milliseconds(leaseWait)) setup_ms=\(Self.milliseconds(ContinuousClock.now - startClock))"
+            )
             let captureStartReport = try await audioCaptureService.start(sourceMode: sourceMode)
             try await validateStartStillCurrent(session)
             captureHealthMetrics.sourceMode = captureStartReport.sourceMode
@@ -1031,8 +1054,14 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             await useFixed(reason: "non_parakeet_engine")
             return
         }
-        guard let vad = await liveVADService() else {
+        let vad: MeetingVADService
+        switch await liveVADService() {
+        case .ready(let service): vad = service
+        case .unavailable:
             await useFixed(reason: "vad_unavailable")
+            return
+        case .notReady:
+            await useFixed(reason: "vad_not_ready")
             return
         }
 
@@ -1043,14 +1072,87 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         AudioCaptureDiagnostics.append("meeting_live_chunking_mode session=\(session.id.uuidString) mode=vad reason=started")
     }
 
-    /// The shared VAD service, loaded lazily once per app session. Returns nil
-    /// when the model is not cached — cheap to re-check (a file-existence test),
-    /// so a later session can still pick it up after launch-time prep fetches it.
-    private func liveVADService() async -> MeetingVADService? {
-        if let sharedVADService { return sharedVADService }
-        guard let service = await MeetingVADService.makeIfModelCached() else { return nil }
-        sharedVADService = service
-        return service
+    enum LiveVADLookup {
+        case ready(MeetingVADService)
+        /// The model is not cached (cheap to re-check next session).
+        case unavailable
+        /// A load is running but did not finish within the budget; it keeps
+        /// going so the next session finds it ready.
+        case notReady
+    }
+
+    /// Start loading the shared VAD now so the first recording finds it ready,
+    /// and return once the load has finished (either way). Idempotent; the
+    /// phone calls it at launch before the heavier STT warm-up.
+    public func prepareLiveVAD() async {
+        _ = await vadLoadTaskStartingIfNeeded().value
+    }
+
+    private func vadLoadTaskStartingIfNeeded() -> Task<MeetingVADService?, Never> {
+        if let vadLoadTask { return vadLoadTask }
+        let factory = liveVADServiceFactory
+        let task = Task.detached(priority: .userInitiated) { await factory() }
+        vadLoadTask = task
+        return task
+    }
+
+    /// The shared VAD service, loaded once per app session and awaited for at
+    /// most `liveVADReadyBudget` by a starting session.
+    private func liveVADService() async -> LiveVADLookup {
+        if let sharedVADService { return .ready(sharedVADService) }
+        let task = vadLoadTaskStartingIfNeeded()
+        let budget = liveVADReadyBudget
+        // Not a task group: a group waits for every child before returning,
+        // and a child awaiting `task.value` cannot be cut short by cancellation
+        // (the load is unstructured on purpose, so it outlives this session's
+        // interest in it). Whichever side finishes first resumes; the other
+        // simply runs out on its own.
+        let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<LiveVADRace, Never>) in
+            let once = ResumeOnce(continuation)
+            Task { once.resume(.loaded(await task.value)) }
+            Task {
+                try? await Task.sleep(for: budget)
+                once.resume(.timedOut)
+            }
+        }
+        switch outcome {
+        case .loaded(let service?):
+            sharedVADService = service
+            return .ready(service)
+        case .loaded(nil):
+            vadLoadTask = nil   // model absent: a later session re-checks the cache
+            return .unavailable
+        case .timedOut:
+            return .notReady
+        }
+    }
+
+    private enum LiveVADRace {
+        case loaded(MeetingVADService?)
+        case timedOut
+    }
+
+    /// Resumes a continuation at most once, from whichever task gets there first.
+    private final class ResumeOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<LiveVADRace, Never>?
+
+        init(_ continuation: CheckedContinuation<LiveVADRace, Never>) {
+            self.continuation = continuation
+        }
+
+        func resume(_ value: LiveVADRace) {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(returning: value)
+        }
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Int {
+        let parts = duration.components
+        return Int(parts.seconds * 1000 + parts.attoseconds / 1_000_000_000_000_000)
     }
 
     private func ingestResampledSamples(

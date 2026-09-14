@@ -216,6 +216,24 @@ the activity id and every `ActivityState` transition, all errors (via `note`), a
 lifecycle notifications. The device's unified log (`sudo log collect --device-name "Mathews
 iPhone" --start "…"`) is the other half; it needs root on the Mac.
 
+**Third device run (2026-09-14 06:25, owner, instrumented build):** the island *did* appear
+(bars animating, "not smooth" — the WidgetKit timeline pulse, a known limitation), and the
+instrumented log explained the rest. The press came 6 s after the owner opened the app;
+`ios_start app_state=active activities_enabled=true`, the Live Activity went `active` at once,
+but the **mic did not start for 15 s**: `startRecording` loads the shared Silero VAD lazily on the
+first session after launch, and that CoreML load queued behind the Parakeet encoder compile the
+launch warm-up had started. By then the phone was locked (`ios_app_did_enter_background`), the
+audio session could not be activated from the background (`'!pla'`, `cannotStartPlaying`), the
+coordinator showed Failed and the activity ended 3 s later — what looked like a crash. Fix (in
+SplayCore, so the Mac gets it too): `MeetingRecordingService` now loads the VAD once in a shared
+unstructured task, a starting session waits **at most 250 ms** for it (`liveVADReadyBudget`) and
+otherwise uses fixed chunking for that session (`meeting_live_chunking_mode … reason=vad_not_ready`;
+live preview only — the final transcript never depended on VAD); `prepareLiveVAD()` starts the
+load at launch, and the phone runs it *before* the Parakeet warm-up. `meeting_recording_start_timing
+lease_ms=… setup_ms=…` is logged before capture starts so the press-to-mic latency is always visible.
+Last night's silent kill ~1 s into a background-started recording is still unexplained (the
+unified log for that window is what would settle it).
+
 ## Risks
 
 - **Back Tap may need the foreground flash.** Acceptable; Action Button is the primary.

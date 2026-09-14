@@ -79,9 +79,14 @@ final class SplayEnvironment {
     /// races it. A recording that *stops* while seeding is still running could
     /// start FluidAudio's own download into the same folder; on APFS the copy
     /// is a clone and finishes long before any stop, so this is not guarded.
+    ///
+    /// Order: seed → VAD → Parakeet. The VAD is tiny and is what a *starting*
+    /// recording waits for (250 ms budget, else fixed chunking); loading it
+    /// while Parakeet compiles for the Neural Engine took 15 s on the phone.
     func warmUpSpeech() {
-        Task.detached(priority: .utility) { [sttScheduler] in
+        Task.detached(priority: .utility) { [sttScheduler, meetingRecordingService] in
             Self.seedBundledModels()
+            await meetingRecordingService.prepareLiveVAD()
             await sttScheduler.backgroundWarmUp()
         }
     }
