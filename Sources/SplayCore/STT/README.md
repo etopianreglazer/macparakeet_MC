@@ -31,6 +31,12 @@ to one `STTRuntime`; callers do not own model lifecycles directly.
   variant).
 - `WhisperEngine.swift` — WhisperKit wrapper conforming to the same
   shape as the Parakeet path.
+- `BundledModelSeeder.swift` — copies model repo folders shipped inside an
+  app bundle (`Models/<repo>/…`, laid out like FluidAudio's cache) into
+  `Application Support/FluidAudio/Models/` when the cache lacks a complete
+  copy, so a first launch needs no download. The iPhone app ships Parakeet
+  v3 + Silero VAD this way (`docs/plans/splay-ios-utility-layer.md` § Model
+  delivery); the Mac app still downloads.
 
 **Hotkey state (lives here for testability)**
 - `FnKeyStateMachine.swift` — pure state machine for legacy combined

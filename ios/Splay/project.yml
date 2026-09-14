@@ -37,6 +37,15 @@ targets:
     sources:
       - path: App
       - path: Shared
+      # Bundled speech models (docs/plans/splay-ios-utility-layer.md § Model
+      # delivery): a folder reference copied verbatim into Splay.app/Models/,
+      # laid out like FluidAudio's cache. scripts/dev/install_iphone.sh stages
+      # it from the Mac's cache; it is git-ignored and optional so a CI build
+      # without it still compiles (the app then downloads on first launch).
+      - path: Resources/Models
+        type: folder
+        buildPhase: resources
+        optional: true
     dependencies:
       - package: SplayPackage
         product: SplayCore

@@ -188,6 +188,18 @@ decision above.
 Also: the first launch compiles the encoder for the ANE (~41 s, cached by iOS afterwards) —
 bundling the model does not remove that; the app's launch warm-up hides it.
 
+**Model bundling (2026-09-13, after the first device run):** the app ships `Models/` (a
+folder reference, `ios/Splay/Resources/Models`, git-ignored) holding `parakeet-tdt-0.6b-v3`
+and `silero-vad` laid out exactly like FluidAudio's cache. `scripts/dev/install_iphone.sh`
+stages them from the Mac's `~/Library/Application Support/FluidAudio/Models` (an APFS clone;
+`MODELS_SOURCE` overrides; a repo the Mac has not cached is skipped with a warning and the app
+downloads it as before). On launch, before the STT warm-up, `BundledModelSeeder` (SplayCore,
+8 tests) copies each repo into `Application Support/FluidAudio/Models/` unless the cache
+already holds every bundled file at the same size; copies are staged and renamed so an
+interrupted copy is never trusted. Log lines: `bundled_models seeded=… complete=…`,
+`bundled_models absent`, `bundled_models_seed_failed`. Debug app is now ~490 MB; the folder
+is `optional` in `project.yml` so a CI compile without it still builds.
+
 ## Risks
 
 - **Back Tap may need the foreground flash.** Acceptable; Action Button is the primary.

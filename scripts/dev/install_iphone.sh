@@ -11,6 +11,8 @@
 #   CONFIGURATION   Debug|Release (default: Debug)
 #   NO_LAUNCH=1     build + install only
 #   COMPILE_ONLY=1  generic iOS build with signing off (CI / no phone); exits non-zero on failure
+#   MODELS_SOURCE   FluidAudio cache to stage the bundled models from
+#                   (default: ~/Library/Application Support/FluidAudio/Models)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -22,4 +24,5 @@ export BUILD_DIR="$XCODEGEN_DIR/build"
 export BUNDLE_ID="com.macparakeet.mc.ios"
 
 source "$ROOT/scripts/dev/lib/iphone_common.sh"
+ios_stage_bundled_models
 ios_main

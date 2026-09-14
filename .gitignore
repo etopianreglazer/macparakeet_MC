@@ -90,3 +90,5 @@ ios/Splay/Splay.xcodeproj/
 ios/Splay/build/
 ios/Splay/App/Info.plist
 ios/Splay/Widgets/Info.plist
+# Staged from ~/Library/Application Support/FluidAudio/Models by install_iphone.sh (461 MB)
+ios/Splay/Resources/Models/

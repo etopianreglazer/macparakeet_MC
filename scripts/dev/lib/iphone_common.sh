@@ -61,6 +61,34 @@ ios_build() {
   [[ -d "$APP" ]] || { echo "Build reported success but $APP is missing" >&2; exit 1; }
 }
 
+# Bundled speech models. The app ships FluidAudio's Parakeet v3 + Silero VAD
+# folders (docs/plans/splay-ios-utility-layer.md § Model delivery) as a folder
+# reference at ios/Splay/Resources/Models (git-ignored, 461 MB). Stage them from
+# this Mac's FluidAudio cache — a clone on APFS, so no extra disk — unless they
+# are already there. A repo the Mac has not cached is skipped with a warning:
+# the app then downloads it on first launch, as before.
+#   MODELS_SOURCE   override the cache folder (default: the user's FluidAudio cache)
+ios_stage_bundled_models() {
+  local dest="$XCODEGEN_DIR/Resources/Models"
+  local src="${MODELS_SOURCE:-$HOME/Library/Application Support/FluidAudio/Models}"
+  local repo
+  for repo in parakeet-tdt-0.6b-v3 silero-vad; do
+    [[ -d "$dest/$repo" ]] && continue
+    if [[ ! -d "$src/$repo" ]]; then
+      echo "warning: $src/$repo is not cached on this Mac; the app will download it on first launch (run Splay on the Mac once to cache it)" >&2
+      continue
+    fi
+    echo "Staging $repo into the app bundle…"
+    mkdir -p "$dest"
+    # Copy to a hidden sibling and rename, so an interrupted copy is never
+    # mistaken for a staged repo next time. `cp -c` clones on APFS.
+    local partial="$dest/.$repo.partial"
+    rm -rf "$partial"
+    cp -Rc "$src/$repo" "$partial" 2>/dev/null || { rm -rf "$partial"; cp -R "$src/$repo" "$partial"; }
+    mv "$partial" "$dest/$repo"
+  done
+}
+
 ios_install_and_launch() {
   local device="$1"
   echo "Installing on $device…"
