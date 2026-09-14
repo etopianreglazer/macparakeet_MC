@@ -5,46 +5,49 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-09-14 morning **thread 13 (cont.) — THE "CRASH" WAS A 15 s VAD LOAD BEFORE THE MIC STARTED; FIXED (250 ms budget + launch pre-warm), INSTALLED, NOT YET RE-TESTED. Last night's ~1 s background kill still unexplained.**
-> Branch `ios/utility-layer`. Earlier this thread: model bundled (`59d6f21f`, see below); coordinator instrumented
-> (`69063908`). **Owner's third run (06:25) with the instrumented build, read from the file log:** island appeared
-> (bars pulse, choppy — WidgetKit timeline, known); `ios_start app_state=active activities_enabled=true`; activity
-> `active` at once; **mic capture only began 15 s later** because `MeetingRecordingService.startRecording` loaded the
-> shared Silero VAD lazily on the first session after launch and that CoreML load queued behind the Parakeet ANE
-> compile the launch warm-up had started; by then the phone was locked → `'!pla'` (`cannotStartPlaying`,
-> 561015905) → Failed → activity ended 3 s later (looked like a crash; nothing recorded). **Fix in SplayCore
-> (Mac gets it too):** VAD loads once in a shared unstructured task; a starting session waits ≤ 250 ms
-> (`liveVADReadyBudget`) else fixed chunking for that session (`reason=vad_not_ready`; live preview only);
-> `prepareLiveVAD()` at launch — the phone runs seed → VAD → Parakeet warm-up; `meeting_recording_start_timing
-> lease_ms=… setup_ms=…` logged before capture. 3 tests (the race is a once-only continuation, NOT a task group — a
-> group waits for every child and `task.value` ignores cancellation; the first version waited the full load).
-> **Installed on the phone with `NO_LAUNCH=1`; the owner has not pressed since.** Model bundling (`59d6f21f`):
-> `BundledModelSeeder` (SplayCore/STT, 9 tests) copies `Models/<repo>/…` from the bundle into
-> `Application Support/FluidAudio/Models/` on launch unless complete (staged copy + rename); `ios/Splay/Resources/
-> Models/` (git-ignored, 461 MB, `optional` folder ref) staged by `install_iphone.sh` from the Mac's FluidAudio cache.
-> Verified on the phone (`bundled_models … complete=parakeet-tdt-0.6b-v3,silero-vad`). Pull the phone log:
-> `xcrun devicectl device copy from --device <id> --domain-type appDataContainer --domain-identifier
-> com.macparakeet.mc.ios --source Library/Logs/MacParakeet/dictation-audio.log --destination x.log`. Debug app code
-> lives in `Splay.app/Splay.debug.dylib` (grep there, not the main binary). **Vet did not run this thread** (the
-> claude CLI hit a session limit) — run it over `44d8c8b6..HEAD` next thread. **Open mystery:** last night's
-> background-started recording (20:56) died ~1 s after its first buffer, no crash/Jetsam report (orphaned session
-> `3238D80E…` with lock + header-only audio). The owner collected `~/Desktop/phone.logarchive` but with
-> `--start 07:00` (after the 06:25 run) and my process cannot read `~/Desktop` (TCC) — re-collect from
-> `2026-09-13 20:50` into a readable folder. Validation: suite = the same 5 known environmental cases; `COMPILE_ONLY`
-> and signed iOS builds green.
+> **Last updated:** 2026-09-14 **thread 13 (end) — ROOT CAUSE FOUND, NOT YET FIXED: iOS ROUTE CHANGE AFTER OUR OWN
+> SESSION ACTIVATION TRIGGERS AN ENGINE REBUILD THAT RE-ACTIVATES THE SESSION AND FAILS WITH `'!int'`.**
+> Branch `ios/utility-layer`, last code commit `cc2f4efc`. Nothing pushed.
 >
-> ### ⭐ WHAT'S NEXT (thread 14)
-> 1. **Owner, phone at the desk, app not running:** press the Action Button (phone locked), talk 10 s, press again,
->    unlock. Expect in the file log: `ios_start app_state=background`, `meeting_recording_start_timing … setup_ms`
->    well under 500, `audio_session_active`, `ios_recording_saved`, `ios_clipboard_deferred` → `ios_clipboard_written`.
->    If the process dies again ~1 s in, the unified log is the only witness: `sudo log collect --device-name
->    "Mathews iPhone" --start "2026-09-13 20:50:00" --output /tmp/phone.logarchive` then `sudo log show --archive
->    /tmp/phone.logarchive --start "…" --end "…" --info --predicate 'process == "Splay" OR process ==
->    "runningboardd" OR process == "SplayWidgets" OR process == "mediaserverd" OR process == "audiomxd" OR subsystem
->    CONTAINS "ActivityKit"' > /tmp/phone-log.txt` (both /tmp paths are readable for the assistant).
-> 2. Island polish: the bars' TimelineView pulse is choppy — try `symbolEffect(.variableColor)` on a waveform symbol.
-> 3. Then the on-device list (Pause/Resume, Input dead, Back Tap → Shortcut, Lock Screen row); Vet over
->    `44d8c8b6..HEAD`; recovery for orphaned iOS sessions (ADR-019 flow does not run on the phone).
+> ### Brief for thread 14 (start here)
+> **The bug.** Fourth device run, 06:37, app not running, phone locked, Action Button: the press-to-mic path is now
+> fast (`setup_ms=106`, `audio_session_active`, `ios_recording_started` 1.1 s after the press). 50 ms later
+> `audio_route_changed reason=new_device` — iOS reporting the route *our* activation created — and
+> `SharedMicrophoneStream.followDefaultInputChange()` (line ~146) rebuilt the engine; `startEngineLocked`
+> (`MicrophoneEnginePlatform.swift:292`) called `activateAudioSession()` (line 617) again, which failed with `'!int'`
+> (560557684) three times → `shared_mic_follow_default_input_gave_up recording_continues=true` with the engine
+> stopped → no first buffer → amber "No input" → second press → `noAudioCaptured` → Failed → island ended. Last
+> night's "silent kill" was the same thing seen without instrumentation. The route-change observer is at
+> `MicrophoneEnginePlatform.swift:561-567` (reasons `.newDeviceAvailable, .oldDeviceUnavailable, .override,
+> .routeConfigurationChange, .wakeFromSleep` all funnel into follow-the-input).
+> **The fix (two parts, both iOS-side in `MicrophoneEnginePlatform.swift`, gated `#if os(iOS)`):**
+> 1. Only treat a route change as an input change when the input port actually changed: remember
+>    `AVAudioSession.sharedInstance().currentRoute.inputs.first?.uid` at engine start, compare on each notification,
+>    ignore when equal (that covers the `.newDeviceAvailable` our own activation posts).
+> 2. `startEngineLocked` must not re-activate an already-active session: track `sessionActive` (set on successful
+>    activate, cleared in `stopEngine()`/`deactivateAudioSession`), skip `activateAudioSession()` when set. A rebuild
+>    keeps the session and only restarts the engine (the Audio README already promises this; the code does not).
+>    Bonus: `mixWithOthers` re-activation from the background failing with `'!int'` suggests `setCategory` is being
+>    re-issued; do not touch the category on a rebuild either.
+> **Test:** a unit test on the platform's route-change decision (same UID → no rebuild; different UID → rebuild) if
+> the observer can be driven without AVAudioSession; otherwise the device run is the test: expect no
+> `shared_mic_follow_default_input` after start, `meeting_mic_first_buffer`, `ios_recording_saved`,
+> `ios_clipboard_deferred` → `ios_clipboard_written` after unlock.
+> **Loop:** edit → `swift build` → `scripts/dev/install_iphone.sh` (owner presses; `NO_LAUNCH=1` keeps it cold) →
+> pull the log: `xcrun devicectl device copy from --device D0B10BDC-0255-5F32-A804-AA87A111F4EE --domain-type
+> appDataContainer --domain-identifier com.macparakeet.mc.ios --source Library/Logs/MacParakeet/dictation-audio.log
+> --destination /tmp/phone.log`. Then Vet over `44d8c8b6..HEAD` (never ran this thread — CLI session limit).
+>
+> **What landed this thread (all committed):** `59d6f21f` model bundled (`BundledModelSeeder`, 9 tests;
+> `ios/Splay/Resources/Models/` git-ignored, staged by `install_iphone.sh`; verified `bundled_models … complete=…`);
+> `69063908` coordinator logs app state, Live Activity lifecycle, every error, process lifecycle;
+> `cc2f4efc` VAD never blocks a start (250 ms budget, `prepareLiveVAD()` at launch, `meeting_recording_start_timing`
+> line, 3 tests; the race is a once-only continuation, not a task group). Suite: 1779 tests, the same 5 known
+> environmental cases, zero new. Island rendering verified on device (v5 look; the bars' TimelineView pulse is
+> choppy — polish later with `symbolEffect`). Two orphaned sessions sit in the phone's `meeting-recordings/`
+> (`3238D80E…`, `8DDD6858…` may have been cleaned by `noAudioCaptured`); no recovery flow on iOS yet.
+> **Gotchas:** Debug app code is in `Splay.app/Splay.debug.dylib`; my process cannot read `~/Desktop` (use `/tmp`);
+> `sudo log collect --device-name "Mathews iPhone" --start …` is the owner-only way to the unified log.
 >
 > **Prior block:** **thread 12 (end) — FIRST END-TO-END RECORDING ON THE iPHONE WORKED.** Branch `ios/utility-layer`,
 > last commit `a9095726`. Bench: slice 1 exit met (`docs/bench/`, 170× RT sustained, 58 MB, thermal nominal). App: 23 s

@@ -234,6 +234,21 @@ lease_ms=… setup_ms=…` is logged before capture starts so the press-to-mic l
 Last night's silent kill ~1 s into a background-started recording is still unexplained (the
 unified log for that window is what would settle it).
 
+**Fourth device run (2026-09-14 06:37, app not running, phone locked):** the VAD fix holds —
+`ios_start app_state=background`, `setup_ms=106`, `audio_session_active`, engine running,
+`ios_recording_started` within 1.1 s of the press. 50 ms later iOS posted `audio_route_changed
+reason=new_device` (our own activation routing the built-in mic), the follow-the-input handler
+rebuilt the engine and **re-activated the session, which failed with `'!int'` three times**
+(`shared_mic_engine_restart_failed`, then `gave_up recording_continues=true`), so no buffer ever
+arrived → amber "No input" → the second press stopped a session with no audio
+(`noAudioCaptured`) → Failed → the island ended. This is almost certainly last night's silent
+kill too (same route change ~50 ms after the first buffer). Fix for the next thread, in
+`MicrophoneEnginePlatform.swift`: (1) on iOS, ignore a route change whose input port UID did not
+change (`AVAudioSession.currentRoute.inputs.first?.uid` before vs after), and the
+`.newDeviceAvailable` that follows our own activation; (2) `startEngineLocked` must not call
+`activateAudioSession()` when the session is already active (track it) — a rebuild keeps the
+session, it only restarts the engine.
+
 ## Risks
 
 - **Back Tap may need the foreground flash.** Acceptable; Action Button is the primary.
