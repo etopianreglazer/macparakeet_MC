@@ -9,7 +9,11 @@ final class SharedMicrophoneStreamTests: XCTestCase {
     override func setUp() {
         super.setUp()
         platform = MockMicrophonePlatform()
-        stream = SharedMicrophoneStream(platform: platform, bufferSize: 1024)
+        stream = SharedMicrophoneStream(
+            platform: platform,
+            bufferSize: 1024,
+            followDefaultInputBackoff: [.milliseconds(10), .milliseconds(20), .milliseconds(40)]
+        )
     }
 
     override func tearDown() {
@@ -455,6 +459,83 @@ final class SharedMicrophoneStreamTests: XCTestCase {
 
     // MARK: - Diagnostics
 
+    // MARK: - Follow the input (route change / engine configuration change)
+
+    func testFollowDefaultInputRestartsTheEngineWithoutDroppingSubscribers() async throws {
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        XCTAssertEqual(platform.configureAndStartCalls.count, 1)
+
+        platform.fireDefaultInputChange()
+        try await waitUntil("engine restarted") { self.platform.configureAndStartCalls.count == 2 }
+
+        XCTAssertEqual(stream.diagnostics.subscriberCount, 1)
+        XCTAssertTrue(stream.diagnostics.engineRunning)
+        XCTAssertEqual(platform.stopEngineCallCount, 0, "a rebuild is configureAndStart, never stopEngine — stop would release the iOS session")
+        await stream.unsubscribe(token)
+    }
+
+    func testRapidFollowTriggersCoalesceIntoOneRerun() async throws {
+        // A route change and an engine configuration change land together
+        // (50 ms apart on the phone). One run plus one coalesced rerun — not
+        // three racing restart-with-backoff tasks.
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+
+        platform.fireDefaultInputChange()
+        platform.fireDefaultInputChange()
+        platform.fireDefaultInputChange()
+        try await waitUntil("two restarts") { self.platform.configureAndStartCalls.count == 3 }
+        try await Task.sleep(for: .milliseconds(150))   // long enough for a third restart to have happened
+
+        XCTAssertEqual(platform.configureAndStartCalls.count, 3, "1 subscribe + 1 follow + 1 coalesced rerun")
+        XCTAssertTrue(stream.diagnostics.engineRunning)
+        await stream.unsubscribe(token)
+    }
+
+    func testFollowFailureKeepsSubscribersAndTheNextTriggerRecovers() async throws {
+        // The fourth device run: every rebuild attempt failed. The recording
+        // must stay engaged (no engine-death, subscribers kept) so a later
+        // event — interruption ended, input back — can bring the engine up.
+        let deathCounter = TestCounter()
+        let token = try await stream.subscribe(wantsVPIO: false, onEngineDeath: { deathCounter.increment() }) { _, _ in }
+
+        platform.configureAndStartError = MockError.simulatedFailure
+        platform.fireDefaultInputChange()
+        try await waitUntil("three failed attempts") { self.platform.configureAndStartCalls.count == 4 }
+        try await Task.sleep(for: .milliseconds(50))
+
+        XCTAssertFalse(stream.diagnostics.engineRunning)
+        XCTAssertEqual(stream.diagnostics.subscriberCount, 1, "input problems are forgiven, never fatal")
+        XCTAssertEqual(deathCounter.value, 0)
+
+        platform.configureAndStartError = nil
+        platform.fireDefaultInputChange()
+        try await waitUntil("recovered") { self.stream.diagnostics.engineRunning }
+        XCTAssertEqual(platform.configureAndStartCalls.count, 5)
+
+        await stream.unsubscribe(token)
+        XCTAssertEqual(platform.stopEngineCallCount, 1, "the last unsubscribe always reaches the platform, engine up or not")
+    }
+
+    func testFollowWhileIdleDoesNotStartTheEngine() async throws {
+        platform.fireDefaultInputChange()
+        try await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(platform.configureAndStartCalls.count, 0)
+        XCTAssertFalse(stream.diagnostics.engineRunning)
+    }
+
+    private func waitUntil(
+        _ what: String, timeout: Duration = .seconds(2), _ condition: @escaping () -> Bool
+    ) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while !condition() {
+            if ContinuousClock.now > deadline {
+                XCTFail("timed out waiting for \(what)")
+                return
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
     func testDiagnosticsReflectVPIOSubscriberCount() async throws {
         _ = try await stream.subscribe(wantsVPIO: false) { _, _ in }
         _ = try await stream.subscribe(wantsVPIO: true) { _, _ in }
@@ -479,7 +560,12 @@ private final class MockMicrophonePlatform: MicrophoneEnginePlatform, @unchecked
     private var _configureCalls: [ConfigureCall] = []
     private var _stopCount = 0
     private var _tapHandler: (@Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void)?
-    var configureAndStartError: Error?
+    private var _defaultInputChangeHandler: (@Sendable () -> Void)?
+    private var _configureAndStartError: Error?
+    var configureAndStartError: Error? {
+        get { lock.withLock { _configureAndStartError } }
+        set { lock.withLock { _configureAndStartError = newValue } }
+    }
 
     var isEngineRunning: Bool {
         lock.withLock { _isRunning }
@@ -507,7 +593,7 @@ private final class MockMicrophonePlatform: MicrophoneEnginePlatform, @unchecked
         // or fails, and tests need to assert the attempt was made.
         let injectedError: Error? = lock.withLock {
             _configureCalls.append(ConfigureCall(vpioEnabled: vpioEnabled, bufferSize: bufferSize))
-            return configureAndStartError
+            return _configureAndStartError
         }
         if let injectedError {
             throw injectedError
@@ -531,6 +617,18 @@ private final class MockMicrophonePlatform: MicrophoneEnginePlatform, @unchecked
     func deliverBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
         let handler = lock.withLock { _tapHandler }
         handler?(buffer, time)
+    }
+
+    func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?) {
+        lock.withLock { _defaultInputChangeHandler = handler }
+    }
+
+    /// Test hook — what the real platform does on a HAL default-input change
+    /// (Mac), an input route change, an engine configuration change or an
+    /// interruption ending (iOS).
+    func fireDefaultInputChange() {
+        let handler = lock.withLock { _defaultInputChangeHandler }
+        handler?()
     }
 }
 

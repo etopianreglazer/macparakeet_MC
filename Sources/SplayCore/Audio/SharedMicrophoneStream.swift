@@ -100,6 +100,12 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         /// Lifetime counter — increments each time engagement is deferred.
         /// Exposed for telemetry sizing of the edge case.
         var vpioDeferralCount: Int = 0
+        /// Follow-the-input is single-flight: one restart-with-backoff run at a
+        /// time. A trigger that lands mid-run sets `followPending` and the run
+        /// loops once more instead of a second task racing the first (a route
+        /// change and an engine configuration change arrive together on iOS).
+        var followInFlight = false
+        var followPending = false
     }
 
     private enum EngineAction: Equatable {
@@ -118,13 +124,18 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     private let callbackQueue = DispatchQueue(label: "com.macparakeet.shared-mic-stream.callbacks")
     private let platform: any MicrophoneEnginePlatform
     private let bufferSize: AVAudioFrameCount
+    /// Sleep *before* each follow-the-input restart attempt. A just-connected
+    /// Bluetooth mic isn't capture-ready for a beat (CoreAudio -10868).
+    private let followDefaultInputBackoff: [Duration]
 
     public init(
         platform: any MicrophoneEnginePlatform,
-        bufferSize: AVAudioFrameCount = 4096
+        bufferSize: AVAudioFrameCount = 4096,
+        followDefaultInputBackoff: [Duration] = [.milliseconds(300), .milliseconds(800), .seconds(2)]
     ) {
         self.platform = platform
         self.bufferSize = bufferSize
+        self.followDefaultInputBackoff = followDefaultInputBackoff
         // Follow Apple's default input: when the system default mic changes
         // (e.g. AirPods inserted mid-recording), rebuild the engine onto the
         // new device without dropping subscribers so the recording continues.
@@ -143,25 +154,55 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     /// engine's own device-attempt chain falls back to the built-in mic, or —
     /// if every attempt fails — the recording simply runs silent until the next
     /// change or a device becomes ready. Input problems are forgiven, never fatal.
+    ///
+    /// Single-flight: triggers that arrive while a run is in progress coalesce
+    /// into one extra run after it (they would only restart onto the same route).
     private func followDefaultInputChange() {
+        let startsRun: Bool = lock.withLock { state in
+            state.followPending = true
+            if state.followInFlight { return false }
+            state.followInFlight = true
+            return true
+        }
+        guard startsRun else {
+            AudioCaptureDiagnostics.append("shared_mic_follow_default_input coalesced=true")
+            return
+        }
         AudioCaptureDiagnostics.append("shared_mic_follow_default_input")
         Task { [weak self] in
             guard let self else { return }
-            let backoff: [Duration] = [.milliseconds(300), .milliseconds(800), .seconds(2)]
-            for (index, delay) in backoff.enumerated() {
-                try? await Task.sleep(for: delay)
-                do {
-                    try await self.restart()
-                    AudioCaptureDiagnostics.append("shared_mic_follow_default_input_ok attempt=\(index + 1)")
-                    return
-                } catch {
-                    AudioCaptureDiagnostics.append(
-                        "shared_mic_follow_default_input_retry attempt=\(index + 1) \(AudioCaptureDiagnostics.errorFields(error))"
-                    )
-                }
+            while self.takePendingFollow() {
+                await self.followDefaultInputOnce()
             }
-            AudioCaptureDiagnostics.append("shared_mic_follow_default_input_gave_up recording_continues=true")
         }
+    }
+
+    /// Consume a pending trigger; when none is pending the run is over.
+    private func takePendingFollow() -> Bool {
+        lock.withLock { state in
+            if state.followPending {
+                state.followPending = false
+                return true
+            }
+            state.followInFlight = false
+            return false
+        }
+    }
+
+    private func followDefaultInputOnce() async {
+        for (index, delay) in followDefaultInputBackoff.enumerated() {
+            try? await Task.sleep(for: delay)
+            do {
+                try await restart()
+                AudioCaptureDiagnostics.append("shared_mic_follow_default_input_ok attempt=\(index + 1)")
+                return
+            } catch {
+                AudioCaptureDiagnostics.append(
+                    "shared_mic_follow_default_input_retry attempt=\(index + 1) \(AudioCaptureDiagnostics.errorFields(error))"
+                )
+            }
+        }
+        AudioCaptureDiagnostics.append("shared_mic_follow_default_input_gave_up recording_continues=true")
     }
 
     // MARK: - Public API

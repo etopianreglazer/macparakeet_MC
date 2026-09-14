@@ -19,16 +19,25 @@ writer and scheduler are shared. What is macOS-only is gated with
   `normalizedUID` helper and, on iOS, the `AudioDeviceID` typealias that
   `MeetingInputDeviceAttempt` keeps for API parity (the attempt chain is always
   empty on iOS).
-- `MicrophoneEnginePlatform.swift` — on iOS the HAL default-input listener is
-  replaced by `AVAudioSession` observers: route changes (new/lost device,
-  override, config) and interruption-ended-with-`shouldResume` both call the
-  same follow-the-input handler the Mac uses, so the stream rebuilds the engine
-  and the recording continues. The session (`.playAndRecord`, `.default` mode,
-  Bluetooth HFP, speaker) is activated at the top of `startEngineLocked` and
-  deactivated in `stopEngine()` only — a follow-the-input rebuild keeps it
-  active — plus on any start that fails after activating, so the pair is
-  always balanced. Deactivation is what closes the background-audio window. The
-  explicit-device setter always refuses on iOS.
+- `MicrophoneEnginePlatform.swift` + `RecordingAudioSessionLifecycle.swift` —
+  on iOS the HAL default-input listener is replaced by `AVAudioSession`
+  observers, and the session follows the Voice Memos model: **session per
+  recording, engine per configuration** (the full table is in
+  `docs/plans/splay-ios-utility-layer.md` § Audio session model). The category
+  (`.playAndRecord`, `.default` mode, `.mixWithOthers` so a background start is
+  allowed, Bluetooth HFP, speaker) is set once per process; `setActive(true)`
+  runs once per recording; a rebuild while a recording is engaged touches the
+  session not at all (re-activating from the background is refused with
+  `'!int'`). A route change restarts the engine only when the *input port UID*
+  changed (the route line logs `input=a→b output=a→b input_changed=`); the
+  engine's configuration-change notification — which on iOS means the engine has
+  stopped — restarts it too; an interruption `.began` marks the session
+  interrupted and `.ended`+`shouldResume` re-activates then restarts. The
+  observers live for the platform's lifetime and act only while a recording is
+  engaged. `stopEngine()` deactivates whenever the session is ours, engine
+  running or not; a *first* start that fails after activating deactivates again
+  so the pair stays balanced. Deactivation is what closes the background-audio
+  window. The explicit-device setter always refuses on iOS.
 - `AudioCaptureDiagnostics.swift` — device/transport labels read `session` on
   iOS so the shared log grammar stays greppable.
 - `AudioFileConverter.swift` — the FFmpeg subprocess paths are macOS-only. On
@@ -55,7 +64,9 @@ fan-out. There is exactly one instance per process, owned by
 
 **Shared mic engine (the core of this folder)**
 - `SharedMicrophoneStream.swift` — fan-out, VPIO state machine,
-  subscriber tokens, `Diagnostics` snapshot. ADR-015 + ADR-016.
+  subscriber tokens, `Diagnostics` snapshot. ADR-015 + ADR-016. Its
+  follow-the-input restart (300/800/2000 ms backoff, never fatal) is
+  single-flight: triggers landing mid-run coalesce into one rerun.
 - `MicrophoneEnginePlatform.swift` — `AVAudioEngine` wrapper. Device
   fallback chain, VPIO toggle, tap install, engine recreation on
   every teardown (so coreaudiod releases the VPAU aggregate

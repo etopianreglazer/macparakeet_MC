@@ -79,6 +79,60 @@ crash safety.
 session is active; the ANE is usable during that time. After Stop the app has a short
 background grace window, which is why the tail chunk must be the only outstanding work.
 
+## Audio session model (iOS) — decided 2026-09-14
+
+The reference is Voice Memos: **the session is per recording, the engine is per
+configuration**, and the two lifecycles never cross.
+
+```
+press ─▶ Live Activity ─▶ session: setCategory (once per process) + setActive(true)   [active]
+                       └▶ engine: build graph, install tap, start                      buffers flow
+
+routeChangeNotification      input port UID unchanged ─▶ log only (our own activation, a
+                             category set or an output override all post one of these)
+                             input port UID changed  ──▶ restart the ENGINE (session untouched)
+AVAudioEngineConfigurationChange   the engine HAS STOPPED (I/O hardware changed under it) ─▶
+                                   restart the ENGINE (session untouched)
+interruption .began          system holds the session; engine stopped        [interrupted]
+interruption .ended          shouldResume ─▶ setActive(true) again + restart the engine
+                             (the one legitimate re-activation)              [active]
+
+stop ─▶ engine torn down (if it was still up) ─▶ setActive(false) whenever the session is
+        ours, running engine or not                                          [idle]
+```
+
+Policy lives in `RecordingAudioSessionLifecycle` (SplayCore/Audio, portable, unit-tested on
+the Mac); `AVAudioEngineMicrophonePlatform` applies it. Points of failure this replaces, all
+seen in the fourth device run (2026-09-14 06:37) or implied by the code:
+
+1. **Session activation lived inside engine start.** Every rebuild re-issued `setCategory` +
+   `setActive(true)`; from the background iOS refused with `'!int'`. Now a rebuild during a
+   recording is `.alreadyActive` → no session call at all.
+2. **Every route change was treated as an input change** (a HAL habit from the Mac). On iOS
+   `.newDeviceAvailable` fired 50 ms after our own activation with the input still the
+   built-in mic. Now only a changed input-port UID (previous route vs current) restarts the
+   engine; the line logs `input=<prev>→<cur> output=…` so the self-inflicted ones are visible.
+3. **The engine's configuration-change notification was only logged.** On iOS it means the
+   engine has stopped (the I/O unit saw the output flip to the speaker); the recording would
+   have died even with (2) fixed. Now, while a recording is engaged, it drives the same
+   restart-the-engine path.
+4. **The session observers were per engine instance** and were removed by every teardown —
+   including the teardown inside a *failed* rebuild — so after the retries gave up nothing
+   could ever resume the recording. Now they are installed once for the platform's lifetime
+   and gated on the session being engaged.
+5. **`stopEngine` returned early when the engine was already down**, so the session was never
+   deactivated (no `audio_session_inactive` in the log): mic indicator on, background window
+   open, until the process died. Now deactivation follows the session state, not the engine.
+6. **Concurrent follow-the-input tasks.** A route change and a configuration change arrive
+   together; each spawned its own restart-with-backoff task. `SharedMicrophoneStream` now runs
+   one at a time and coalesces triggers that arrive mid-flight into a single rerun (Mac too).
+
+Kept as is: `.mixWithOthers` (required for background activation), `.playAndRecord`
+(`.record` cannot mix), the 300/800/2000 ms backoff (a cold Bluetooth mic). Open question
+for a later run: `.defaultToSpeaker` has no function today (nothing plays) and may be what
+flips the output route and stops the engine right after start — the route-change line now
+shows the output port so this can be decided from a log, not a guess.
+
 ## Slices
 
 1. **Core port** — add `.iOS(.v18)` to `SplayCore`/`SplayViewModels`; make the mic engine,
