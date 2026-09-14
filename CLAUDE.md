@@ -126,7 +126,10 @@ pre-publish gate: `docs/launch-checklist.md`.
 ## Working method
 
 - Read `docs/thread-state.md`, then the subsystem README for any `SplayCore/` folder you
-  touch. Update `docs/thread-state.md` at the end of every thread (newest block on top).
+  touch. At the end of every thread **rewrite the pin in place** (live state · decided-not-done ·
+  next thread starts here), demote the previous thread's block verbatim to the top of
+  `docs/thread-log.md`, and keep `thread-state.md` under **150 lines**. Durable facts go to a
+  README, a plan, or this file — never accumulate in the pin.
 - Bug fix: failing test → fix → focused tests → `swift test`.
 - Run the **Vet** review skill (`/vet`) after each logical unit of change; it has caught
   real regressions here.

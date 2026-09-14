@@ -14,7 +14,7 @@ This makes the island self-sufficient — the prerequisite for Slice 6 (retiring
 
 - **Backdrop:** flat-dark, matching the island's existing `Color(white:0.13)` + `.dark` scheme +
   rounded card. NO `NSVisualEffectView` — true vibrancy stays the separate deferred-polish item
-  (corner-bleed pitfall, see thread-state).
+  (corner-bleed pitfall, see `docs/thread-log.md`).
 - **Library → transcript (`onSelect`):** keep routing to the main window for now. Transcript-as-
   overlay is Slice 7 (transcript/summary layering), out of scope here.
 

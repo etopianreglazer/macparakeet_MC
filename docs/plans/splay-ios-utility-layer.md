@@ -319,6 +319,24 @@ change (`AVAudioSession.currentRoute.inputs.first?.uid` before vs after), and th
 `activateAudioSession()` when the session is already active (track it) — a rebuild keeps the
 session, it only restarts the engine.
 
+## Device dev loop (salvaged from the thread journal, 2026-09-14)
+
+- Build + install: `scripts/dev/install_iphone.sh` (Wi-Fi is enough; phone unlocked). `NO_LAUNCH=1`
+  keeps the app cold so the owner's Action Button press is the first launch.
+- Phone: `Mathews iPhone` (iPhone 16 Pro), device id `D0B10BDC-0255-5F32-A804-AA87A111F4EE`.
+- The app's diagnostics do **not** stream through `devicectl … launch --console` (FluidAudio lines
+  only). They are written inside the container; pull them with:
+
+  ```bash
+  xcrun devicectl device copy from --device D0B10BDC-0255-5F32-A804-AA87A111F4EE --domain-type appDataContainer --domain-identifier com.macparakeet.mc.ios --source Library/Logs/MacParakeet/dictation-audio.log --destination /tmp/phone.log
+  ```
+
+- Debug app code lives in `Splay.app/Splay.debug.dylib`. My process cannot read `~/Desktop`; use `/tmp`.
+- The unified log is owner-only: `sudo log collect --device-name "Mathews iPhone" --start …`.
+- The Control is found under Action Button ▸ **Controls** ▸ search "Splay" (not a top-level entry).
+- After any reinstall that wipes the container, the bundled model seeds itself; the older
+  `devicectl device copy to` of the Mac's cached `parakeet-tdt-0.6b-v3` + `silero-vad` is no longer needed.
+
 ## Risks
 
 - **Back Tap may need the foreground flash.** Acceptable; Action Button is the primary.
