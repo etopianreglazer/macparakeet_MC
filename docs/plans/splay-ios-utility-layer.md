@@ -21,8 +21,9 @@ is the normal case, not the edge case). Bundle size is not a concern (1–2 GB i
 | STT | **Parakeet TDT 0.6B v3 via FluidAudio** on the Neural Engine. WhisperKit not ported in v1. | Fastest, non-hallucinating on silence, already Splay's stack. |
 | Text | **Verbatim.** `TextProcessingPipeline` only. No LLM clean-up, no autocorrect, ever in the capture step. | "If you don't know what you're cleaning up you introduce uncertainty." The reader's LLM has the full context; the phone does not. |
 | Names / brands | **Parked.** Accepted as slightly off in v1. Revisit as a deterministic personal dictionary, never a model-side guess. | Editing decision for later, not a capture decision. |
-| Delivery | Transcript `.md` + paired audio in the app's Files container; text also on the **clipboard**; the App Intent **returns the text** so a Shortcut can route it (paste, share, append to a note). | Composable; no keyboard extension needed. |
-| Keyboard | **None.** | iOS forbids mic access in keyboard extensions; not needed for this flow. |
+| Delivery | **Always on the clipboard** the instant the file is written (owner decision 2026-09-13: the clipboard is the safety net, no Copy button ever). Transcript `.md` + paired audio in Files; the Stop intent **returns the text** so a Shortcut can route it. | Nothing gets lost; a manual paste always works. |
+| Auto-paste | **Wanted** (same feel as the Mac's paste-into-focused-field). iOS only lets a **keyboard extension** insert text into another app's field, so auto-paste = a *paste-only* Splay keyboard: no keys, a short strip, inserts the transcript the moment it lands while it is the active keyboard. It never records. Slice 6; verify whether reading the App Group needs Full Access. | The keyboard is the only sanctioned path; keep it minimal. |
+| Keyboard | **No typing keyboard.** Only the paste-only strip above, and only for auto-paste. | iOS forbids mic access in keyboard extensions; recording stays in the app. |
 | Cloud fallback | **None.** | Local is the point. |
 
 ## Platform facts that shape the build (verified 2026-09-13)
@@ -95,6 +96,9 @@ background grace window, which is why the tail chunk must be the only outstandin
    `ForegroundContinuableIntent` if the Live Activity cannot be started from a Shortcut.
 5. **Recents + Settings** — the minimum: a Files-provider view of transcripts and one
    settings sheet (language, output folder). Both reachable only if you go looking.
+6. **Auto-paste** — a paste-only keyboard extension (App Group handoff from the app). Exit:
+   Splay keyboard active in Claude/Notes → Action Button → talk → Action Button → the text
+   appears at the cursor with no further touch. Clipboard is still written regardless.
 
 ## Slice 1 log
 
