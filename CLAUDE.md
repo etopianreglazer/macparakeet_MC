@@ -63,7 +63,9 @@ Tests/SplayTests/        XCTest + swift-testing
 spec/adr/                upstream ADRs, kept as the architectural record (see below)
 docs/                    Splay's own docs: product model, thread state, launch, releasing, plans/
 scripts/dev/             install_local.sh (the dev loop)   scripts/dist/  build + sign + notarize
-                         install_iphone_bench.sh (iOS bench: generate → build → install → launch)
+                         install_iphone.sh / install_iphone_bench.sh (iOS app / bench → connected iPhone)
+ios/Splay/               the iPhone app (XcodeGen): App/ (environment, RecordingCoordinator, Recents),
+                         Shared/ (Live Activity attributes, App Intents), Widgets/ (island, Control)
 ios/SplayBench/          XcodeGen spec + harness that benchmarks Parakeet v3 on a real iPhone
 ```
 

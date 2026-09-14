@@ -5,7 +5,25 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-09-13 **thread 12 — iPHONE PORT, SLICE 1: SplayCore COMPILES FOR iOS; BENCH HARNESS BUILT, NOT YET RUN ON DEVICE.**
+> **Last updated:** 2026-09-13 **thread 12 (cont.) — SLICE 2 DEVICE-FREE HALF DONE ON BRANCH `ios/utility-layer`: AVFoundation converter, iOS audio session, and the iOS app (app + widget) COMPILE FOR iOS; NOTHING RUN ON A DEVICE YET.**
+> Branch `ios/utility-layer` off `main` (owner asked for a branch; main is untouched after slice 1). Commits:
+> `d32c6958` AVFoundation converter (+7 tests); then the iOS audio session + the `ios/Splay/` app skeleton (see
+> `docs/plans/splay-ios-utility-layer.md` § Slice 2 log for the full shape). Owner decisions this stretch: **design
+> v5** (mock at claude.ai artifact "Splay Island for iPhone": no light, Now-Playing idiom, 84 pt expanded row, Record/
+> Pause/Resume only, HIG sizes) is what `SplayLiveActivity.swift` implements; **clipboard always** on save;
+> **auto-paste = a paste-only keyboard extension later (slice 6)** because iOS lets only keyboards insert text.
+> Vet ran on each unit (converter clean; audio session had an unbalanced activate/deactivate — fixed, deactivate only
+> in `stopEngine()` + on failed start; the app skeleton got 13 findings, all fixed: on-disk DB instead of the in-memory
+> test initializer, the Mac's aliveness algorithm for *Input dead* + `mode == .stopped` as a hard failure that finalizes
+> and releases the lease, `finishTranscriptionAttempt` on every failure path, no orphaned Live Activity on restart
+> (+ lingering ones ended at launch), Retry only when a stopped session exists (`ContentState.canRetry`), Pause accepted
+> in Input dead, `placeholder` rename, one title/tint mapping, Recents errors surfaced, and the iPhone scripts share
+> `scripts/dev/lib/iphone_common.sh` with a real exit status and JSON device discovery). Vet was **not** re-run on
+> that follow-through (owner asked not to restart it); worth one pass next thread. ⚠️ **Still blocked on the owner for anything on-device:** Apple ID in Xcode ▸
+> Settings ▸ Accounts, phone on a cable. Then: `scripts/dev/install_iphone_bench.sh` (numbers), then
+> `scripts/dev/install_iphone.sh` (the app; verify the Control-started recording, the Live Activity, the clipboard).
+>
+> **Prior block (slice 1):** **thread 12 — iPHONE PORT, SLICE 1: SplayCore COMPILES FOR iOS; BENCH HARNESS BUILT, NOT YET RUN ON DEVICE.**
 > Owner decisions this thread (recorded in `docs/plans/splay-ios-utility-layer.md`, now ACTIVE): the phone
 > is the priority; **no app you ever open** — Action Button (Control) primary, Back Tap (Shortcut) secondary,
 > a Now-Playing-style **Live Activity in the Dynamic Island** as the indicator with one Stop button;
@@ -44,13 +62,13 @@
 > environmental failures** (AppPaths + 3× SettingsViewModel + AX-gated AppHotkeyCoordinator), zero new.
 >
 > ### ⭐ WHAT'S NEXT (thread 13)
-> 1. **Owner:** add the Apple ID to Xcode Accounts; plug in the phone; `scripts/dev/install_iphone_bench.sh`.
->    Read the numbers off the console (or the JSON in Files ▸ Splay Bench). That closes slice 1's exit criterion.
-> 2. **Slice 2** (`docs/plans/splay-ios-utility-layer.md`): iOS app target (XcodeGen, same pattern as the bench),
->    `StartRecordingIntent`/`StopRecordingIntent` adopting `AudioRecordingIntent` + `LiveActivityIntent`, a
->    Control, AVAudioSession setup + route-change handling in `MicrophoneEnginePlatform`, and the
->    **AVFoundation `AudioFileConverting` implementation** (mic-only remux to M4A is enough for v1).
-> 3. Thread 11's list still stands for the Mac side (second-Mac test, glow pass, owner-only publish items).
+> 1. **Owner:** Apple ID in Xcode Accounts; phone on a cable. Run `scripts/dev/install_iphone_bench.sh` (slice 1
+>    exit numbers), then `scripts/dev/install_iphone.sh` and press the Action Button (assign Splay's Control first).
+> 2. **On-device verification list** (slice 2 exit): Control-started recording with the app never visible; island
+>    compact/expanded per v5; Pause/Resume; Action Button again → Finishing → Saved; `.md` + audio in Files; text on
+>    the clipboard; Back Tap → Shortcut path (may need `ForegroundContinuableIntent`); first-run model download UX.
+> 3. Then slice 3/4 polish per the plan; slice 6 = paste-only keyboard (auto-paste). Mac list from thread 11 stands.
+> Branch is local; nothing pushed (owner pushes).
 > Nothing is pushed (owner pushes).
 >
 > **Last updated (prior):** 2026-08-21 **thread 11 — DOCS REWRITE + POLISH: DONE; RELEASE BUILD: NOTARIZED 0.1.0 CUT (not published).**

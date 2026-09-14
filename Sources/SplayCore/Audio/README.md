@@ -19,9 +19,16 @@ writer and scheduler are shared. What is macOS-only is gated with
   `normalizedUID` helper and, on iOS, the `AudioDeviceID` typealias that
   `MeetingInputDeviceAttempt` keeps for API parity (the attempt chain is always
   empty on iOS).
-- `MicrophoneEnginePlatform.swift` — the default-input HAL listener is a no-op
-  on iOS (route changes come from `AVAudioSession.routeChangeNotification`,
-  not wired yet); the explicit-device setter always refuses.
+- `MicrophoneEnginePlatform.swift` — on iOS the HAL default-input listener is
+  replaced by `AVAudioSession` observers: route changes (new/lost device,
+  override, config) and interruption-ended-with-`shouldResume` both call the
+  same follow-the-input handler the Mac uses, so the stream rebuilds the engine
+  and the recording continues. The session (`.playAndRecord`, `.default` mode,
+  Bluetooth HFP, speaker) is activated at the top of `startEngineLocked` and
+  deactivated in `stopEngine()` only — a follow-the-input rebuild keeps it
+  active — plus on any start that fails after activating, so the pair is
+  always balanced. Deactivation is what closes the background-audio window. The
+  explicit-device setter always refuses on iOS.
 - `AudioCaptureDiagnostics.swift` — device/transport labels read `session` on
   iOS so the shared log grammar stays greppable.
 - `AudioFileConverter.swift` — the FFmpeg subprocess paths are macOS-only. On

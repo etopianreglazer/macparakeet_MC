@@ -128,6 +128,38 @@ through `STTClient` on a bundled 73 s TTS clip, prints RTF per run, a 10-run sus
 `scripts/dev/install_iphone_bench.sh` = generate → Release build → install → launch with
 console streaming. Needs the phone connected and unlocked; not yet run on device.
 
+## Slice 2 log
+
+**2026-09-13 — device-free half done on branch `ios/utility-layer`.**
+- `AVFoundationAudioFileConverter` (commit `d32c6958`): the iOS conversion path, same
+  contracts as FFmpeg, 7 tests on macOS. `mixToM4A` at stop now works on iOS.
+- iOS `AVAudioSession` in `AVAudioEngineMicrophonePlatform`: `.playAndRecord` activated
+  before the engine starts, deactivated only in `stopEngine()` (never on a route-change
+  rebuild) and on a start that fails after activating; route changes and
+  interruption-ended-with-`shouldResume` funnel into the existing follow-the-input handler.
+  Vet caught the unbalanced first version; fixed.
+- **`ios/Splay/` — the app.** XcodeGen `project.yml`: app target (`com.macparakeet.mc.ios`,
+  SplayCore, background mode `audio`, Live Activities, document sharing on) + WidgetKit
+  extension (`…ios.widgets`). `SplayEnvironment` composes SplayCore mic-only.
+  `RecordingCoordinator` (MainActor singleton) = start → mic permission → Live Activity →
+  `startRecording(.microphoneOnly)`; pause/resume; stop → finishing → `stopRecording` →
+  `transcribeMeeting` → `completeTranscription` → `AutoSaveService.saveIfEnabled(.meeting)`
+  (`.md` + paired audio in Documents/MacParakeet-MC/Meetings) → **clipboard** → saved →
+  activity ends after 3 s; failure keeps the activity with Retry; a 2 s health watch flips
+  to *Input dead* when `captureHealth.mode == .stopped`. Intents (`Toggle/Start/Stop/Pause/
+  Resume/RetryTranscription`) adopt `AudioRecordingIntent + LiveActivityIntent`; their
+  bodies compile only under `SPLAY_APP` so the widget target can reference the types.
+  `SplayLiveActivity` is the v5 mock: compact glyph + bars, 84 pt expanded row, one 44 pt
+  filled circle (Pause white / Resume red / Retry white), tinted key line, Lock Screen row.
+  `SplayRecordControl` = Control Center button → `ToggleRecordingIntent` (assign to the
+  Action Button). `scripts/dev/install_iphone.sh` = generate → build → install → launch;
+  `COMPILE_ONLY=1` builds unsigned for generic iOS (what CI can do).
+- **Compiles for generic iOS, unsigned. Not yet run on a device.** Known gaps to verify on
+  the phone: whether a Control-started `AudioRecordingIntent` really records without the
+  app in the foreground (Apple's rule says yes if the Live Activity starts at once); the
+  bars in the island are a timeline pulse, not the live mic level (WidgetKit cannot update
+  per frame); first launch downloads the Parakeet model with no progress UI yet.
+
 ## Risks
 
 - **Back Tap may need the foreground flash.** Acceptable; Action Button is the primary.

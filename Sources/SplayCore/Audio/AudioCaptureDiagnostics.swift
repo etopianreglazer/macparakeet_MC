@@ -58,11 +58,11 @@ public enum AudioCaptureDiagnostics {
     }
 #endif
 
-    static func errorType(_ error: Error) -> String {
+    public static func errorType(_ error: Error) -> String {
         TelemetryErrorClassifier.classify(error)
     }
 
-    static func errorFields(_ error: Error) -> String {
+    public static func errorFields(_ error: Error) -> String {
         let detail = sanitizedLogValue(error.localizedDescription)
         guard !detail.isEmpty else {
             return "error_type=\(errorType(error))"

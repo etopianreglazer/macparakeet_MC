@@ -86,3 +86,7 @@ recup_dir*/
 ios/SplayBench/SplayBench.xcodeproj/
 ios/SplayBench/build/
 ios/SplayBench/Info.plist
+ios/Splay/Splay.xcodeproj/
+ios/Splay/build/
+ios/Splay/App/Info.plist
+ios/Splay/Widgets/Info.plist
