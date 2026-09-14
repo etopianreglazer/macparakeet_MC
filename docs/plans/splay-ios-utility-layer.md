@@ -200,6 +200,22 @@ interrupted copy is never trusted. Log lines: `bundled_models seeded=… complet
 `bundled_models absent`, `bundled_models_seed_failed`. Debug app is now ~490 MB; the folder
 is `optional` in `project.yml` so a CI compile without it still builds.
 
+**Second device run (2026-09-13 20:56, owner alone, build `59d6f21f`-equivalent + the two fixes):**
+the Action Button with the app not running **did** start a recording in the background —
+`audio_session_active` (so `.mixWithOthers` fixed `'!int'`), Live Activity requested, first mic
+buffer landed — and then the process **vanished ~1 s later**: no stop line, session
+`3238D80E…` left with `recording.lock`, a 5.7 KB `microphone.m4a` (header only) and no chunks; no
+crash report and no JetsamEvent on the phone (checked the synced
+`~/Library/Logs/CrashReporter/MobileDevice/Mathews iPhone/`). A second press 22 s later launched a
+new process whose `AVAudioSession` activation failed with `'!pla'` (`cannotStartPlaying`,
+561015905). The silent kill matches the `AudioRecordingIntent` rule ("the system terminates the
+recording if a Live Activity is not visible") — the island rendering has never been verified on
+the device — but the file log cannot prove it: `Logger` lines never reach it. Fixed the blind
+spot first: `RecordingCoordinator` now logs app state at start, `ActivityAuthorizationInfo`,
+the activity id and every `ActivityState` transition, all errors (via `note`), and the process
+lifecycle notifications. The device's unified log (`sudo log collect --device-name "Mathews
+iPhone" --start "…"`) is the other half; it needs root on the Mac.
+
 ## Risks
 
 - **Back Tap may need the foreground flash.** Acceptable; Action Button is the primary.

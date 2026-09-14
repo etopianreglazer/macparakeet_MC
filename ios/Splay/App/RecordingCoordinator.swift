@@ -55,6 +55,37 @@ final class RecordingCoordinator {
                 Task { @MainActor in RecordingCoordinator.shared.flushClipboard() }
             })
         }
+        // Process lifecycle into the file log: a background-started recording
+        // that vanishes without a crash report (2026-09-13, second device run)
+        // is only explainable if the last thing the process saw is on disk.
+        let lifecycle: [(Notification.Name, String)] = [
+            (UIApplication.didEnterBackgroundNotification, "ios_app_did_enter_background"),
+            (UIApplication.willEnterForegroundNotification, "ios_app_will_enter_foreground"),
+            (UIApplication.didBecomeActiveNotification, "ios_app_did_become_active"),
+            (UIApplication.willTerminateNotification, "ios_app_will_terminate"),
+            (UIApplication.didReceiveMemoryWarningNotification, "ios_app_memory_warning"),
+        ]
+        for (name, label) in lifecycle {
+            clipboardObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
+                AudioCaptureDiagnostics.append(label)
+            })
+        }
+        AudioCaptureDiagnostics.append("ios_app_attached app_state=\(Self.appStateLabel())")
+    }
+
+    /// `Logger` lines never reach the pulled file log; every error goes to both.
+    private func note(_ line: String) {
+        logger.error("\(line, privacy: .public)")
+        AudioCaptureDiagnostics.append(line)
+    }
+
+    private static func appStateLabel() -> String {
+        switch UIApplication.shared.applicationState {
+        case .active: "active"
+        case .inactive: "inactive"
+        case .background: "background"
+        @unknown default: "unknown"
+        }
     }
 
     /// Write now if the clipboard is reachable, else hold the text. Always
@@ -95,8 +126,11 @@ final class RecordingCoordinator {
 
     func start() async {
         guard let environment, !isRecording else { return }
+        AudioCaptureDiagnostics.append(
+            "ios_start app_state=\(Self.appStateLabel()) activities_enabled=\(ActivityAuthorizationInfo().areActivitiesEnabled)"
+        )
         guard await AVAudioApplication.requestRecordPermission() else {
-            logger.error("record_permission_denied")
+            note("ios_record_permission_denied")
             return
         }
         // A Failed activity may still be showing; it is ours and must not be
@@ -113,13 +147,21 @@ final class RecordingCoordinator {
         // The Live Activity must exist before (and for as long as) the recording
         // runs when it was started from a Control; iOS ends the recording otherwise.
         do {
-            activity = ActivityHandle(try Activity.request(
+            let handle = ActivityHandle(try Activity.request(
                 attributes: SplayActivityAttributes(sessionID: sessionID),
                 content: ActivityContent(state: state, staleDate: nil),
                 pushType: nil
             ))
+            activity = handle
+            AudioCaptureDiagnostics.append("ios_live_activity_requested id=\(handle.id)")
+            // The system ending the activity on its own (denied, dismissed,
+            // stale) is the one thing that explains a background recording
+            // being terminated; record every transition.
+            handle.observeStateChanges { label in
+                AudioCaptureDiagnostics.append("ios_live_activity_state=\(label)")
+            }
         } catch {
-            logger.error("live_activity_request_failed \(error.localizedDescription, privacy: .public)")
+            note("ios_live_activity_request_failed \(AudioCaptureDiagnostics.errorFields(error))")
             return
         }
         do {
@@ -127,8 +169,7 @@ final class RecordingCoordinator {
             AudioCaptureDiagnostics.append("ios_recording_started session=\(sessionID.uuidString)")
             startHealthWatch()
         } catch {
-            logger.error("start_recording_failed \(error.localizedDescription, privacy: .public)")
-            AudioCaptureDiagnostics.append("ios_recording_start_failed \(AudioCaptureDiagnostics.errorFields(error))")
+            note("ios_recording_start_failed \(AudioCaptureDiagnostics.errorFields(error))")
             await fail(retryable: false)
         }
     }
@@ -177,8 +218,7 @@ final class RecordingCoordinator {
             let transcript = try await transcribeAndDeliver(output: output, environment: environment)
             await saved(transcript)
         } catch {
-            logger.error("retry_transcription_failed \(error.localizedDescription, privacy: .public)")
-            AudioCaptureDiagnostics.append("ios_retry_transcription_failed \(AudioCaptureDiagnostics.errorFields(error))")
+            note("ios_retry_transcription_failed \(AudioCaptureDiagnostics.errorFields(error))")
             await environment.meetingRecordingService.finishTranscriptionAttempt(for: output)
             await fail(retryable: true)
         }
@@ -201,8 +241,7 @@ final class RecordingCoordinator {
             lastOutput = output
         } catch {
             // No usable audio (or the writer failed): nothing to retry.
-            logger.error("stop_recording_failed \(error.localizedDescription, privacy: .public)")
-            AudioCaptureDiagnostics.append("ios_stop_failed \(AudioCaptureDiagnostics.errorFields(error))")
+            note("ios_stop_failed \(AudioCaptureDiagnostics.errorFields(error))")
             await fail(retryable: false)
             return nil
         }
@@ -211,8 +250,7 @@ final class RecordingCoordinator {
             await saved(transcript)
             return transcript
         } catch {
-            logger.error("transcribe_failed \(error.localizedDescription, privacy: .public)")
-            AudioCaptureDiagnostics.append("ios_transcribe_failed \(AudioCaptureDiagnostics.errorFields(error))")
+            note("ios_transcribe_failed \(AudioCaptureDiagnostics.errorFields(error))")
             // Failure path per MeetingRecordingServiceProtocol: release the
             // speech-engine lease but leave the recovery lock for Retry.
             await environment.meetingRecordingService.finishTranscriptionAttempt(for: output)
@@ -344,6 +382,27 @@ private final class ActivityHandle: @unchecked Sendable {
 
     init(_ activity: Activity<SplayActivityAttributes>) {
         self.activity = activity
+    }
+
+    nonisolated var id: String { activity.id }
+
+    /// Reports every `ActivityState` the system moves this activity through;
+    /// the stream finishes once the activity is dismissed.
+    nonisolated func observeStateChanges(_ report: @escaping @Sendable (String) -> Void) {
+        Task.detached { [self] in
+            for await state in self.activity.activityStateUpdates {
+                let label: String
+                switch state {
+                case .active: label = "active"
+                case .ended: label = "ended"
+                case .dismissed: label = "dismissed"
+                case .stale: label = "stale"
+                @unknown default: label = "unknown"
+                }
+                report(label)
+            }
+            report("stream_finished")
+        }
     }
 
     nonisolated func update(_ state: SplayActivityAttributes.ContentState) async {
