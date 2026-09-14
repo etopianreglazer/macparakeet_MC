@@ -24,9 +24,16 @@ writer and scheduler are shared. What is macOS-only is gated with
   not wired yet); the explicit-device setter always refuses.
 - `AudioCaptureDiagnostics.swift` — device/transport labels read `session` on
   iOS so the shared log grammar stays greppable.
-- `AudioFileConverter.swift` — the FFmpeg subprocess paths. On iOS `convert`
-  and `mixToM4A` throw `conversionFailed` until an AVFoundation converter
-  lands (slice 2). The pure `ffmpegArguments` builders stay portable.
+- `AudioFileConverter.swift` — the FFmpeg subprocess paths are macOS-only. On
+  iOS `convert` and `mixToM4A` delegate to `AVFoundationAudioFileConverter`
+  (below), and `isSupported` reports what AVFoundation decodes (no ogg/opus/
+  mkv/webm there). The pure `ffmpegArguments` builders stay portable.
+- `AVFoundationAudioFileConverter.swift` — `AudioFileConverting` with
+  AVAssetReader/AVAssetWriter only. Same output contracts as FFmpeg (16 kHz
+  mono Float32 WAV; mic+system → 48 kHz stereo AAC, L = mic, R = system, each
+  delayed by its `MeetingSourceAlignment` offset; single input → 16 kHz mono AAC,
+  32 kb/s because Apple's encoder refuses 64 kb/s at 16 kHz). Tested on macOS in
+  `AVFoundationAudioFileConverterTests`; it is the iOS conversion path.
 
 ## Entry point
 

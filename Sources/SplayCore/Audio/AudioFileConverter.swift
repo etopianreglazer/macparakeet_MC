@@ -37,7 +37,11 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
 
     /// Check if a file extension is supported
     public static func isSupported(extension ext: String) -> Bool {
+#if os(macOS)
         supportedExtensions.contains(ext.lowercased())
+#else
+        AVFoundationAudioFileConverter.isSupported(extension: ext)
+#endif
     }
 
     /// Convert any supported audio/video file to 16kHz mono WAV.
@@ -70,9 +74,8 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
             )
         }
 #else
-        // No FFmpeg subprocess on iOS. Slice 2 replaces this with an
-        // AVFoundation converter; until then the file-import path is closed.
-        throw AudioProcessorError.conversionFailed(Self.iosUnavailableReason)
+        // No FFmpeg subprocess on iOS: AVFoundation does the decode.
+        return try await AVFoundationAudioFileConverter().convert(fileURL: fileURL)
 #endif
     }
 
@@ -114,14 +117,11 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
             )
         }
 #else
-        throw AudioProcessorError.conversionFailed(Self.iosUnavailableReason)
+        try await AVFoundationAudioFileConverter().mixToM4A(
+            inputURLs: inputURLs, outputURL: outputURL, sourceAlignment: sourceAlignment
+        )
 #endif
     }
-
-#if !os(macOS)
-    static let iosUnavailableReason =
-        "Audio file conversion is not available on iOS yet (FFmpeg is macOS-only; see docs/plans/splay-ios-utility-layer.md)."
-#endif
 
     /// Build the FFmpeg command arguments (useful for testing)
     public func ffmpegArguments(inputPath: String, outputPath: String) -> [String] {
