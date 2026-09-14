@@ -5,40 +5,46 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-09-14 morning **thread 13 — MODEL BUNDLED (committed `59d6f21f`); BACKGROUND START NOW ACTIVATES BUT THE PROCESS IS KILLED ~1 s LATER (unexplained, instrumented, needs the owner + the device log).**
-> Branch `ios/utility-layer`. (1) Verified the phone (`Mathews iPhone`, cabled) ran `a9095726`: the fix's labels are in
-> `Splay.app/Splay.debug.dylib` — Xcode puts Debug app code there; grepping the main binary finds nothing. Pull the
-> phone's file log with `xcrun devicectl device copy from --device <id> --domain-type appDataContainer
-> --domain-identifier com.macparakeet.mc.ios --source Library/Logs/MacParakeet/dictation-audio.log --destination x.log`.
-> (2) **Model bundled, `59d6f21f`:** `BundledModelSeeder` (SplayCore/STT, 9 tests) copies `Models/<repo>/…` from the
-> app bundle into `Application Support/FluidAudio/Models/` on launch, before the STT warm-up, unless the cache already
-> has every bundled file at the same size (staged copy + rename; stale staging swept). `ios/Splay/Resources/Models/`
-> (git-ignored, 461 MB, `optional` folder reference in `project.yml`) is staged by `scripts/dev/install_iphone.sh` from
-> the Mac's FluidAudio cache (APFS clone). Debug app is 496 MB. Verified on the phone: `bundled_models seeded=
-> complete=parakeet-tdt-0.6b-v3,silero-vad` (the container already had the sideloaded copy; the *seeding* path is
-> unit-tested only — a container wipe would exercise it). Validation: full suite 1775 XCTest, the same 5 known
-> environmental test cases (XCTest counts 6 assertions), zero new; `COMPILE_ONLY=1` iOS build green. **Vet could not
-> run** (the claude CLI it drives hit a session limit until 23:10 PT); self-reviewed instead — re-run Vet next thread
-> over `59d6f21f..HEAD`. (3) **Owner's own test at 20:56 last night (found in the pulled log, see plan § Slice 2
-> log):** background start from the Action Button **worked** (`audio_session_active`, no `'!int'`) and the process
-> died silently ~1 s after the first buffer — orphaned session `3238D80E…` (lock + 5.7 KB header, no chunks), no
-> crash/Jetsam report; a second press 22 s later failed with `'!pla'` (561015905, `cannotStartPlaying`). Leading
-> theory: the Live Activity never became visible (never verified on device) and iOS enforced the
-> `AudioRecordingIntent` rule. **Instrumented** `RecordingCoordinator` (uncommitted until the build lands): `ios_start
-> app_state=… activities_enabled=…`, `ios_live_activity_requested id=…`, `ios_live_activity_state=…` transitions,
-> `ios_app_did_enter_background/will_terminate/memory_warning`, `ios_app_attached`, and every `Logger` error now also
-> hits the file (`note`). Installed with `NO_LAUNCH=1` so the owner's next press starts cold.
+> **Last updated:** 2026-09-14 morning **thread 13 (cont.) — THE "CRASH" WAS A 15 s VAD LOAD BEFORE THE MIC STARTED; FIXED (250 ms budget + launch pre-warm), INSTALLED, NOT YET RE-TESTED. Last night's ~1 s background kill still unexplained.**
+> Branch `ios/utility-layer`. Earlier this thread: model bundled (`59d6f21f`, see below); coordinator instrumented
+> (`69063908`). **Owner's third run (06:25) with the instrumented build, read from the file log:** island appeared
+> (bars pulse, choppy — WidgetKit timeline, known); `ios_start app_state=active activities_enabled=true`; activity
+> `active` at once; **mic capture only began 15 s later** because `MeetingRecordingService.startRecording` loaded the
+> shared Silero VAD lazily on the first session after launch and that CoreML load queued behind the Parakeet ANE
+> compile the launch warm-up had started; by then the phone was locked → `'!pla'` (`cannotStartPlaying`,
+> 561015905) → Failed → activity ended 3 s later (looked like a crash; nothing recorded). **Fix in SplayCore
+> (Mac gets it too):** VAD loads once in a shared unstructured task; a starting session waits ≤ 250 ms
+> (`liveVADReadyBudget`) else fixed chunking for that session (`reason=vad_not_ready`; live preview only);
+> `prepareLiveVAD()` at launch — the phone runs seed → VAD → Parakeet warm-up; `meeting_recording_start_timing
+> lease_ms=… setup_ms=…` logged before capture. 3 tests (the race is a once-only continuation, NOT a task group — a
+> group waits for every child and `task.value` ignores cancellation; the first version waited the full load).
+> **Installed on the phone with `NO_LAUNCH=1`; the owner has not pressed since.** Model bundling (`59d6f21f`):
+> `BundledModelSeeder` (SplayCore/STT, 9 tests) copies `Models/<repo>/…` from the bundle into
+> `Application Support/FluidAudio/Models/` on launch unless complete (staged copy + rename); `ios/Splay/Resources/
+> Models/` (git-ignored, 461 MB, `optional` folder ref) staged by `install_iphone.sh` from the Mac's FluidAudio cache.
+> Verified on the phone (`bundled_models … complete=parakeet-tdt-0.6b-v3,silero-vad`). Pull the phone log:
+> `xcrun devicectl device copy from --device <id> --domain-type appDataContainer --domain-identifier
+> com.macparakeet.mc.ios --source Library/Logs/MacParakeet/dictation-audio.log --destination x.log`. Debug app code
+> lives in `Splay.app/Splay.debug.dylib` (grep there, not the main binary). **Vet did not run this thread** (the
+> claude CLI hit a session limit) — run it over `44d8c8b6..HEAD` next thread. **Open mystery:** last night's
+> background-started recording (20:56) died ~1 s after its first buffer, no crash/Jetsam report (orphaned session
+> `3238D80E…` with lock + header-only audio). The owner collected `~/Desktop/phone.logarchive` but with
+> `--start 07:00` (after the 06:25 run) and my process cannot read `~/Desktop` (TCC) — re-collect from
+> `2026-09-13 20:50` into a readable folder. Validation: suite = the same 5 known environmental cases; `COMPILE_ONLY`
+> and signed iOS builds green.
 >
 > ### ⭐ WHAT'S NEXT (thread 14)
-> 1. **Owner, phone at the desk, app not running:** lock the phone, press the Action Button, watch the island: does
->    anything appear? Wait 10 s, press again. Then unlock and pull the file log (command above) — read `ios_start`,
->    `ios_live_activity_*`, and what the last line is before any gap. Then, on the Mac: `sudo log collect
->    --device-name "Mathews iPhone" --start "<time of the press>" --output ~/Desktop/phone.logarchive` and
->    `log show --archive ~/Desktop/phone.logarchive --predicate 'process == "Splay" OR process == "runningboardd" OR
->    process == "SplayWidgets" OR subsystem CONTAINS "ActivityKit"' --info` — the termination reason is in there.
-> 2. Check Settings › Splay › Live Activities is on (an `activities_enabled=false` line says it all).
+> 1. **Owner, phone at the desk, app not running:** press the Action Button (phone locked), talk 10 s, press again,
+>    unlock. Expect in the file log: `ios_start app_state=background`, `meeting_recording_start_timing … setup_ms`
+>    well under 500, `audio_session_active`, `ios_recording_saved`, `ios_clipboard_deferred` → `ios_clipboard_written`.
+>    If the process dies again ~1 s in, the unified log is the only witness: `sudo log collect --device-name
+>    "Mathews iPhone" --start "2026-09-13 20:50:00" --output /tmp/phone.logarchive` then `sudo log show --archive
+>    /tmp/phone.logarchive --start "…" --end "…" --info --predicate 'process == "Splay" OR process ==
+>    "runningboardd" OR process == "SplayWidgets" OR process == "mediaserverd" OR process == "audiomxd" OR subsystem
+>    CONTAINS "ActivityKit"' > /tmp/phone-log.txt` (both /tmp paths are readable for the assistant).
+> 2. Island polish: the bars' TimelineView pulse is choppy — try `symbolEffect(.variableColor)` on a waveform symbol.
 > 3. Then the on-device list (Pause/Resume, Input dead, Back Tap → Shortcut, Lock Screen row); Vet over
->    `59d6f21f..HEAD`; consider recovery for orphaned iOS sessions (the Mac's ADR-019 flow does not run on the phone).
+>    `44d8c8b6..HEAD`; recovery for orphaned iOS sessions (ADR-019 flow does not run on the phone).
 >
 > **Prior block:** **thread 12 (end) — FIRST END-TO-END RECORDING ON THE iPHONE WORKED.** Branch `ios/utility-layer`,
 > last commit `a9095726`. Bench: slice 1 exit met (`docs/bench/`, 170× RT sustained, 58 MB, thermal nominal). App: 23 s
