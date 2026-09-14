@@ -40,7 +40,10 @@ public enum AudioCaptureDiagnostics {
 
     static func defaultInputDeviceSummary() -> String {
         let deviceID = AudioDeviceManager.defaultInputDevice()
-        return "default_input=\(deviceLabel(deviceID)) default_input_transport=\(deviceTransportLabel(deviceID))"
+        // The HAL id is process-local and carries no name or address, unlike
+        // the UID (a Bluetooth UID embeds the MAC) — enough to tell a→b apart.
+        let idLabel = deviceID.map { String($0) } ?? "none"
+        return "default_input=\(deviceLabel(deviceID)) default_input_id=\(idLabel) default_input_transport=\(deviceTransportLabel(deviceID))"
     }
 #else
     // iOS has no HAL to ask; AVAudioSession owns routing. The log fields keep

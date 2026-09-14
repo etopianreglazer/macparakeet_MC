@@ -66,21 +66,32 @@ fan-out. There is exactly one instance per process, owned by
 
 **Shared mic engine (the core of this folder)**
 - `SharedMicrophoneStream.swift` — fan-out, VPIO state machine,
-  subscriber tokens, `Diagnostics` snapshot. ADR-015 + ADR-016. Its
-  follow-the-input restart (300/800/2000 ms backoff, never fatal) is
-  single-flight: triggers landing mid-run coalesce into one rerun.
+  subscriber tokens, `Diagnostics` snapshot. ADR-015 + ADR-016. Every
+  input *hint* from the platform (default input changed, engine
+  configuration changed, iOS route change / interruption ended) enters
+  `inputHint()`, where `MicrophoneInputPolicy` decides; the rebuild
+  itself (300/800/2000 ms backoff, never fatal) is single-flight:
+  triggers landing mid-run coalesce into one rerun.
+- `MicrophoneInputPolicy.swift` — **stay on the device that is
+  delivering; switch only when the current one stops.** Pure, portable,
+  unit-tested. Engine down → rebuild now. Engine up → rechecks at
+  +1 s / +3 s: a buffer older than 1 s (or none within 15 s of a start)
+  → rebuild; buffers flowing → ignore. AirPods becoming the system
+  default while the built-in mic is delivering is therefore ignored (no
+  HFP, no cold -10868 retries, no gap); the AirPods we record through
+  leaving for the phone stops the engine and is rebuilt onto the new
+  default. `docs/plans/mac-input-policy.md` has the measured log.
 - `MicrophoneEnginePlatform.swift` — `AVAudioEngine` wrapper. Device
   fallback chain, VPIO toggle, tap install, engine recreation on
   every teardown (so coreaudiod releases the VPAU aggregate
-  device), `AVAudioEngineConfigurationChangeNotification` observer.
-  Also owns a `kAudioHardwarePropertyDefaultInputDevice` listener that
-  fires `setDefaultInputChangeHandler` — the shared stream uses this to
-  **follow the system default input**: when the default mic changes
-  (AirPods inserted, headset unplugged), `SharedMicrophoneStream`
-  re-points the engine onto the new device without dropping subscribers,
-  so an in-progress recording continues. The re-point is non-fatal — a
-  failed rebuild (a just-connected Bluetooth mic that isn't capture-ready,
-  CoreAudio -10868) never kills the recording; it retries with backoff.
+  device). Two observers feed the stream's hint: the
+  `AVAudioEngineConfigurationChange` observer (per engine; the Mac tears
+  the engine down when it reports stopped and hints either way, iOS
+  tears down and hints while the session is engaged) and, on the Mac, a
+  `kAudioHardwarePropertyDefaultInputDevice` listener that lives for
+  the **platform's lifetime** (installed on the first start, removed in
+  `deinit`), so a recording whose rebuild failed still hears the input
+  come back.
 
 **Mic consumers (each subscribes to the shared stream)**
 - `AudioRecorder.swift` — dictation capture.
@@ -183,6 +194,17 @@ actor hops, no `await`. State touched from the tap path uses
 passed in is valid only for the synchronous duration of the call —
 copy via `copyPCMBufferForAsyncUse` before retaining or dispatching
 async.
+
+**A default-input change is a hint, not a trigger.** Do not add code
+that restarts the engine because the system default moved; route it
+through `SharedMicrophoneStream.inputHint()` and let
+`MicrophoneInputPolicy` decide from "is the engine still delivering".
+Restarting a healthy engine cuts the head off the recording (the
+self-inflicted route change on iOS, AirPods auto-switching on the Mac).
+Log grammar:
+`shared_mic_input_hint … verdict=restart_now|recheck|ignore` →
+`shared_mic_input_recheck n=… reason=alive|stopped|engine_down|warming|never_delivered action=…`
+→ `shared_mic_follow_default_input` for the rebuild itself.
 
 **Diagnostic logging is observability-only.** The first-buffer
 watchdog and recording heartbeat in `AudioRecorder` log to

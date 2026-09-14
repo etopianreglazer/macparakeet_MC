@@ -344,6 +344,13 @@ final class MicrophoneEngineRealPlatformTests: XCTestCase {
                 switchedBaseline,
                 "Shared stream should keep delivering buffers after default-input switch."
             )
+            // The input policy: the original device kept delivering, so the
+            // default moving away is a hint that was rechecked and ignored —
+            // no rebuild (no gap, no cold-route retries).
+            XCTAssertEqual(
+                stream.diagnostics.engineRestartCount, 0,
+                "A default-input change while buffers flow must not rebuild the engine."
+            )
 
             try setSystemDefaultInputDevice(originalDefault)
             try await waitForDefaultInputDevice(
@@ -362,6 +369,7 @@ final class MicrophoneEngineRealPlatformTests: XCTestCase {
                 restoredBaseline,
                 "Shared stream should keep delivering buffers after restoring default input."
             )
+            XCTAssertEqual(stream.diagnostics.engineRestartCount, 0, "…and neither must the switch back.")
         } catch {
             try? setSystemDefaultInputDevice(originalDefault)
             await unsubscribeAll(&tokens, from: stream)

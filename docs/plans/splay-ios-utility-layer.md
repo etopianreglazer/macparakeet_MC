@@ -133,6 +133,24 @@ seen in the fourth device run (2026-09-14 06:37) or implied by the code:
    together; each spawned its own restart-with-backoff task. `SharedMicrophoneStream` now runs
    one at a time and coalesces triggers that arrive mid-flight into a single rerun (Mac too).
 
+**Thread 15 (2026-09-14) — the island never showed Saved.** Platform fact (ActivityKit docs,
+"Displaying live data with Live Activities"): the system removes an *ended* Live Activity from the
+Dynamic Island immediately; `ActivityUIDismissalPolicy` only decides how long it stays on the Lock
+Screen. `saved()` used to push the green check and end with a 3 s dismissal in the same instant, so
+the island went straight from Finishing to hardware (sixth run: recording fine, 29 words saved, no
+check seen). Now: push `.saved` → dwell 3 s while still live → `end(…, dismissAfter: 0)`. The dwell
+is awaited inside the Stop/Toggle intent, which keeps the process alive for it. Same for a
+non-retryable failure.
+
+**Thread 15 (2026-09-14) — the shared input policy.** Every hint above (route change with a changed
+input UID, configuration change, interruption ended) now enters `SharedMicrophoneStream.inputHint()`
+and `MicrophoneInputPolicy` decides (`docs/plans/mac-input-policy.md`): engine down → rebuild now;
+engine up → rechecks at +1 s/+3 s and a rebuild only if buffers have stopped. So that the
+configuration change and an interruption keep their immediate rebuild, the platform now *tears the
+engine down* (session untouched) when they arrive — `shared_mic_engine_configuration_changed_stopped`
+in the log — and the hint that follows reads `engine_running=false verdict=restart_now`. A route
+change that leaves the engine delivering no longer restarts it.
+
 Kept as is: `.mixWithOthers` (required for background activation), `.playAndRecord`
 (`.record` cannot mix), the 300/800/2000 ms backoff (a cold Bluetooth mic). Open question
 for a later run: `.defaultToSpeaker` has no function today (nothing plays) and may be what

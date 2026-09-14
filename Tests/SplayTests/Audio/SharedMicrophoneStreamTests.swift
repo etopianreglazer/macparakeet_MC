@@ -12,7 +12,10 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         stream = SharedMicrophoneStream(
             platform: platform,
             bufferSize: 1024,
-            followDefaultInputBackoff: [.milliseconds(10), .milliseconds(20), .milliseconds(40)]
+            followDefaultInputBackoff: [.milliseconds(10), .milliseconds(20), .milliseconds(40)],
+            // Fast policy: rechecks at 50/150 ms, a buffer is stale after 30 ms,
+            // an engine that never delivered is left alone for 500 ms.
+            inputPolicy: MicrophoneInputPolicy(recheckSchedule: [0.05, 0.15], staleAfter: 0.03, warmupGrace: 0.5)
         )
     }
 
@@ -465,6 +468,7 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
         XCTAssertEqual(platform.configureAndStartCalls.count, 1)
 
+        platform.simulateEngineStopped()   // the configuration change: the engine has stopped
         platform.fireDefaultInputChange()
         try await waitUntil("engine restarted") { self.platform.configureAndStartCalls.count == 2 }
 
@@ -480,6 +484,7 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         // three racing restart-with-backoff tasks.
         let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
 
+        platform.simulateEngineStopped()
         platform.fireDefaultInputChange()
         platform.fireDefaultInputChange()
         platform.fireDefaultInputChange()
@@ -499,6 +504,7 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         let token = try await stream.subscribe(wantsVPIO: false, onEngineDeath: { deathCounter.increment() }) { _, _ in }
 
         platform.configureAndStartError = MockError.simulatedFailure
+        platform.simulateEngineStopped()
         platform.fireDefaultInputChange()
         try await waitUntil("three failed attempts") { self.platform.configureAndStartCalls.count == 4 }
         try await Task.sleep(for: .milliseconds(50))
@@ -514,6 +520,96 @@ final class SharedMicrophoneStreamTests: XCTestCase {
 
         await stream.unsubscribe(token)
         XCTAssertEqual(platform.stopEngineCallCount, 1, "the last unsubscribe always reaches the platform, engine up or not")
+    }
+
+    // MARK: - Input policy: stay on the device that is delivering
+
+    func testHintWhileBuffersFlowDoesNotRestart() async throws {
+        // AirPods became the system default while the built-in mic keeps
+        // delivering (the measured Mac case): stay put — no HFP, no cold
+        // retries, no gap.
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        let pump = startBufferPump(every: .milliseconds(10))
+        defer { pump.cancel() }
+
+        platform.fireDefaultInputChange()
+        platform.fireDefaultInputChange()   // and the configuration change that rides along
+        try await Task.sleep(for: .milliseconds(300))   // past both rechecks
+
+        XCTAssertEqual(platform.configureAndStartCalls.count, 1, "a hint on a delivering engine is not a trigger")
+        XCTAssertTrue(stream.diagnostics.engineRunning)
+        pump.cancel()
+        await stream.unsubscribe(token)
+    }
+
+    func testHintThenBuffersStopRestartsAtTheRecheck() async throws {
+        // The AirPods we were recording through left for the phone: buffers
+        // stop after the hint and the recheck rebuilds onto the new default.
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        deliverOneBuffer()
+
+        platform.fireDefaultInputChange()
+        try await waitUntil("restart at the recheck") { self.platform.configureAndStartCalls.count == 2 }
+
+        XCTAssertEqual(stream.diagnostics.subscriberCount, 1)
+        XCTAssertTrue(stream.diagnostics.engineRunning)
+        await stream.unsubscribe(token)
+    }
+
+    func testHintWithEngineDownRestartsImmediately() async throws {
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        deliverOneBuffer()
+        platform.simulateEngineStopped()
+
+        platform.fireDefaultInputChange()
+        try await waitUntil("immediate restart") { self.platform.configureAndStartCalls.count == 2 }
+        await stream.unsubscribe(token)
+    }
+
+    func testHintDuringWarmupWithNoBufferYetDoesNotRestart() async throws {
+        // Cold HFP route still waking: the configuration change that follows
+        // every start must not restart the warm-up. No buffer has arrived and
+        // the engine is younger than the warm-up grace, so both rechecks wait.
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+
+        platform.fireDefaultInputChange()
+        try await Task.sleep(for: .milliseconds(250))
+
+        XCTAssertEqual(platform.configureAndStartCalls.count, 1)
+        await stream.unsubscribe(token)
+    }
+
+    func testRecheckChainIsVoidedWhenTheStreamGoesIdle() async throws {
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        deliverOneBuffer()
+        platform.fireDefaultInputChange()
+        await stream.unsubscribe(token)   // before the 50 ms recheck fires
+
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(platform.configureAndStartCalls.count, 1, "no restart for a stream nobody subscribes to")
+        XCTAssertEqual(platform.stopEngineCallCount, 1)
+    }
+
+    private static let pumpFormat = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!
+
+    private func deliverOneBuffer() {
+        let buffer = AVAudioPCMBuffer(pcmFormat: Self.pumpFormat, frameCapacity: 64)!
+        buffer.frameLength = 64
+        platform.deliverBuffer(buffer, time: AVAudioTime(sampleTime: 0, atRate: 48000))
+    }
+
+    /// Keep buffers flowing on a cadence, like a live tap.
+    private func startBufferPump(every interval: Duration) -> Task<Void, Never> {
+        let platform = self.platform!
+        return Task.detached {
+            let buffer = AVAudioPCMBuffer(pcmFormat: Self.pumpFormat, frameCapacity: 64)!
+            buffer.frameLength = 64
+            let time = AVAudioTime(sampleTime: 0, atRate: 48000)
+            while !Task.isCancelled {
+                platform.deliverBuffer(buffer, time: time)
+                try? await Task.sleep(for: interval)
+            }
+        }
     }
 
     func testFollowWhileIdleDoesNotStartTheEngine() async throws {
@@ -596,12 +692,21 @@ private final class MockMicrophonePlatform: MicrophoneEnginePlatform, @unchecked
             return _configureAndStartError
         }
         if let injectedError {
+            // The real platform replaces the engine on failure: it is down.
+            lock.withLock { _isRunning = false }
             throw injectedError
         }
         lock.withLock {
             _isRunning = true
             _tapHandler = tapHandler
         }
+    }
+
+    /// Test hook — the engine stopped under us (a configuration change on
+    /// either platform, an interruption on iOS). The tap stays installed, as
+    /// it does on a real stalled engine; it just never fires again.
+    func simulateEngineStopped() {
+        lock.withLock { _isRunning = false }
     }
 
     func stopEngine() {

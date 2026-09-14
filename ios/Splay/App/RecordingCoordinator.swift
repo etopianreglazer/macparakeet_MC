@@ -290,14 +290,30 @@ final class RecordingCoordinator {
         return text
     }
 
+    /// How long the final state (green check / coral bang) stays in the island
+    /// before the activity ends. ActivityKit removes an *ended* activity from
+    /// the Dynamic Island immediately — the dismissal policy governs the Lock
+    /// Screen only — so the dwell has to happen while the activity is still
+    /// live (`update`), and only then `end`. The first end-with-3-s-dismissal
+    /// never showed the check at all (sixth device run, 2026-09-14).
+    private static let finalStateDwell: Duration = .seconds(3)
+
     private func saved(_ transcript: String) async {
         state.phase = .saved
         state.canRetry = false
         await push()
-        // HIG: end the activity as soon as the task is over; a short dwell so the
-        // green check is seen, then the island returns to hardware.
-        await activity?.end(state, dismissAfter: 3)
+        await dwellThenEnd()
+    }
+
+    /// Show the final state for `finalStateDwell`, then end immediately on
+    /// both surfaces (nothing lingers on the Lock Screen). Awaited on purpose:
+    /// the Stop/Toggle intent that drove us is still running, which keeps the
+    /// process alive in the background for the dwell.
+    private func dwellThenEnd() async {
+        let ending = activity
         activity = nil
+        try? await Task.sleep(for: Self.finalStateDwell)
+        await ending?.end(state, dismissAfter: 0)
     }
 
     /// `retryable` is true only when a stopped session exists to transcribe
@@ -310,11 +326,9 @@ final class RecordingCoordinator {
         state.runningSince = nil
         state.phase = .failed
         state.canRetry = retryable && lastOutput != nil
-        if state.canRetry {
-            await push()
-        } else {
-            await activity?.end(state, dismissAfter: 3)
-            activity = nil
+        await push()
+        if !state.canRetry {
+            await dwellThenEnd()
         }
     }
 

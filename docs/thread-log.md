@@ -13,6 +13,48 @@
 > Use it for archaeology: why a decision was taken, what a log looked like, which commit did what.
 > Each thread's end block is appended to the top of this file when the pin is rewritten.
 
+**thread 14 (demoted from the pin at the end of thread 15, verbatim):**
+
+> **Prior block (this thread, first unit):** **thread 14 — iOS AUDIO SESSION MODEL REWORKED (Voice Memos model), BUILT,
+> INSTALLED ON THE PHONE.** Commit `2119d600`.
+>
+> ### Brief written before the fifth run (kept for the model summary)
+> **What changed and why.** Thread 13's root cause was real but was two of six structural faults; fixing only those two
+> would have left the recording dying anyway. The architecture is now written down in
+> `docs/plans/splay-ios-utility-layer.md` § *Audio session model (iOS)* — read that table first. In one line: **the
+> session is per recording, the engine is per configuration.** Policy = new `RecordingAudioSessionLifecycle`
+> (SplayCore/Audio, portable, 10 tests); `AVAudioEngineMicrophonePlatform` applies it on iOS:
+> - session category set once per process, `setActive(true)` once per recording, **never on a rebuild** (`.alreadyActive`);
+> - route change → engine restart **only if the input port UID changed** (line now reads `audio_route_changed reason=…
+>   input=a→b output=a→b input_changed=…`); the self-inflicted `new_device` after activation is ignored;
+> - `AVAudioEngineConfigurationChange` (iOS: the engine *has stopped*) → `shared_mic_engine_configuration_changed_restart`
+>   → engine restart, session untouched. This is what would have killed the recording even with the route fix;
+> - interruption `.began` → session `interrupted`; `.ended`+`shouldResume` → re-activate (`.activateOnly`) + restart;
+> - session observers live for the platform's lifetime (were per engine and died with every failed rebuild);
+> - `stopEngine()` deactivates whenever the session is ours, engine running or not (the failing run leaked it — no
+>   `audio_session_inactive` after the stop);
+> - `SharedMicrophoneStream.followDefaultInputChange` is single-flight with coalescing (Mac too; backoff injectable,
+>   4 new tests: restart keeps subscribers, 3 rapid triggers → 2 restarts, failure keeps subscribers + next trigger
+>   recovers, idle trigger is a no-op).
+> **Validation:** `swift build` green; iOS `SplayCore` compile green; full suite **1793 tests, the same 5 known
+> environmental cases (6 assertion failures), zero new**. Vet (agentic, with history): **no issues**. Installed 06:56;
+> pressed 07:05 → the fifth run above. Follow-up unit: suite the same 5 known cases, zero new; Vet: 2 doc/implementation mismatches (plan diagram, Stop intent description), both fixed.
+> **Next (owner presses, app cold, phone locked, Action Button):** pull the log (command below) and expect, in order:
+> `audio_session_configured`, `audio_session_active … output=…`, `ios_recording_started`, `audio_route_changed …
+> input_changed=false` (ignored), possibly `shared_mic_engine_configuration_changed_restart` → `shared_mic_engine_restarted`
+> with **no** `audio_session_activate_failed`, `meeting_mic_first_buffer`, then on the second press
+> `meeting_mic_capture_stopped`, `audio_session_inactive`, `ios_recording_saved`, `ios_clipboard_deferred` →
+> `ios_clipboard_written` after unlock. **Watch for:** a *repeating* `configuration_changed_restart` (would mean a restart
+> itself posts a configuration change — a loop; no rate limit yet, by decision, until seen); and whether
+> `output=` flips to `Speaker` at start — if so, dropping `.defaultToSpeaker` (functionless today) removes the
+> restart and its ~400 ms gap at the head of every recording. Then the rest of the on-device list (Pause/Resume,
+> Input dead, Back Tap → Shortcut, Lock Screen row). Mac-side question parked: the Mac only *logs* the
+> configuration-change notification too; a sample-rate change without a device change would stall a Mac recording.
+> **Log pull:** `xcrun devicectl device copy from --device D0B10BDC-0255-5F32-A804-AA87A111F4EE --domain-type
+> appDataContainer --domain-identifier com.macparakeet.mc.ios --source Library/Logs/MacParakeet/dictation-audio.log
+> --destination /tmp/phone.log`.
+>
+
 > **Prior block:** **thread 13 (end) — ROOT CAUSE FOUND, NOT YET FIXED: iOS ROUTE CHANGE AFTER OUR OWN
 > SESSION ACTIVATION TRIGGERS AN ENGINE REBUILD THAT RE-ACTIVATES THE SESSION AND FAILS WITH `'!int'`.**
 > Branch `ios/utility-layer`, last code commit `cc2f4efc`. Nothing pushed.

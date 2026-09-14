@@ -46,4 +46,14 @@ final class UncheckedSendableAudioEngine: @unchecked Sendable {
             engine.inputNode.outputFormat(forBus: 0)
         }
     }
+
+    /// The engine's own view of whether it is running — after
+    /// `AVAudioEngineConfigurationChange` this is the truth, not our flag.
+    func isRunning() -> Bool {
+        (try? catchingObjCException { engine.isRunning }) ?? false
+    }
+
+    func isSameEngine(as other: AVAudioEngine) -> Bool {
+        engine === other
+    }
 }

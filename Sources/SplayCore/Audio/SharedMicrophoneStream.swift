@@ -76,6 +76,10 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         public let vpioEngaged: Bool
         public let vpioDeferred: Bool
         public let vpioDeferralCount: Int
+        /// Successful `restart()`s (input-policy rebuilds) over the stream's
+        /// lifetime. The real-platform HAL test asserts it stays 0 while
+        /// buffers keep flowing across a default-input switch.
+        public let engineRestartCount: Int
     }
 
     private struct Subscriber {
@@ -106,6 +110,18 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         /// change and an engine configuration change arrive together on iOS).
         var followInFlight = false
         var followPending = false
+        /// Inputs to `MicrophoneInputPolicy`: when the current engine was
+        /// started and when the last buffer arrived, monotonic nanoseconds
+        /// (0 = never). `lastBufferAtNanos` is written on the render thread
+        /// under this lock — one store, no allocation.
+        var engineStartedAtNanos: UInt64 = 0
+        var lastBufferAtNanos: UInt64 = 0
+        /// One recheck chain at a time; a hint landing while one is armed is
+        /// coalesced (we are already watching). The generation voids a chain
+        /// when the stream goes idle.
+        var recheckArmed = false
+        var recheckGeneration = 0
+        var engineRestartCount = 0
     }
 
     private enum EngineAction: Equatable {
@@ -127,26 +143,128 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     /// Sleep *before* each follow-the-input restart attempt. A just-connected
     /// Bluetooth mic isn't capture-ready for a beat (CoreAudio -10868).
     private let followDefaultInputBackoff: [Duration]
+    /// Decides whether an input hint becomes a rebuild
+    /// (`docs/plans/mac-input-policy.md`).
+    private let inputPolicy: MicrophoneInputPolicy
 
     public init(
         platform: any MicrophoneEnginePlatform,
         bufferSize: AVAudioFrameCount = 4096,
-        followDefaultInputBackoff: [Duration] = [.milliseconds(300), .milliseconds(800), .seconds(2)]
+        followDefaultInputBackoff: [Duration] = [.milliseconds(300), .milliseconds(800), .seconds(2)],
+        inputPolicy: MicrophoneInputPolicy = MicrophoneInputPolicy()
     ) {
         self.platform = platform
         self.bufferSize = bufferSize
         self.followDefaultInputBackoff = followDefaultInputBackoff
-        // Follow Apple's default input: when the system default mic changes
-        // (e.g. AirPods inserted mid-recording), rebuild the engine onto the
-        // new device without dropping subscribers so the recording continues.
+        self.inputPolicy = inputPolicy
+        // Every input hint — HAL default input changed, engine configuration
+        // changed, iOS route change / interruption ended — lands here. The
+        // policy rebuilds only when the engine has stopped delivering: AirPods
+        // becoming the default while the built-in mic is flowing is ignored;
+        // the AirPods we record through leaving for the phone is not.
         platform.setDefaultInputChangeHandler { [weak self] in
-            self?.followDefaultInputChange()
+            self?.inputHint()
         }
     }
 
-    /// Re-point the engine onto the new system-default input. A no-op when idle
-    /// (`restart()` skips when there are no subscribers). The recording keeps
-    /// running — this only changes which device feeds it.
+    // MARK: - Input hints (the policy)
+
+    private static func uptimeNanos() -> UInt64 { DispatchTime.now().uptimeNanoseconds }
+
+    private static func seconds(_ nanos: UInt64) -> TimeInterval? {
+        nanos == 0 ? nil : TimeInterval(nanos) / 1_000_000_000
+    }
+
+    /// A hint from the platform. The platform may deliver it from its own
+    /// queue, where `isEngineRunning` (a `queue.sync`) would deadlock, so the
+    /// decision is taken on `engineQueue` — which also orders it after any
+    /// restart already in flight.
+    private func inputHint() {
+        engineQueue.async { [weak self] in
+            guard let self else { return }
+            let hasSubscribers = self.lock.withLock { !$0.subscribers.isEmpty }
+            guard hasSubscribers else {
+                AudioCaptureDiagnostics.append("shared_mic_input_hint verdict=ignore reason=idle")
+                return
+            }
+            let engineRunning = self.platform.isEngineRunning
+            switch self.inputPolicy.onHint(engineRunning: engineRunning) {
+            case .restartNow:
+                AudioCaptureDiagnostics.append("shared_mic_input_hint engine_running=false verdict=restart_now")
+                self.followDefaultInputChange()
+            case .ignore:
+                AudioCaptureDiagnostics.append("shared_mic_input_hint engine_running=true verdict=ignore")
+            case .recheck(let after):
+                let generation: Int? = self.lock.withLock { state in
+                    if state.recheckArmed { return nil }
+                    state.recheckArmed = true
+                    state.recheckGeneration += 1
+                    return state.recheckGeneration
+                }
+                AudioCaptureDiagnostics.append(
+                    "shared_mic_input_hint engine_running=true verdict=recheck after_ms=\(Int(after * 1000)) coalesced=\(generation == nil)"
+                )
+                if let generation {
+                    self.scheduleRecheck(index: 0, after: after, generation: generation)
+                }
+            }
+        }
+    }
+
+    private func scheduleRecheck(index: Int, after: TimeInterval, generation: Int) {
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(after))
+            self?.recheck(index: index, generation: generation)
+        }
+    }
+
+    private func recheck(index: Int, generation: Int) {
+        let (startedAt, lastBufferAt, current): (UInt64, UInt64, Bool) = lock.withLock { state in
+            let current = state.recheckGeneration == generation && !state.subscribers.isEmpty
+            if !current, state.recheckGeneration == generation { state.recheckArmed = false }
+            return (state.engineStartedAtNanos, state.lastBufferAtNanos, current)
+        }
+        guard current else { return }
+        let action = inputPolicy.onRecheck(
+            index: index,
+            engineRunning: platform.isEngineRunning,
+            engineStartedAt: Self.seconds(startedAt),
+            lastBufferAt: Self.seconds(lastBufferAt),
+            now: Self.seconds(Self.uptimeNanos()) ?? 0
+        )
+        let actionLabel: String
+        switch action.kind {
+        case .restart: actionLabel = "restart"
+        case .ignore: actionLabel = "ignore"
+        case .recheck(let after): actionLabel = "recheck after_ms=\(Int(after * 1000))"
+        }
+        AudioCaptureDiagnostics.append(
+            "shared_mic_input_recheck n=\(index + 1) reason=\(action.reason) action=\(actionLabel)"
+        )
+        switch action.kind {
+        case .restart:
+            lock.withLock { $0.recheckArmed = false }
+            followDefaultInputChange()
+        case .ignore:
+            lock.withLock { $0.recheckArmed = false }
+        case .recheck(let after):
+            scheduleRecheck(index: index + 1, after: after, generation: generation)
+        }
+    }
+
+    /// Note a fresh engine start. Called *before* the platform call so a first
+    /// buffer that lands during it is not wiped.
+    private func markEngineStarting() {
+        lock.withLock { state in
+            state.engineStartedAtNanos = Self.uptimeNanos()
+            state.lastBufferAtNanos = 0
+        }
+    }
+
+    /// Rebuild the engine onto the current system-default input — the restart
+    /// path; `inputHint` decides *when*. A no-op when idle (`restart()` skips
+    /// when there are no subscribers). The recording keeps running — this only
+    /// changes which device feeds it.
     ///
     /// A just-connected Bluetooth mic isn't capture-ready for a beat (CoreAudio
     /// -10868), so we retry with backoff. A failed attempt never kills the
@@ -223,7 +341,8 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
                 engineRunning: state.engineRunning,
                 vpioEngaged: state.vpioEngaged,
                 vpioDeferred: state.vpioDeferred,
-                vpioDeferralCount: state.vpioDeferralCount
+                vpioDeferralCount: state.vpioDeferralCount,
+                engineRestartCount: state.engineRestartCount
             )
         }
     }
@@ -417,12 +536,16 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
                     // configureAndStart tears down the running engine and walks
                     // the device chain again; passing the live fan-out keeps every
                     // subscriber wired.
+                    self.markEngineStarting()
                     try self.platform.configureAndStart(
                         vpioEnabled: vpio,
                         bufferSize: self.bufferSize,
                         tapHandler: self.makeFanOut()
                     )
-                    self.lock.withLock { $0.engineRunning = true }
+                    self.lock.withLock { state in
+                        state.engineRunning = true
+                        state.engineRestartCount += 1
+                    }
                     AudioCaptureDiagnostics.append("shared_mic_engine_restarted vpio=\(vpio)")
                     self.emitDiagnosticsLog(transition: "restart", wantsVPIO: nil)
                     cont.resume()
@@ -552,12 +675,14 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     private func executeEngineAction(_ action: EngineAction) throws {
         switch action {
         case .startEngine(let vpio):
+            markEngineStarting()
             try platform.configureAndStart(
                 vpioEnabled: vpio,
                 bufferSize: bufferSize,
                 tapHandler: makeFanOut()
             )
         case .reconfigureToVPIO:
+            markEngineStarting()
             try platform.configureAndStart(
                 vpioEnabled: true,
                 bufferSize: bufferSize,
@@ -565,6 +690,13 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
             )
         case .stopEngine:
             platform.stopEngine()
+            lock.withLock { state in
+                state.engineStartedAtNanos = 0
+                state.lastBufferAtNanos = 0
+                // Idle: a pending recheck chain is void.
+                state.recheckArmed = false
+                state.recheckGeneration += 1
+            }
         case .none:
             break
         }
@@ -582,7 +714,7 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         let snapshot = diagnostics
         let wantsField = wantsVPIO.map { "wants_vpio=\($0)" } ?? "wants_vpio=n/a"
         AudioCaptureDiagnostics.append(
-            "shared_mic_diagnostics transition=\(transition) \(wantsField) subscribers=\(snapshot.subscriberCount) vpio_subs=\(snapshot.vpioSubscriberCount) engine_running=\(snapshot.engineRunning) vpio_engaged=\(snapshot.vpioEngaged) vpio_deferred=\(snapshot.vpioDeferred) vpio_deferral_count=\(snapshot.vpioDeferralCount)"
+            "shared_mic_diagnostics transition=\(transition) \(wantsField) subscribers=\(snapshot.subscriberCount) vpio_subs=\(snapshot.vpioSubscriberCount) engine_running=\(snapshot.engineRunning) vpio_engaged=\(snapshot.vpioEngaged) vpio_deferred=\(snapshot.vpioDeferred) vpio_deferral_count=\(snapshot.vpioDeferralCount) engine_restarts=\(snapshot.engineRestartCount)"
         )
     }
 
@@ -605,7 +737,11 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
     /// past return must copy. The lock is **not** held while handlers run,
     /// so a slow handler does not block subscribe/unsubscribe.
     private func deliverBuffer(_ buffer: AVAudioPCMBuffer, time: AVAudioTime) {
-        let handlers: [BufferHandler] = lock.withLock { state in state.handlersSnapshot }
+        let now = Self.uptimeNanos()
+        let handlers: [BufferHandler] = lock.withLock { state in
+            state.lastBufferAtNanos = now
+            return state.handlersSnapshot
+        }
         for handler in handlers {
             handler(buffer, time)
         }
