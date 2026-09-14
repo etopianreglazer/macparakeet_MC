@@ -21,7 +21,7 @@ packages:
     path: ../..
 settings:
   base:
-    DEVELOPMENT_TEAM: W72K456DZC
+    DEVELOPMENT_TEAM: 76K8473JHR
     CODE_SIGN_STYLE: Automatic
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
