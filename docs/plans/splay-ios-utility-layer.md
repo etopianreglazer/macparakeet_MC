@@ -25,6 +25,7 @@ is the normal case, not the edge case). Bundle size is not a concern (1–2 GB i
 | Auto-paste | **Wanted** (same feel as the Mac's paste-into-focused-field). iOS only lets a **keyboard extension** insert text into another app's field, so auto-paste = a *paste-only* Splay keyboard: no keys, a short strip, inserts the transcript the moment it lands while it is the active keyboard. It never records. Slice 6; verify whether reading the App Group needs Full Access. | The keyboard is the only sanctioned path; keep it minimal. |
 | Keyboard | **No typing keyboard.** Only the paste-only strip above, and only for auto-paste. | iOS forbids mic access in keyboard extensions; recording stays in the app. |
 | Cloud fallback | **None.** | Local is the point. |
+| Model delivery | **Bundle Parakeet v3 in the app** (owner ask 2026-09-13): the compiled `parakeet-tdt-0.6b-v3` folder (461 MB, 4 `.mlmodelc` + vocab) as an app resource, copied into `Library/Application Support/FluidAudio/Models/` on first launch so FluidAudio finds it where it looks. Silero VAD (1 MB) likewise. | The first-run Hugging Face download failed twice on the phone's Wi-Fi during the bench; sideloading the Mac's cached folder worked in 14 s. App Store limit is 4 GB; cellular installs over 200 MB just prompt. |
 
 ## Platform facts that shape the build (verified 2026-09-13)
 
@@ -127,6 +128,22 @@ through `STTClient` on a bundled 73 s TTS clip, prints RTF per run, a 10-run sus
 `phys_footprint`, and thermal state to stdout and to a JSON in the app's Documents.
 `scripts/dev/install_iphone_bench.sh` = generate → Release build → install → launch with
 console streaming. Needs the phone connected and unlocked; not yet run on device.
+
+**Slice 1 exit — measured on the owner's iPhone 16 Pro, iOS 26.6.1, 2026-09-13 (`docs/bench/`):**
+
+| Metric | Value |
+|---|---|
+| Model load, cold, from disk | 17.4 s |
+| Warm runs, 72.8 s clip | 0.37–0.42 s → **172–199× real time** |
+| Sustained, 10 back-to-back (12 min of audio) | 4.3 s → **170× real time** |
+| Peak process footprint | 58 MB (CoreML keeps the weights outside the app's footprint) |
+| Thermal state, start → end | nominal → nominal |
+| Transcript vs fixture | verbatim; Parakeet lower-cases proper nouns ("splay", "parakeet") |
+
+The Hugging Face download failed twice on the phone's Wi-Fi ("network connection was
+lost"); the Mac's cached model folder pushed with `devicectl device copy to` into
+`Library/Application Support/FluidAudio/Models/` worked in 14 s — hence the bundle-the-model
+decision above.
 
 ## Slice 2 log
 

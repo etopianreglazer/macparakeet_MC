@@ -1,0 +1,118 @@
+{
+  "device" : "iPhone17,1",
+  "fixtureSeconds" : 72.8045625,
+  "modelCachedAtStart" : true,
+  "modelLoadSeconds" : 17.372201875000002,
+  "os" : "Version 26.6.1 (Build 23G83)",
+  "peakFootprintBytes" : 60654488,
+  "sustainedRTF" : 170.1958053340947,
+  "sustainedRuns" : [
+    {
+      "footprint" : 53494680,
+      "rtf" : 179.94590838719685,
+      "seconds" : 0.404591375,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 53494680,
+      "rtf" : 170.2550801469995,
+      "seconds" : 0.4276205,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 49693592,
+      "rtf" : 181.95562547856423,
+      "seconds" : 0.400122625,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 50103192,
+      "rtf" : 176.47457171087495,
+      "seconds" : 0.412549875,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 48989080,
+      "rtf" : 172.27924407753264,
+      "seconds" : 0.42259625,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 49202072,
+      "rtf" : 169.3445404636563,
+      "seconds" : 0.42991975,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 49234840,
+      "rtf" : 168.79394373752564,
+      "seconds" : 0.431322125,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 46482328,
+      "rtf" : 160.2559587322743,
+      "seconds" : 0.45430175,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 48022424,
+      "rtf" : 161.91937108799488,
+      "seconds" : 0.449634667,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 50217880,
+      "rtf" : 163.7054837610211,
+      "seconds" : 0.444728917,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    }
+  ],
+  "thermalAtEnd" : "nominal",
+  "warmRuns" : [
+    {
+      "footprint" : 58885016,
+      "rtf" : 172.2985595453307,
+      "seconds" : 0.422548875,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 60277656,
+      "rtf" : 199.3866208464759,
+      "seconds" : 0.365142667,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    },
+    {
+      "footprint" : 60654488,
+      "rtf" : 188.19182138373614,
+      "seconds" : 0.386863584,
+      "text" : "This is the splay benchmark clip. It exists so the phone can measure how fast the parakeet model turns speech into text on the neural engine, without depending on anything recorded by a real person. The recorder captures the microphone, cuts the audio at speech boundaries and transcribes each chunk in the background while the next one is still being spoken. When you stop, only the final chunk remains, so the transcript is written within seconds. No matter how long you talked, the island breathes red while recording, amber while the last chunk is transcribed, and green once the file is on disk, nothing leaves the device, there is no account, no server, and no cleanup pass, the words you said are the words you get, punctuation included, names possibly a little off, which is an editing decision for later rather than a capture decision for now. To make the timing meaningful, the clip runs for about a minute at a natural pace, with ordinary sentence lengths and a few longer clauses, so the chunker has real boundaries to find and the decoder has a realistic amount of context to carry, that should be enough to establish a real time factor, a peak memory figure, and a sense of how warm the phone gets over a sustained run. Thank you for listening. This concludes the benchmark clip.",
+      "thermal" : "nominal",
+      "wordCount" : 227
+    }
+  ]
+}
