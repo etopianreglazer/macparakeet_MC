@@ -5,7 +5,28 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-09-13 **thread 12 (cont.) — SLICE 2 DEVICE-FREE HALF DONE ON BRANCH `ios/utility-layer`: AVFoundation converter, iOS audio session, and the iOS app (app + widget) COMPILE FOR iOS; NOTHING RUN ON A DEVICE YET.**
+> **Last updated:** 2026-09-13 late **thread 12 (end) — FIRST END-TO-END RECORDING ON THE iPHONE WORKED. Branch `ios/utility-layer`,
+> last commit `a9095726`. Bench: slice 1 exit met (`docs/bench/`, 170× RT sustained, 58 MB, thermal nominal). App: 23 s
+> recorded from the phone → 44 words → `.md` + `.m4a` in Files ▸ Splay ▸ MacParakeet-MC ▸ Meetings.** Two device findings,
+> both fixed in `a9095726` and **installed on the phone but NOT yet re-tested**: (1) background (Control/Action-Button)
+> start needs `.mixWithOthers` or AVAudioSession refuses with `'!int'`; (2) the clipboard is unreachable while locked →
+> the text is held and flushed on `protectedDataDidBecomeAvailable`/`didBecomeActive`. Owner decisions: **bundle the
+> model in the app** (HF download failed twice on Wi-Fi; `devicectl device copy to` of the Mac's cached
+> `parakeet-tdt-0.6b-v3` + `silero-vad` into the container works in ~15 s — do this again after any reinstall that
+> wipes the container). Dev loop that works: `scripts/dev/install_iphone.sh` (Wi-Fi is enough, phone unlocked);
+> `devicectl device process launch --console` streams FluidAudio lines only — **my `AudioCaptureDiagnostics` lines are in
+> the container's `Library/Logs/MacParakeet/dictation-audio.log`; pull with `devicectl device copy from`.** The Control is
+> found under Action Button ▸ **Controls** ▸ search "Splay" (not a top-level entry). First launch compiles the encoder for
+> the ANE (~41 s, then cached).
+>
+> ### ⭐ WHAT'S NEXT (thread 13)
+> 1. **Re-test on the phone with `a9095726` installed:** lock the phone, press the Action Button (app in background) →
+>    expect `audio_session_active` (no `'!int'`), record, press again → `ios_recording_saved` then
+>    `ios_clipboard_deferred reason=device_locked` → unlock → `ios_clipboard_written`. Verify the island states vs v5.
+> 2. Then the rest of the on-device list below (Pause/Resume, Input dead, Back Tap → Shortcut, Lock Screen row).
+> 3. Bundle the model (plan § Model delivery); one Vet pass over the app follow-through (never re-vetted).
+>
+> **Prior block:** **thread 12 (cont.) — SLICE 2 DEVICE-FREE HALF DONE ON BRANCH `ios/utility-layer`: AVFoundation converter, iOS audio session, and the iOS app (app + widget) COMPILE FOR iOS; NOTHING RUN ON A DEVICE YET.**
 > Branch `ios/utility-layer` off `main` (owner asked for a branch; main is untouched after slice 1). Commits:
 > `d32c6958` AVFoundation converter (+7 tests); then the iOS audio session + the `ios/Splay/` app skeleton (see
 > `docs/plans/splay-ios-utility-layer.md` § Slice 2 log for the full shape). Owner decisions this stretch: **design
