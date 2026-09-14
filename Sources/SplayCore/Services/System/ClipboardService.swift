@@ -1,3 +1,6 @@
+// macOS-only: NSPasteboard + CGEvent synthetic paste; iOS delivery is clipboard/App Intent (slice 4).
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import AppKit
 import Carbon
 import Foundation
@@ -378,3 +381,4 @@ public final class ClipboardService: ClipboardServiceProtocol {
     }
 
 }
+#endif

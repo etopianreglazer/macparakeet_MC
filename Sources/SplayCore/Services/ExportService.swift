@@ -1,5 +1,7 @@
 import Foundation
+#if os(macOS)
 import AppKit
+#endif
 
 @MainActor
 public protocol ExportServiceProtocol: Sendable {
@@ -8,8 +10,10 @@ public protocol ExportServiceProtocol: Sendable {
     func exportToVTT(transcription: Transcription, url: URL) throws
     func exportToMarkdown(transcription: Transcription, url: URL) throws
     func exportToJSON(transcription: Transcription, url: URL) throws
+#if os(macOS)
     @MainActor func exportToPDF(transcription: Transcription, url: URL) throws
     @MainActor func exportToDocx(transcription: Transcription, url: URL) throws
+#endif
     func formatSRT(transcription: Transcription) -> String
     func formatVTT(transcription: Transcription) -> String
     func formatSRT(words: [WordTimestamp], speakers: [SpeakerInfo]?) -> String
@@ -124,6 +128,7 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         try data.write(to: url)
     }
 
+#if os(macOS)
     /// Export transcription as PDF file using Core Graphics PDF context.
     /// Avoids NSPrintOperation which spins a modal run loop and deadlocks
     /// when called from SwiftUI button actions on MainActor.
@@ -207,6 +212,7 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         )
         try data.write(to: url)
     }
+#endif
 
     /// Format word timestamps as SRT subtitle string
     public func formatSRT(words: [WordTimestamp], speakers: [SpeakerInfo]? = nil) -> String {
@@ -529,6 +535,7 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         return paragraphs
     }
 
+#if os(macOS)
     // MARK: - Rich Text (AppKit)
 
     @MainActor private func buildRichTranscript(transcription: Transcription) throws -> NSAttributedString {
@@ -596,4 +603,5 @@ public final class ExportService: ExportServiceProtocol, Sendable {
         CGAffineTransform(translationX: margin, y: pageHeight - margin)
             .scaledBy(x: 1, y: -1)
     }
+#endif
 }

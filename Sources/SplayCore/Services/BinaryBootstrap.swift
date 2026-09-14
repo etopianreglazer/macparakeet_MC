@@ -1,3 +1,6 @@
+// macOS-only: Locates the bundled FFmpeg binary; no subprocesses on iOS.
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import Foundation
 import os
 
@@ -102,3 +105,4 @@ public actor BinaryBootstrap {
         return nil
     }
 }
+#endif

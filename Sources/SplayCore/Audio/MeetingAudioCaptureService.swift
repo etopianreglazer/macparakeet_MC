@@ -47,7 +47,9 @@ extension MeetingSystemAudioCapturing {
     }
 }
 
+#if os(macOS)
 extension SystemAudioStream: MeetingSystemAudioCapturing {}
+#endif
 
 public actor MeetingAudioCaptureService {
     public typealias EventHandler = @Sendable (MeetingAudioCaptureEvent) -> Void
@@ -75,10 +77,15 @@ public actor MeetingAudioCaptureService {
         self.micProcessingMode = micProcessingMode
         self.sourceModeProvider = sourceModeProvider
         self.systemAudioCaptureFactory = {
+#if os(macOS)
             guard #available(macOS 14.2, *) else {
                 throw MeetingAudioError.unsupportedPlatform
             }
             return SystemAudioStream()
+#else
+            // iOS records the microphone only; there is no system-audio tap.
+            throw MeetingAudioError.unsupportedPlatform
+#endif
         }
     }
 

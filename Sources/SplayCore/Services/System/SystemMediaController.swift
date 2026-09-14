@@ -1,3 +1,6 @@
+// macOS-only: osascript subprocess + MediaRemote; `Process` does not exist on iOS.
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import Darwin
 import Foundation
 import OSLog
@@ -289,3 +292,4 @@ private final class MediaRemoteCommandSender: @unchecked Sendable {
         }
     }
 }
+#endif

@@ -21,6 +21,7 @@ Transforms, telemetry reporting. Do not resurrect them.
 swift build
 swift test                      # baseline = 5 known environmental failures, zero new
 scripts/dev/install_local.sh    # → /Applications/Splay.app (then `open` it yourself)
+scripts/dev/install_iphone_bench.sh   # iOS bench harness → connected iPhone (needs Xcode account)
 ```
 
 `scripts/dev/run_app.sh` does not work on this machine. Run `swift test` before calling

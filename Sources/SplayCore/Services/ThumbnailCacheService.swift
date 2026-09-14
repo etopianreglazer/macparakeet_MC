@@ -73,6 +73,10 @@ public final class ThumbnailCacheService: Sendable {
             return cached
         }
 
+#if !os(macOS)
+        // FFmpeg is a macOS-only subprocess; no frame extraction on iOS.
+        throw ThumbnailError.ffmpegNotFound
+#else
         guard let ffmpegPath = resolveFFmpegPath() else {
             throw ThumbnailError.ffmpegNotFound
         }
@@ -121,6 +125,7 @@ public final class ThumbnailCacheService: Sendable {
         }
 
         return dest
+#endif
     }
 
     /// Deletes the cached thumbnail for a transcription.
@@ -143,9 +148,11 @@ public final class ThumbnailCacheService: Sendable {
         }
     }
 
+#if os(macOS)
     private func resolveFFmpegPath() -> String? {
         BinaryBootstrap.resolveRuntimeFFmpegPath()
     }
+#endif
 }
 
 public enum ThumbnailError: Error, LocalizedError {

@@ -1,3 +1,6 @@
+// macOS-only: Carbon key-code resolution for the Mac paste shortcut.
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import Carbon
 import Foundation
 import OSLog
@@ -125,3 +128,4 @@ struct PasteShortcutKeyResolver {
         return chars[0]
     }
 }
+#endif

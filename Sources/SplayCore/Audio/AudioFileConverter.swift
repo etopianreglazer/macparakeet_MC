@@ -48,6 +48,7 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
             throw AudioProcessorError.unsupportedFormat(ext)
         }
 
+#if os(macOS)
         let tempDir = try ensureTempDir()
         let primaryPath = try findFFmpeg()
 
@@ -68,6 +69,11 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
                 ffmpegPath: fallbackPath, inputURL: fileURL, tempDir: tempDir
             )
         }
+#else
+        // No FFmpeg subprocess on iOS. Slice 2 replaces this with an
+        // AVFoundation converter; until then the file-import path is closed.
+        throw AudioProcessorError.conversionFailed(Self.iosUnavailableReason)
+#endif
     }
 
     /// Produce a final meeting M4A from one or more source tracks.
@@ -83,6 +89,7 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
             throw AudioProcessorError.conversionFailed("No audio files to mix")
         }
 
+#if os(macOS)
         let primaryPath = try findFFmpeg()
 
         do {
@@ -106,7 +113,15 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
                 sourceAlignment: sourceAlignment
             )
         }
+#else
+        throw AudioProcessorError.conversionFailed(Self.iosUnavailableReason)
+#endif
     }
+
+#if !os(macOS)
+    static let iosUnavailableReason =
+        "Audio file conversion is not available on iOS yet (FFmpeg is macOS-only; see docs/plans/splay-ios-utility-layer.md)."
+#endif
 
     /// Build the FFmpeg command arguments (useful for testing)
     public func ffmpegArguments(inputPath: String, outputPath: String) -> [String] {
@@ -192,6 +207,7 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
 
     // MARK: - Private
 
+#if os(macOS)
     private func runFFmpegConversion(
         ffmpegPath: String, inputURL: URL, tempDir: URL
     ) async throws -> URL {
@@ -292,6 +308,7 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
 
         succeeded = true
     }
+#endif
 
     /// FFmpeg writes a long startup banner ("ffmpeg version X... configuration:
     /// --prefix=... --enable-...") before the actual error message. The
@@ -326,6 +343,7 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
         return "...\(trimmed[suffixStart...])"
     }
 
+#if os(macOS)
     private func ensureTempDir() throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("macparakeet", isDirectory: true)
@@ -353,4 +371,5 @@ public final class AudioFileConverter: AudioFileConverting, Sendable {
             timeoutError: AudioProcessorError.conversionFailed("FFmpeg conversion timed out")
         )
     }
+#endif
 }

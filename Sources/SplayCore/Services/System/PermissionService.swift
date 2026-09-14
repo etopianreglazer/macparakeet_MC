@@ -1,18 +1,22 @@
 import AVFoundation
+import Foundation
+#if os(macOS)
 import ApplicationServices
 import AppKit
 import CoreGraphics
-import Foundation
+#endif
 
 public protocol PermissionServiceProtocol: Sendable {
     func checkMicrophonePermission() async -> PermissionStatus
     func requestMicrophonePermission() async -> Bool
+#if os(macOS)
     func checkScreenRecordingPermission() -> Bool
     func requestScreenRecordingPermission() -> Bool
     func openMicrophoneSettings()
     func openScreenRecordingSettings()
     func checkAccessibilityPermission() -> Bool
     func requestAccessibilityPermission(prompt: Bool) -> Bool
+#endif
 }
 
 public enum PermissionStatus: Sendable {
@@ -37,6 +41,7 @@ public final class PermissionService: PermissionServiceProtocol, Sendable {
         await AVCaptureDevice.requestAccess(for: .audio)
     }
 
+#if os(macOS)
     public func checkScreenRecordingPermission() -> Bool {
         CGPreflightScreenCaptureAccess()
     }
@@ -68,4 +73,5 @@ public final class PermissionService: PermissionServiceProtocol, Sendable {
         let options: CFDictionary = ["AXTrustedCheckOptionPrompt": prompt] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
     }
+#endif
 }

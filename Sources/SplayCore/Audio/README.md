@@ -4,6 +4,30 @@
 > recording. This folder owns capture, format conversion, and on-disk
 > diagnostic logging.
 
+## Platforms
+
+`SplayCore` builds for **macOS 14+ and iOS 18+** (the iPhone utility layer,
+`docs/plans/splay-ios-utility-layer.md`). The mic engine, chunkers, storage
+writer and scheduler are shared. What is macOS-only is gated with
+`#if os(macOS)` rather than forked:
+
+- `SystemAudioStream.swift` — ScreenCaptureKit; iOS records mic only, so the
+  `MeetingAudioCaptureService` system-audio factory throws
+  `MeetingAudioError.unsupportedPlatform` there.
+- `AudioDeviceManager.swift` — Core Audio HAL (`AudioObject*`). iOS has no HAL;
+  AVAudioSession owns routing. `AudioDevicePortable.swift` carries the shared
+  `normalizedUID` helper and, on iOS, the `AudioDeviceID` typealias that
+  `MeetingInputDeviceAttempt` keeps for API parity (the attempt chain is always
+  empty on iOS).
+- `MicrophoneEnginePlatform.swift` — the default-input HAL listener is a no-op
+  on iOS (route changes come from `AVAudioSession.routeChangeNotification`,
+  not wired yet); the explicit-device setter always refuses.
+- `AudioCaptureDiagnostics.swift` — device/transport labels read `session` on
+  iOS so the shared log grammar stays greppable.
+- `AudioFileConverter.swift` — the FFmpeg subprocess paths. On iOS `convert`
+  and `mixToM4A` throw `conversionFailed` until an AVFoundation converter
+  lands (slice 2). The pure `ffmpegArguments` builders stay portable.
+
 ## Entry point
 
 `SharedMicrophoneStream` — the process-wide microphone source. Every

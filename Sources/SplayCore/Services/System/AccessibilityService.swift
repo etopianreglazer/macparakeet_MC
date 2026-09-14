@@ -1,3 +1,6 @@
+// macOS-only: AX trust prompt; no equivalent on iOS.
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import ApplicationServices
 import Foundation
 
@@ -221,3 +224,4 @@ public final class AccessibilityService: AccessibilityServiceProtocol, @unchecke
         return text
     }
 }
+#endif

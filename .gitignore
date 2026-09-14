@@ -81,3 +81,8 @@ Assets/local-videos/
 
 # Data recovery
 recup_dir*/
+
+# iOS bench harness: the project is generated from ios/SplayBench/project.yml
+ios/SplayBench/SplayBench.xcodeproj/
+ios/SplayBench/build/
+ios/SplayBench/Info.plist

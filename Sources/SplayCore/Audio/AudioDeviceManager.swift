@@ -1,3 +1,6 @@
+// macOS-only: Core Audio HAL (AudioObject*/AudioDeviceID) does not exist on iOS; AVAudioSession routes there. `normalizedUID` lives in AudioDevicePortable.swift.
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import AVFoundation
 import CoreAudio
 import Foundation
@@ -99,12 +102,6 @@ public enum AudioDeviceManager {
             }
             return InputDevice(id: id, uid: uid, name: name, transportType: transport)
         }
-    }
-
-    /// Normalizes persisted CoreAudio device UIDs, treating nil and whitespace as absent.
-    public static func normalizedUID(_ uid: String?) -> String? {
-        let trimmed = uid?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? nil : trimmed
     }
 
     /// Returns the AudioDeviceID of the built-in microphone, if available.
@@ -299,3 +296,4 @@ public enum AudioDeviceManager {
         return bufferList.contains { $0.mNumberChannels > 0 }
     }
 }
+#endif

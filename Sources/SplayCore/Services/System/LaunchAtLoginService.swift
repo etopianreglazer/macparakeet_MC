@@ -1,3 +1,6 @@
+// macOS-only: ServiceManagement login item; no equivalent on iOS.
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import Foundation
 import ServiceManagement
 
@@ -145,3 +148,4 @@ public final class LaunchAtLoginService: LaunchAtLoginControlling {
         }
     }
 }
+#endif

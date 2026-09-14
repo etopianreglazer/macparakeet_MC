@@ -5,7 +5,55 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-08-21 **thread 11 — DOCS REWRITE + POLISH: DONE; RELEASE BUILD: NOTARIZED 0.1.0 CUT (not published).**
+> **Last updated:** 2026-09-13 **thread 12 — iPHONE PORT, SLICE 1: SplayCore COMPILES FOR iOS; BENCH HARNESS BUILT, NOT YET RUN ON DEVICE.**
+> Owner decisions this thread (recorded in `docs/plans/splay-ios-utility-layer.md`, now ACTIVE): the phone
+> is the priority; **no app you ever open** — Action Button (Control) primary, Back Tap (Shortcut) secondary,
+> a Now-Playing-style **Live Activity in the Dynamic Island** as the indicator with one Stop button;
+> **Parakeet v3 first, verbatim, no clean-up ever in capture** (names/brands parked as an editing decision);
+> no keyboard (iOS forbids mic in keyboard extensions); no cloud. Platform facts verified: `AudioRecordingIntent`
+> (iOS 18) lets a Control start recording without foregrounding *if* a Live Activity is started and kept alive;
+> Back Tap→Shortcut may need a `ForegroundContinuableIntent` flash — verify on device. Dev loop: direct Xcode
+> install at the desk, TestFlight for the remote loop (Mac stays home; owner drives via Remote Control).
+> (1) **`Package.swift` declares `.iOS("18.0")`** (string form: tools-version 5.9 predates `.v18`).
+> (2) **`SplayCore` builds for iOS** via both `swift build --target SplayCore --triple arm64-apple-ios18.0 --sdk
+> $(xcrun --sdk iphoneos --show-sdk-path)` and `xcodebuild -scheme SplayCore -destination generic/platform=iOS`
+> (xcodebuild works on this machine again). GRDB/FluidAudio/WhisperKit compile for iOS unchanged. Everything
+> macOS-only is **gated `#if os(macOS)`, never forked** — whole-file: `SystemAudioStream`, `AudioDeviceManager`
+> (`normalizedUID` + iOS `AudioDeviceID` typealias moved to new `Audio/AudioDevicePortable.swift`),
+> `PasteShortcutKeyResolver`, `ClipboardService`, `LaunchAtLoginService`, `AccessibilityService`,
+> `SystemMediaController`, `BinaryBootstrap`, `ChildProcessWaiter`; surgical: `AudioCaptureDiagnostics`
+> (labels read `session` on iOS), `MicrophoneEnginePlatform` (HAL default-input listener no-op on iOS; the
+> default explicit-device setter is now resolved inside the init — `inputDeviceSetter: InputDeviceSetter? = nil`
+> — because a public init's default arg can't name an internal symbol), `MeetingAudioCaptureService`
+> (system-audio factory throws `unsupportedPlatform` on iOS), `PermissionService` (mic both; screen/AX/deep-links
+> macOS), `ExportService` (PDF/DOCX macOS; txt/md/srt/vtt/json portable), `ThumbnailCacheService` (frame
+> extraction throws on iOS), `AudioFileConverter` (**`convert`/`mixToM4A` throw on iOS** — slice 2 needs an
+> AVFoundation converter before the first end-to-end recording, since the meeting pipeline calls `mixToM4A`
+> at stop). `SplayViewModels` stays macOS-only by decision (Mac card/panel logic; the phone gets its own VMs).
+> `Sources/SplayCore/Audio/README.md` has a new § Platforms listing all of this.
+> (3) **Bench harness `ios/SplayBench/`** (XcodeGen `project.yml` + one SwiftUI file + a 73 s `say`-synthesised
+> 16 kHz WAV fixture; `brew install xcodegen` was done this thread): runs Parakeet v3 through `STTClient`,
+> prints per-run RTF, a 10-run sustained RTF, `phys_footprint`, thermal state to stdout and a JSON in Documents.
+> `scripts/dev/install_iphone_bench.sh` = generate → Release build → `devicectl` install → launch with console
+> streaming. **Compiles and links for iOS in Release (25 MB .app, unsigned).** ⚠️ **Device install is blocked on
+> the owner:** Xcode has no Apple ID account for team `W72K456DZC` (the Mac loop signs with the cert directly and
+> never needed one), so no iOS provisioning profile can be generated — add the account in Xcode ▸ Settings ▸
+> Accounts, then run the script with the phone connected + unlocked. The phone (`Mathews iPhone`, iPhone 16 Pro,
+> iOS 26.6.1) was paired but `unavailable` during this thread.
+> **Validation:** macOS `swift build` green; full suite 1760 XCTest + 16 swift-testing, the **same 5 known
+> environmental failures** (AppPaths + 3× SettingsViewModel + AX-gated AppHotkeyCoordinator), zero new.
+>
+> ### ⭐ WHAT'S NEXT (thread 13)
+> 1. **Owner:** add the Apple ID to Xcode Accounts; plug in the phone; `scripts/dev/install_iphone_bench.sh`.
+>    Read the numbers off the console (or the JSON in Files ▸ Splay Bench). That closes slice 1's exit criterion.
+> 2. **Slice 2** (`docs/plans/splay-ios-utility-layer.md`): iOS app target (XcodeGen, same pattern as the bench),
+>    `StartRecordingIntent`/`StopRecordingIntent` adopting `AudioRecordingIntent` + `LiveActivityIntent`, a
+>    Control, AVAudioSession setup + route-change handling in `MicrophoneEnginePlatform`, and the
+>    **AVFoundation `AudioFileConverting` implementation** (mic-only remux to M4A is enough for v1).
+> 3. Thread 11's list still stands for the Mac side (second-Mac test, glow pass, owner-only publish items).
+> Nothing is pushed (owner pushes).
+>
+> **Last updated (prior):** 2026-08-21 **thread 11 — DOCS REWRITE + POLISH: DONE; RELEASE BUILD: NOTARIZED 0.1.0 CUT (not published).**
 > (1) **`CLAUDE.md` / `AGENTS.md` rewritten slim for Splay** (commit `eb757513`): two-surface recorder,
 > 4 SwiftPM targets, 3 remaining `AppFeatures` flags, the binding-vs-superseded ADR list, the kept
 > identifiers, the non-obvious rules (dead≠silent, island never key, STT via scheduler, licensing

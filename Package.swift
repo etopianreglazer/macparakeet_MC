@@ -32,7 +32,11 @@ let package = Package(
     platforms: [
         // Note: SPM doesn't support patch-level versions for macOS 14, but the app
         // documents macOS 14.2+ and enforces it at runtime.
-        .macOS(.v14)
+        .macOS(.v14),
+        // iOS 18 is the floor for the phone utility layer (AudioRecordingIntent +
+        // Live Activity controls). String form because tools-version 5.9 predates `.v18`.
+        // See docs/plans/splay-ios-utility-layer.md.
+        .iOS("18.0")
     ],
     products: [
         .executable(name: "Splay", targets: ["Splay"]),

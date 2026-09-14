@@ -100,7 +100,9 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     /// format change, sample-rate change), which is the most likely
     /// trigger for the silent tap-stall under investigation.
     private var configurationChangeObserver: NSObjectProtocol?
+#if os(macOS)
     private var defaultInputChangeObserver: AudioObjectPropertyListenerBlock?
+#endif
     /// Handler invoked from the default-input listener (owner follows the new
     /// device). Held under its own lock — the listener fires on
     /// `defaultInputListenerQueue`, not the engine `queue`.
@@ -109,24 +111,20 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
 
     public init(
         deviceAttemptsBuilder: DeviceAttemptsBuilder? = nil,
-        inputDeviceSetter: @escaping InputDeviceSetter = { deviceID, engine in
-            AudioDeviceManager.setInputDevice(deviceID, on: engine)
-        }
+        inputDeviceSetter: InputDeviceSetter? = nil
     ) {
         self.deviceAttemptsBuilder = deviceAttemptsBuilder
-        self.inputDeviceSetter = inputDeviceSetter
+        self.inputDeviceSetter = inputDeviceSetter ?? avAudioEngineDefaultInputDeviceSetter
         self.engineStarter = nil
     }
 
     init(
         deviceAttemptsBuilder: DeviceAttemptsBuilder? = nil,
-        inputDeviceSetter: @escaping InputDeviceSetter = { deviceID, engine in
-            AudioDeviceManager.setInputDevice(deviceID, on: engine)
-        },
+        inputDeviceSetter: InputDeviceSetter? = nil,
         engineStarter: @escaping EngineStarter
     ) {
         self.deviceAttemptsBuilder = deviceAttemptsBuilder
-        self.inputDeviceSetter = inputDeviceSetter
+        self.inputDeviceSetter = inputDeviceSetter ?? avAudioEngineDefaultInputDeviceSetter
         self.engineStarter = engineStarter
     }
 
@@ -462,6 +460,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         }
     }
 
+#if os(macOS)
     private func installDefaultInputChangeObserverLocked() {
         guard defaultInputChangeObserver == nil else { return }
         var address = AudioObjectPropertyAddress(
@@ -506,6 +505,12 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         )
         defaultInputChangeObserver = nil
     }
+#else
+    // No HAL default-input property on iOS. Route changes arrive via
+    // AVAudioSession.routeChangeNotification (wired in slice 2).
+    private func installDefaultInputChangeObserverLocked() {}
+    private func removeDefaultInputChangeObserverLocked() {}
+#endif
 
     public func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?) {
         defaultInputChangeHandlerLock.lock()
@@ -519,6 +524,20 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         return _defaultInputChangeHandler
     }
 }
+
+/// Default explicit-device setter for `AVAudioEngineMicrophonePlatform`
+/// (used when the initializer's `inputDeviceSetter` is `nil`). File-scope and
+/// internal: a public initializer's default argument can only name public
+/// symbols, so the platform choice is resolved inside the initializer instead.
+#if os(macOS)
+let avAudioEngineDefaultInputDeviceSetter: AVAudioEngineMicrophonePlatform.InputDeviceSetter = { deviceID, engine in
+    AudioDeviceManager.setInputDevice(deviceID, on: engine)
+}
+#else
+/// iOS never resolves an explicit device: the attempt chain is empty and
+/// AVAudioSession owns routing, so an explicit set is always a refusal.
+let avAudioEngineDefaultInputDeviceSetter: AVAudioEngineMicrophonePlatform.InputDeviceSetter = { _, _ in false }
+#endif
 
 public enum AVAudioEngineMicrophonePlatformError: Error, Equatable, LocalizedError {
     case deviceSetFailed(MeetingInputDeviceAttempt)

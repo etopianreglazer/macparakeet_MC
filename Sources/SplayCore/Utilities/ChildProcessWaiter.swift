@@ -1,3 +1,6 @@
+// macOS-only: `Process` does not exist on iOS.
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import Darwin
 import Foundation
 import os
@@ -130,3 +133,4 @@ enum ChildProcessWaiter {
         }
     }
 }
+#endif

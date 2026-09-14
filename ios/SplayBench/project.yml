@@ -1,0 +1,51 @@
+# SplayBench — on-device STT benchmark harness for the iPhone port.
+#
+# Not a product surface. It exists to answer slice 1 of
+# docs/plans/splay-ios-utility-layer.md: does Parakeet v3 via FluidAudio run on an
+# iPhone 16 Pro through SplayCore's own STT plane, and how fast, how hot, how big.
+#
+# Generate the .xcodeproj with `xcodegen generate` (brew install xcodegen), or run
+# scripts/dev/install_iphone_bench.sh which does generate → build → install → launch.
+# The generated project is git-ignored; this file is the source of truth.
+name: SplayBench
+options:
+  bundleIdPrefix: com.macparakeet.mc
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: false
+packages:
+  Splay:
+    path: ../..
+targets:
+  SplayBench:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources
+        buildPhase: resources
+    dependencies:
+      - package: Splay
+        product: SplayCore
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Splay Bench
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # The bench never opens the mic, but SplayCore links AVFoundation capture
+        # code; iOS only prompts when the API is actually called.
+        NSMicrophoneUsageDescription: Splay Bench does not record. This string exists because the shared audio engine is linked.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.macparakeet.mc.splaybench
+        DEVELOPMENT_TEAM: W72K456DZC
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "6.0"
+        SWIFT_STRICT_CONCURRENCY: complete
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO

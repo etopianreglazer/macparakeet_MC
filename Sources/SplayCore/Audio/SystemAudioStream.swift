@@ -1,3 +1,6 @@
+// macOS-only: ScreenCaptureKit system-audio capture is macOS-only; iOS records mic only.
+// See docs/plans/splay-ios-utility-layer.md (slice 1).
+#if os(macOS)
 import AVFoundation
 import CoreMedia
 import Darwin
@@ -404,3 +407,4 @@ extension SystemAudioStream: SCStreamOutput, SCStreamDelegate {
         observer?(.captureRuntimeFailure("system audio stream stopped: \(error.localizedDescription)"))
     }
 }
+#endif

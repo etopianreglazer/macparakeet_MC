@@ -19,6 +19,7 @@ public enum AudioCaptureDiagnostics {
         deviceID == nil ? "none" : "present"
     }
 
+#if os(macOS)
     static func deviceTransportLabel(_ deviceID: AudioDeviceID?) -> String {
         guard let deviceID else { return "none" }
         let transport = AudioDeviceManager.transportType(deviceID)
@@ -41,6 +42,21 @@ public enum AudioCaptureDiagnostics {
         let deviceID = AudioDeviceManager.defaultInputDevice()
         return "default_input=\(deviceLabel(deviceID)) default_input_transport=\(deviceTransportLabel(deviceID))"
     }
+#else
+    // iOS has no HAL to ask; AVAudioSession owns routing. The log fields keep
+    // their names so the shared `dictation-audio.log` grammar stays greppable.
+    static func deviceTransportLabel(_ deviceID: AudioDeviceID?) -> String {
+        deviceID == nil ? "none" : "session"
+    }
+
+    static func defaultInputDeviceLabel() -> String { "session" }
+
+    static func defaultInputDeviceTransportLabel() -> String { "session" }
+
+    static func defaultInputDeviceSummary() -> String {
+        "default_input=session default_input_transport=session"
+    }
+#endif
 
     static func errorType(_ error: Error) -> String {
         TelemetryErrorClassifier.classify(error)
@@ -134,6 +150,7 @@ public enum AudioCaptureDiagnostics {
         }
     }
 
+#if os(macOS)
     private static func safeTransportLabel(_ transport: UInt32) -> String {
         switch transport {
         case kAudioDeviceTransportTypeBuiltIn: return "built-in"
@@ -145,4 +162,5 @@ public enum AudioCaptureDiagnostics {
         default: return "unknown"
         }
     }
+#endif
 }

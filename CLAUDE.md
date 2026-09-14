@@ -39,7 +39,7 @@ nothing polishes them.
 
 | Layer | Choice |
 |---|---|
-| Platform | macOS 14.2+, Apple Silicon only |
+| Platform | macOS 14.2+, Apple Silicon only (the shipped app). `SplayCore` also builds for **iOS 18+** — the in-progress iPhone utility layer, `docs/plans/splay-ios-utility-layer.md`; macOS-only code is gated `#if os(macOS)`, never forked |
 | Language | Swift (tools-version 5.9), Swift 6 language-mode clean, SwiftUI + AppKit panels |
 | STT | Parakeet TDT 0.6B v3 via FluidAudio CoreML (default); WhisperKit optional for other languages. One process-wide `STTRuntime` + `STTScheduler` (ADR-016) |
 | Audio | `SharedMicrophoneStream`/AVAudioEngine mic; ScreenCaptureKit system audio; bundled FFmpeg for file import |
@@ -63,6 +63,8 @@ Tests/SplayTests/        XCTest + swift-testing
 spec/adr/                upstream ADRs, kept as the architectural record (see below)
 docs/                    Splay's own docs: product model, thread state, launch, releasing, plans/
 scripts/dev/             install_local.sh (the dev loop)   scripts/dist/  build + sign + notarize
+                         install_iphone_bench.sh (iOS bench: generate → build → install → launch)
+ios/SplayBench/          XcodeGen spec + harness that benchmarks Parakeet v3 on a real iPhone
 ```
 
 `AppFeatures` has three flags left: `meetingRecordingEnabled`, `meetingVadLiveChunkingEnabled`
@@ -113,6 +115,8 @@ scripts/dev/install_local.sh     # SwiftPM bundle → signs with Apple Developme
 ```
 
 `scripts/dev/run_app.sh` (xcodebuild) is broken on this machine — use `install_local.sh`.
+iOS: `swift build --target SplayCore --triple arm64-apple-ios18.0 --sdk $(xcrun --sdk iphoneos --show-sdk-path)`
+is the fast compile check; device installs need an Apple ID in Xcode ▸ Settings ▸ Accounts (profiles).
 The dev install resolves `Bundle.module` out of `.build/` (no resource bundles); verify
 resource-backed UI on a release artifact. Release mechanics: `docs/releasing.md`; the
 pre-publish gate: `docs/launch-checklist.md`.
