@@ -10,7 +10,9 @@ ios_require_xcodegen() {
   command -v xcodegen >/dev/null || { echo "xcodegen not found: brew install xcodegen" >&2; exit 1; }
 }
 
-# First connected iPhone's CoreDevice identifier (or $DEVICE if set). Parses
+# An iPhone's CoreDevice identifier (or $DEVICE if set): a cable-connected one
+# first, else a paired one reachable over the local network — devicectl opens
+# the tunnel on demand, so no cable is needed, only an unlocked phone. Parses
 # devicectl's JSON rather than its table, so names with spaces are safe.
 ios_pick_device() {
   if [[ -n "${DEVICE:-}" ]]; then printf '%s' "$DEVICE"; return; fi
@@ -19,10 +21,16 @@ ios_pick_device() {
   python3 - "$json" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
-for dev in d.get("result", {}).get("devices", []):
-    hw = dev.get("hardwareProperties", {}); conn = dev.get("connectionProperties", {})
-    if hw.get("deviceType") == "iPhone" and conn.get("tunnelState") == "connected":
-        print(dev["identifier"]); break
+phones = [dev for dev in d.get("result", {}).get("devices", [])
+          if dev.get("hardwareProperties", {}).get("deviceType") == "iPhone"]
+def rank(dev):
+    conn = dev.get("connectionProperties", {})
+    if conn.get("tunnelState") == "connected": return 0
+    if conn.get("pairingState") == "paired" and conn.get("tunnelState") != "unavailable": return 1
+    return 9
+phones.sort(key=rank)
+if phones and rank(phones[0]) < 9:
+    print(phones[0]["identifier"])
 PY
   rm -f "$json"
 }
@@ -71,7 +79,7 @@ ios_main() {
   fi
   local device; device="$(ios_pick_device)"
   if [[ -z "$device" ]]; then
-    echo "No connected iPhone found (xcrun devicectl list devices). Plug it in, unlock it, trust this Mac." >&2
+    echo "No reachable iPhone (xcrun devicectl list devices): pair it once over a cable, then keep it unlocked on the same Wi-Fi." >&2
     exit 1
   fi
   ios_build "signed" -allowProvisioningUpdates

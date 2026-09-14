@@ -12,6 +12,11 @@
 > v5** (mock at claude.ai artifact "Splay Island for iPhone": no light, Now-Playing idiom, 84 pt expanded row, Record/
 > Pause/Resume only, HIG sizes) is what `SplayLiveActivity.swift` implements; **clipboard always** on save;
 > **auto-paste = a paste-only keyboard extension later (slice 6)** because iOS lets only keyboards insert text.
+> **Signing unblocked (owner present, 20:16):** the blocker was never a missing Apple ID — Xcode is signed into the paid
+> team `76K8473JHR` ("Mathew Cleveland", 1 provisioned device); the projects carried the *personal* team `W72K456DZC`
+> from the older cert. Fixed (`288011ec`); app + bench now build **signed** with `-allowProvisioningUpdates`.
+> `devicectl` reaches the phone **over Wi-Fi** (paired, tunnel on demand — no cable needed); the first install attempt
+> failed only because the phone was locked (`kAMDMobileImageMounterDeviceLocked`). Scripts now pick a paired Wi-Fi phone.
 > Vet ran on each unit (converter clean; audio session had an unbalanced activate/deactivate — fixed, deactivate only
 > in `stopEngine()` + on failed start; the app skeleton got 13 findings, all fixed: on-disk DB instead of the in-memory
 > test initializer, the Mac's aliveness algorithm for *Input dead* + `mode == .stopped` as a hard failure that finalizes
