@@ -5,11 +5,38 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-09-14 **thread 14 (cont.) — FIFTH DEVICE RUN PASSED ON THE NEW SESSION MODEL (cold background
-> start → 30 s → 63 words saved, session released). Two follow-ups fixed and installed, not yet pressed.** Branch
-> `ios/utility-layer`. Nothing pushed.
+> **Last updated:** 2026-09-14 **thread 14 (end) — FIFTH DEVICE RUN PASSED ON THE NEW SESSION MODEL (cold background
+> start → 30 s → 63 words saved, session released). Two follow-ups fixed and installed (`5bebeae6`), not yet pressed.**
+> Branch `ios/utility-layer`. Nothing pushed.
 >
-> ### Brief for thread 15 (start here)
+> ### ⭐ THREAD 15 STARTS HERE: the Mac's version of finding 1 — AirPods switching between phone and Mac
+> Owner direction at the end of thread 14: the head-of-recording restart the phone just had (a self-inflicted
+> input change restarting a healthy engine) has a Mac twin that is *more* frequent: **AirPods auto-switch between
+> the iPhone and the Mac mid-recording** (a notification on the phone, Siri, a call, or just the agentic workflow
+> of talking to both). On the Mac that is a HAL `kAudioHardwarePropertyDefaultInputDevice` change → `audio_default_input_changed`
+> → `SharedMicrophoneStream.followDefaultInputChange` → engine rebuild, and again when they come back (cold HFP,
+> -10868, the 300/800/2000 ms backoff — up to ~3 s of lost audio). Account for it *architecturally*, not with a
+> patch, in the spirit of `docs/plans/splay-ios-utility-layer.md` § Audio session model:
+> 1. **Reproduce and measure first.** Record on the Mac with AirPods, pull a notification/call on the phone so they
+>    switch away and back, and read `~/Library/Logs/MacParakeet/dictation-audio.log` (match pid): count
+>    `audio_default_input_changed` / `shared_mic_engine_restarted` / `shared_mic_follow_default_input_retry` and
+>    the gaps between `meeting_mic_first_buffer`-equivalents. `MicrophoneEngineRealPlatformTests` has
+>    `MACPARAKEET_HAL_MUTATION_TESTS=1` for default-input switching — extend it rather than starting new.
+> 2. **Decide the policy** (owner call, same shape as iOS): when the AirPods *leave*, keep recording on the
+>    built-in mic — follow the default (today's behaviour) but with the smallest gap; when they *come back*,
+>    switch back (today) vs. stay on the built-in mic until the recording ends (no second gap, no cold-HFP
+>    retries, and the transcript quality of the built-in mic is at least as good). Voice Memos on macOS follows
+>    the system default both ways; Zoom/Teams stay put. My recommendation: **stay on the device that is
+>    actually delivering buffers; switch only when the current one stops** — i.e. treat a default-input change
+>    as a hint, and the *engine's* silence/config-change as the trigger.
+> 3. **Unify with the iOS model where it fits:** the Mac only *logs* `AVAudioEngineConfigurationChange` (a
+>    sample-rate change without a device change stalls a Mac recording); `RecordingAudioSessionLifecycle` has no
+>    Mac counterpart — a portable "input policy" (decide restart from *device UID before/after + is the engine
+>    still delivering*) would serve both platforms and be testable on the Mac. The coalescing in
+>    `followDefaultInputChange` already applies on the Mac.
+> 4. Then the iOS list below (next press, clipboard decision, Pause/Resume, interruption).
+>
+> ### Brief for thread 15 (iOS state, from earlier in thread 14)
 > **Fifth run (07:05, build `2119d600`), verbatim shape:** `audio_session_configured` → `audio_session_active …
 > output=Speaker` → engine up in 180 ms → `meeting_mic_first_buffer` 90 ms later → 30 s → `shared_mic_engine_stopped` →
 > `audio_session_inactive` → `ios_recording_saved words=63`; `.md` (552 B) + `.m4a` (116 KB) in Documents/…/Meetings.
