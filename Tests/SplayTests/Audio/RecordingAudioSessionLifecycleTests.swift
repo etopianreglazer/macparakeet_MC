@@ -87,9 +87,20 @@ final class RecordingAudioSessionLifecycleTests: XCTestCase {
         XCTAssertTrue(RecordingAudioSessionLifecycle.inputRouteChanged(
             previousInputUID: "AirPods Pro", currentInputUID: nil
         ), "the input port going away is a change")
-        XCTAssertTrue(RecordingAudioSessionLifecycle.inputRouteChanged(
+    }
+
+    func testInputAppearingWhereThereWasNoneIsOurOwnActivation() {
+        // The fifth device run: `reason=category input=none→MicrophoneBuiltIn`
+        // 2 ms after activation restarted an engine that had just started.
+        XCTAssertFalse(RecordingAudioSessionLifecycle.inputRouteChanged(
             previousInputUID: nil, currentInputUID: "Built-In Microphone"
-        ))
+        ), "no engine could have been recording from a route with no input")
+    }
+
+    func testCategoryChangeNeverRestartsTheEngine() {
+        XCTAssertFalse(RecordingAudioSessionLifecycle.inputRouteChanged(
+            isCategoryChange: true, previousInputUID: "Built-In Microphone", currentInputUID: "AirPods Pro"
+        ), "only we set the category, and only before the first engine start")
     }
 
     func testNoInputOnEitherSideIsNotAnInputChange() {

@@ -29,7 +29,9 @@ writer and scheduler are shared. What is macOS-only is gated with
   runs once per recording; a rebuild while a recording is engaged touches the
   session not at all (re-activating from the background is refused with
   `'!int'`). A route change restarts the engine only when the *input port UID*
-  changed (the route line logs `input=a→b output=a→b input_changed=`); the
+  changed — never for `reason=category` or when there was no input before, both
+  of which are our own activation (the route line logs `input=a→b output=a→b
+  input_changed=`); the
   engine's configuration-change notification — which on iOS means the engine has
   stopped — restarts it too; an interruption `.began` marks the session
   interrupted and `.ended`+`shouldResume` re-activates then restarts. The

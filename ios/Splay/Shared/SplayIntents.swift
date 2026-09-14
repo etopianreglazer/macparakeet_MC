@@ -39,10 +39,13 @@ struct StartRecordingIntent: AudioRecordingIntent, LiveActivityIntent {
 }
 
 /// Stops and transcribes. Returns the verbatim transcript so a Shortcut can
-/// route it (paste, share, append to a note) — the clipboard is written regardless.
+/// route it (Copy to Clipboard, paste, share, append to a note). iOS forbids the
+/// app itself from touching the pasteboard while in the background — the case a
+/// Control or the Action Button always is — so the app copies only when it is
+/// next in the foreground; from a Shortcut, the returned text is the delivery.
 struct StopRecordingIntent: AudioRecordingIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "Stop Splay recording"
-    static let description = IntentDescription("Stops, transcribes on this phone, copies the text and returns it.")
+    static let description = IntentDescription("Stops, transcribes on this phone and returns the text. Add Copy to Clipboard to keep it on the clipboard.")
     static let openAppWhenRun = false
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
@@ -102,9 +105,9 @@ struct SplayShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: StopRecordingIntent(),
-            phrases: ["Stop \(.applicationName) and copy"],
-            shortTitle: "Stop and copy",
-            systemImageName: "doc.on.doc"
+            phrases: ["Stop \(.applicationName) and get the text"],
+            shortTitle: "Stop and get text",
+            systemImageName: "text.quote"
         )
     }
 }

@@ -36,9 +36,19 @@ final class RecordingCoordinator {
 
     private init() {}
 
-    /// Text that could not reach the clipboard yet (device locked); flushed
-    /// the moment protected data is available again.
-    private var pendingClipboard: String?
+    /// Text that could not reach the clipboard yet. iOS lets an app touch the
+    /// general pasteboard **only while it is in the foreground** (PBErrorDomain
+    /// 11 "pasteboard name … is not valid" otherwise — a policy, not a lock-state
+    /// artefact; the first and fifth device runs both hit it). A recording
+    /// started from the Action Button ends in the background, so the text is
+    /// held — on disk, so a kill before the app is ever opened loses nothing —
+    /// and written the next time the app becomes active. The Stop intent's
+    /// return value is the background-capable delivery: a Shortcut can route it.
+    private var pendingClipboard: String? {
+        get { UserDefaults.standard.string(forKey: Self.pendingClipboardKey) }
+        set { UserDefaults.standard.set(newValue, forKey: Self.pendingClipboardKey) }
+    }
+    private static let pendingClipboardKey = "ios.pendingClipboardText"
     private var clipboardObservers: [NSObjectProtocol] = []
 
     func attach(_ environment: SplayEnvironment) {
@@ -46,15 +56,15 @@ final class RecordingCoordinator {
         // A previous process may have died mid-recording and left its activity
         // on the island. Nothing can drive it any more; end it.
         Task { await ActivityHandle.endAllLingering() }
-        // The general pasteboard is unavailable while the phone is locked
-        // (PBErrorDomain 11 "pasteboard name … is not valid" on the first device
-        // run). Flush a held transcript as soon as the data becomes reachable.
+        // Flush a held transcript whenever the app reaches the foreground (the
+        // only state in which the pasteboard accepts writes), including now.
         let center = NotificationCenter.default
-        for name in [UIApplication.protectedDataDidBecomeAvailableNotification, UIApplication.didBecomeActiveNotification] {
-            clipboardObservers.append(center.addObserver(forName: name, object: nil, queue: .main) { _ in
-                Task { @MainActor in RecordingCoordinator.shared.flushClipboard() }
-            })
-        }
+        clipboardObservers.append(center.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            Task { @MainActor in RecordingCoordinator.shared.flushClipboard() }
+        })
+        flushClipboard()
         // Process lifecycle into the file log: a background-started recording
         // that vanishes without a crash report (2026-09-13, second device run)
         // is only explainable if the last thing the process saw is on disk.
@@ -88,25 +98,31 @@ final class RecordingCoordinator {
         }
     }
 
-    /// Write now if the clipboard is reachable, else hold the text. Always
-    /// verifies by reading back: a refused write fails silently otherwise.
+    /// Write now if the app is in the foreground, else hold the text. Verified
+    /// by `changeCount` (a refused write fails silently and leaves it unchanged;
+    /// reading the string back would be the paste-permission path).
     private func deliverToClipboard(_ text: String) {
         pendingClipboard = text
         flushClipboard()
     }
 
     private func flushClipboard() {
-        guard let text = pendingClipboard else { return }
-        guard UIApplication.shared.isProtectedDataAvailable else {
-            AudioCaptureDiagnostics.append("ios_clipboard_deferred reason=device_locked")
+        guard let text = pendingClipboard, !text.isEmpty else {
+            if pendingClipboard != nil { pendingClipboard = nil }
             return
         }
-        UIPasteboard.general.string = text
-        if UIPasteboard.general.string == text {
+        guard UIApplication.shared.applicationState != .background else {
+            AudioCaptureDiagnostics.append("ios_clipboard_deferred reason=app_in_background chars=\(text.count)")
+            return
+        }
+        let pasteboard = UIPasteboard.general
+        let before = pasteboard.changeCount
+        pasteboard.string = text
+        if pasteboard.changeCount != before {
             pendingClipboard = nil
-            AudioCaptureDiagnostics.append("ios_clipboard_written chars=\(text.count)")
+            AudioCaptureDiagnostics.append("ios_clipboard_written chars=\(text.count) app_state=\(Self.appStateLabel())")
         } else {
-            AudioCaptureDiagnostics.append("ios_clipboard_write_refused")
+            AudioCaptureDiagnostics.append("ios_clipboard_write_refused app_state=\(Self.appStateLabel())")
         }
     }
 

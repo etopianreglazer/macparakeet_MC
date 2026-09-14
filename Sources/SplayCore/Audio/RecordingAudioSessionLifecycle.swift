@@ -90,9 +90,23 @@ public struct RecordingAudioSessionLifecycle: Equatable, Sendable {
 
     /// Route changes on iOS are mostly self-inflicted (our own activation, a
     /// category set, an output override) and never require a rebuild unless the
-    /// *input* port actually changed. Compare the previous route's input UID
-    /// with the current one; `nil` means "no input port".
-    public static func inputRouteChanged(previousInputUID: String?, currentInputUID: String?) -> Bool {
-        previousInputUID != currentInputUID
+    /// *input* port actually changed under a running recording. Compare the
+    /// previous route's input UID with the current one; `nil` means "no input
+    /// port".
+    ///
+    /// Two self-inflicted shapes are excluded by construction:
+    /// - `isCategoryChange`: only we set the category, once per process, right
+    ///   before the first engine start. The engine that follows starts on the
+    ///   new route anyway; restarting it 300 ms later cut the head off every
+    ///   recording (fifth device run, 2026-09-14).
+    /// - `previousInputUID == nil`: the session had no input before, so no
+    ///   engine could have been recording from it. Under a `.playAndRecord`
+    ///   recording there is always an input port.
+    public static func inputRouteChanged(
+        isCategoryChange: Bool = false, previousInputUID: String?, currentInputUID: String?
+    ) -> Bool {
+        if isCategoryChange { return false }
+        guard let previousInputUID else { return false }
+        return previousInputUID != currentInputUID
     }
 }

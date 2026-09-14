@@ -629,6 +629,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             let current = session.currentRoute
             let currentInput = current.inputs.first
             let inputChanged = RecordingAudioSessionLifecycle.inputRouteChanged(
+                isCategoryChange: reason == .categoryChange,
                 previousInputUID: previousInput?.uid, currentInputUID: currentInput?.uid
             )
             AudioCaptureDiagnostics.append(

@@ -5,10 +5,41 @@
 > `docs/fork-product-model.md`) and **not** a build plan (`docs/plans/fn-rework.md`). This is
 > the "you are here" pin.
 >
-> **Last updated:** 2026-09-14 **thread 14 — iOS AUDIO SESSION MODEL REWORKED (Voice Memos model), BUILT, INSTALLED ON
-> THE PHONE, NOT YET PRESSED.** Branch `ios/utility-layer`. Nothing pushed.
+> **Last updated:** 2026-09-14 **thread 14 (cont.) — FIFTH DEVICE RUN PASSED ON THE NEW SESSION MODEL (cold background
+> start → 30 s → 63 words saved, session released). Two follow-ups fixed and installed, not yet pressed.** Branch
+> `ios/utility-layer`. Nothing pushed.
 >
 > ### Brief for thread 15 (start here)
+> **Fifth run (07:05, build `2119d600`), verbatim shape:** `audio_session_configured` → `audio_session_active …
+> output=Speaker` → engine up in 180 ms → `meeting_mic_first_buffer` 90 ms later → 30 s → `shared_mic_engine_stopped` →
+> `audio_session_inactive` → `ios_recording_saved words=63`; `.md` (552 B) + `.m4a` (116 KB) in Documents/…/Meetings.
+> No `'!int'`, no `configuration_changed` this time (iOS is not reproducible about which notification follows
+> activation; the structure handles any). Two findings, both fixed in the follow-up commit and **installed 07:22 (with the intent text fix)**:
+> 1. `audio_route_changed reason=category input=none→MicrophoneBuiltIn input_changed=true` 2 ms after activation →
+>    `follow_default_input` → `shared_mic_engine_restarted` at +350 ms — our own `setCategory` restarted a healthy
+>    engine and cut the head off the recording. `RecordingAudioSessionLifecycle.inputRouteChanged` now ignores
+>    `reason=category` and a previous route with no input (+2 tests, 12 total).
+> 2. `ios_clipboard_write_refused` with the app in the background. **Platform fact (Apple forums + FB13636156): the
+>    general pasteboard is inaccessible to any app not in the foreground, `PBErrorDomain 11`, by policy — lock state
+>    is irrelevant.** The coordinator's `isProtectedDataAvailable` test was the wrong criterion. Now: defer on
+>    `applicationState == .background` (`ios_clipboard_deferred reason=app_in_background chars=…`), pending text
+>    persisted in UserDefaults (`ios.pendingClipboardText`) so a kill before the app is opened loses nothing, flushed
+>    on `didBecomeActive` and on `attach`, verified by `changeCount` (reading the string back is the paste-permission
+>    path). ⚠️ **Owner decision needed:** "clipboard always" cannot be honoured from the Action Button in the background.
+>    Options: (a) assign the Action Button a *Shortcut* (Toggle/Stop intent → its returned text → Copy to Clipboard;
+>    Shortcuts may write the pasteboard from the background) instead of the bare Control; (b) `openAppWhenRun` /
+>    `ForegroundContinuableIntent` on stop = ~1 s foreground flash, then the flush writes it; (c) accept
+>    "copied the next time you open Splay" + the file in Files. Plan § Decisions ▸ Delivery records the correction.
+> **Next press (cold, background):** expect the same shape **without** `shared_mic_follow_default_input` after start
+> and with `ios_clipboard_deferred reason=app_in_background`; then open the app → `ios_clipboard_written chars=…
+> app_state=active` and the text pastes. Also worth trying this time: Pause/Resume from the island; a phone call
+> mid-recording (interruption path: `audio_session_interruption_began` → `…ended should_resume=true` →
+> `audio_session_active` → `shared_mic_engine_restarted`).
+>
+> **Prior block (this thread, first unit):** **thread 14 — iOS AUDIO SESSION MODEL REWORKED (Voice Memos model), BUILT,
+> INSTALLED ON THE PHONE.** Commit `2119d600`.
+>
+> ### Brief written before the fifth run (kept for the model summary)
 > **What changed and why.** Thread 13's root cause was real but was two of six structural faults; fixing only those two
 > would have left the recording dying anyway. The architecture is now written down in
 > `docs/plans/splay-ios-utility-layer.md` § *Audio session model (iOS)* — read that table first. In one line: **the
@@ -27,8 +58,8 @@
 >   4 new tests: restart keeps subscribers, 3 rapid triggers → 2 restarts, failure keeps subscribers + next trigger
 >   recovers, idle trigger is a no-op).
 > **Validation:** `swift build` green; iOS `SplayCore` compile green; full suite **1793 tests, the same 5 known
-> environmental cases (6 assertion failures), zero new**. Vet (agentic, with history): **no issues**. **Installed on the phone** (`NO_LAUNCH=1
-> scripts/dev/install_iphone.sh`, signed Debug, bundled models present, 06:56) — the owner has not pressed yet.
+> environmental cases (6 assertion failures), zero new**. Vet (agentic, with history): **no issues**. Installed 06:56;
+> pressed 07:05 → the fifth run above. Follow-up unit: suite the same 5 known cases, zero new; Vet: 2 doc/implementation mismatches (plan diagram, Stop intent description), both fixed.
 > **Next (owner presses, app cold, phone locked, Action Button):** pull the log (command below) and expect, in order:
 > `audio_session_configured`, `audio_session_active … output=…`, `ios_recording_started`, `audio_route_changed …
 > input_changed=false` (ignored), possibly `shared_mic_engine_configuration_changed_restart` → `shared_mic_engine_restarted`

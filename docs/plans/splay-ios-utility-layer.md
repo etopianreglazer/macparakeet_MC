@@ -21,7 +21,7 @@ is the normal case, not the edge case). Bundle size is not a concern (1–2 GB i
 | STT | **Parakeet TDT 0.6B v3 via FluidAudio** on the Neural Engine. WhisperKit not ported in v1. | Fastest, non-hallucinating on silence, already Splay's stack. |
 | Text | **Verbatim.** `TextProcessingPipeline` only. No LLM clean-up, no autocorrect, ever in the capture step. | "If you don't know what you're cleaning up you introduce uncertainty." The reader's LLM has the full context; the phone does not. |
 | Names / brands | **Parked.** Accepted as slightly off in v1. Revisit as a deterministic personal dictionary, never a model-side guess. | Editing decision for later, not a capture decision. |
-| Delivery | **Always on the clipboard** the instant the file is written (owner decision 2026-09-13: the clipboard is the safety net, no Copy button ever). Transcript `.md` + paired audio in Files; the Stop intent **returns the text** so a Shortcut can route it. | Nothing gets lost; a manual paste always works. |
+| Delivery | **Clipboard whenever iOS allows it** (owner decision 2026-09-13: the clipboard is the safety net, no Copy button ever). ⚠️ Corrected 2026-09-14: iOS forbids *any* app that is not in the foreground from touching the general pasteboard (`PBErrorDomain 11`, a policy — the lock state is irrelevant), so a recording stopped from the Action Button **cannot** copy in the background. The text is held on disk and written the next time the app is foregrounded; the background-capable delivery is the Stop intent's **returned text** routed by a Shortcut (Shortcuts may write the clipboard from the background). Transcript `.md` + paired audio in Files always. **Owner decision pending:** ship the Action Button as a Shortcut (Toggle → Copy to Clipboard) rather than the bare Control, or accept a ~1 s foreground flash (`openAppWhenRun`) on stop. | Nothing gets lost; the file is the record; the clipboard is best-effort by platform rule. |
 | Auto-paste | **Wanted** (same feel as the Mac's paste-into-focused-field). iOS only lets a **keyboard extension** insert text into another app's field, so auto-paste = a *paste-only* Splay keyboard: no keys, a short strip, inserts the transcript the moment it lands while it is the active keyboard. It never records. Slice 6; verify whether reading the App Group needs Full Access. | The keyboard is the only sanctioned path; keep it minimal. |
 | Keyboard | **No typing keyboard.** Only the paste-only strip above, and only for auto-paste. | iOS forbids mic access in keyboard extensions; recording stays in the app. |
 | Cloud fallback | **None.** | Local is the point. |
@@ -88,8 +88,10 @@ configuration**, and the two lifecycles never cross.
 press ─▶ Live Activity ─▶ session: setCategory (once per process) + setActive(true)   [active]
                        └▶ engine: build graph, install tap, start                      buffers flow
 
-routeChangeNotification      input port UID unchanged ─▶ log only (our own activation, a
-                             category set or an output override all post one of these)
+routeChangeNotification      reason=categoryChange, or no input port before ─▶ log only (that is
+                             our own setCategory/activation; the engine that follows starts on
+                             the new route anyway)
+                             input port UID unchanged ─▶ log only (an output override, etc.)
                              input port UID changed  ──▶ restart the ENGINE (session untouched)
 AVAudioEngineConfigurationChange   the engine HAS STOPPED (I/O hardware changed under it) ─▶
                                    restart the ENGINE (session untouched)
@@ -112,6 +114,10 @@ seen in the fourth device run (2026-09-14 06:37) or implied by the code:
    `.newDeviceAvailable` fired 50 ms after our own activation with the input still the
    built-in mic. Now only a changed input-port UID (previous route vs current) restarts the
    engine; the line logs `input=<prev>→<cur> output=…` so the self-inflicted ones are visible.
+   Fifth run (2026-09-14 07:05) added two exclusions: `reason=category` (only we set the
+   category, before the first engine start) and `previous input = none` (nothing could have been
+   recording from a route with no input) — that pair restarted a healthy engine 350 ms into every
+   recording and cut the head off it.
 3. **The engine's configuration-change notification was only logged.** On iOS it means the
    engine has stopped (the I/O unit saw the output flip to the speaker); the recording would
    have died even with (2) fixed. Now, while a recording is engaged, it drives the same
@@ -287,6 +293,16 @@ load at launch, and the phone runs it *before* the Parakeet warm-up. `meeting_re
 lease_ms=… setup_ms=…` is logged before capture starts so the press-to-mic latency is always visible.
 Last night's silent kill ~1 s into a background-started recording is still unexplained (the
 unified log for that window is what would settle it).
+
+**Fifth device run (2026-09-14 07:05, app not running, background start, build `2119d600`):** the model
+holds — `audio_session_configured` → `audio_session_active … output=Speaker` → engine up in 180 ms →
+first buffer 90 ms later → 30 s → `shared_mic_engine_stopped` → `audio_session_inactive` → **63 words saved**,
+`.md` + `.m4a` in Files; no `'!int'`, no `configuration_changed` at all this time (iOS is not
+reproducible about which notification it posts after activation — the structure now handles any of
+them). Two findings: (1) `audio_route_changed reason=category input=none→MicrophoneBuiltIn
+input_changed=true` 2 ms after activation restarted the just-started engine (fixed: category
+changes and no-prior-input never restart); (2) `ios_clipboard_write_refused` with the app in the
+background — the pasteboard is foreground-only by iOS policy, see § Decisions ▸ Delivery.
 
 **Fourth device run (2026-09-14 06:37, app not running, phone locked):** the VAD fix holds —
 `ios_start app_state=background`, `setup_ms=106`, `audio_session_active`, engine running,
