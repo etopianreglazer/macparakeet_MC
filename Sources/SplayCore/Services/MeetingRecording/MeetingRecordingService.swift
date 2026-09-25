@@ -897,12 +897,29 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
         await speechEngineSessionManager?.endSpeechEngineSession(lease)
     }
 
+    /// `AVAssetWriter.finishWriting` normally calls back in well under a second.
+    /// If it never does, Stop must still return (upstream MacParakeet df8f7dcf).
+    /// On timeout the files are left exactly as they are — never `cancelWriting()`,
+    /// which deletes the output — and the late callback simply lands on nothing.
+    static let writerFinalizeTimeoutSeconds: TimeInterval = 10
+
     private func finalizeWriter(_ writer: MeetingAudioStorageWriter?) async {
         guard let writer else { return }
-        await withCheckedContinuation { continuation in
-            writer.finalize {
-                continuation.resume()
+        let outcome: BoundedCallbackOutcome<Bool> = await awaitBoundedCallback(
+            timeout: Self.writerFinalizeTimeoutSeconds,
+            onLate: { _ in
+                AudioCaptureDiagnostics.append("meeting_audio_writer_finalize_late_completion")
             }
+        ) { done in
+            writer.finalize {
+                done(true)
+            }
+        }
+        if case .timedOut = outcome {
+            logger.error("meeting_audio_writer_finalize_timed_out")
+            AudioCaptureDiagnostics.append(
+                "meeting_audio_writer_finalize_timeout timeout_s=\(Int(Self.writerFinalizeTimeoutSeconds))"
+            )
         }
     }
 

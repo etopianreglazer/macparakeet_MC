@@ -111,15 +111,28 @@ fan-out. There is exactly one instance per process, owned by
 **Meeting-side audio (independent of the mic stream)**
 - `SystemAudioStream.swift` — meeting system audio via
   `ScreenCaptureKit` (`SCStream`). Independent of the
-  `AVAudioEngine`. Has its own first-buffer watchdog.
+  `AVAudioEngine`. Has its own first-buffer watchdog. Every
+  ScreenCaptureKit callback is **bounded** (upstream MacParakeet #814):
+  shareable-content lookup and `startCapture` 10 s → `systemAudioCaptureFailed`,
+  `stopCapture` 5 s → Stop returns anyway. A start that lands after its
+  deadline is stopped again. Log: `system_audio_stream_start_timeout
+  phase=shareable_content|start_capture`, `system_audio_stream_stop_timeout`,
+  `system_audio_stream_late_start_stopped`.
 - `MeetingAudioCaptureService.swift` — composes mic + system audio
   for meeting recording.
 - `MeetingAudioStorageWriter.swift` — fragmented MP4 writer for
-  meeting source files (ADR-019 crash recovery).
+  meeting source files (ADR-019 crash recovery). Its finish is awaited
+  for at most 10 s by `MeetingRecordingService.finalizeWriter`
+  (`meeting_audio_writer_finalize_timeout`); on timeout the files are left
+  as they are — never `cancelWriting()`, which deletes them.
 - `MeetingAudioError.swift`, `MeetingMicProcessingMode.swift` —
   value types.
 
 **Helpers**
+- `BoundedCallback.swift` — `awaitBoundedCallback(timeout:onLate:_:)`:
+  waits for a one-shot framework callback, but never past the deadline;
+  a late callback goes to `onLate`. Use it for any completion handler
+  that Stop or Start depends on.
 - `AudioCaptureDiagnostics.swift` — public `append(_:)` to
   `~/Library/Logs/MacParakeet/dictation-audio.log`. 5 MB cap;
   delete-on-overflow (not rotated). Used by every file in this

@@ -8,6 +8,20 @@ import Foundation
 import OSLog
 @preconcurrency import ScreenCaptureKit
 
+private struct ShareableContentResult: @unchecked Sendable {
+    let content: SCShareableContent?
+    let error: (any Error)?
+}
+
+private struct StartCompletion: Sendable {
+    let error: (any Error)?
+}
+
+private struct UncheckedSCStream: @unchecked Sendable {
+    let stream: SCStream
+    init(_ stream: SCStream) { self.stream = stream }
+}
+
 public final class SystemAudioStream: NSObject, @unchecked Sendable {
     public typealias AudioBufferHandler = @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void
     public typealias StallObserver = @Sendable (MeetingAudioError) -> Void
@@ -18,6 +32,10 @@ public final class SystemAudioStream: NSObject, @unchecked Sendable {
     private static let firstBufferTimeout: DispatchTimeInterval = .seconds(firstBufferTimeoutSeconds)
     private static let heartbeatInterval: DispatchTimeInterval = .seconds(1)
     private static let heartbeatStallThreshold: TimeInterval = 5.0
+    /// ScreenCaptureKit calls that never call back must not hang Start or Stop
+    /// (upstream MacParakeet #814 / 92810829). Same bounds upstream ships.
+    private static let startTimeoutSeconds: TimeInterval = 10
+    private static let stopTimeoutSeconds: TimeInterval = 5
 
     private enum LifecycleState {
         case idle
@@ -178,7 +196,25 @@ public final class SystemAudioStream: NSObject, @unchecked Sendable {
     }
 
     private func makeStream() async throws -> SCStream {
-        let content = try await SCShareableContent.current
+        let outcome: BoundedCallbackOutcome<ShareableContentResult> = await awaitBoundedCallback(
+            timeout: Self.startTimeoutSeconds
+        ) { done in
+            SCShareableContent.getWithCompletionHandler { content, error in
+                done(ShareableContentResult(content: content, error: error))
+            }
+        }
+        guard case .completed(let result) = outcome else {
+            AudioCaptureDiagnostics.append(
+                "system_audio_stream_start_timeout phase=shareable_content timeout_s=\(Int(Self.startTimeoutSeconds))"
+            )
+            throw MeetingAudioError.systemAudioCaptureFailed(
+                "ScreenCaptureKit did not list displays within \(Int(Self.startTimeoutSeconds))s"
+            )
+        }
+        if let error = result.error { throw error }
+        guard let content = result.content else {
+            throw MeetingAudioError.systemAudioCaptureFailed("ScreenCaptureKit returned no shareable content")
+        }
         guard let display = content.displays.first else {
             throw MeetingAudioError.systemAudioCaptureFailed("no capturable display available")
         }
@@ -231,22 +267,48 @@ public final class SystemAudioStream: NSObject, @unchecked Sendable {
     }
 
     private func startCapture(_ stream: SCStream) async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            stream.startCapture { error in
-                if let error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume()
-                }
+        let boxed = UncheckedSCStream(stream)
+        let outcome: BoundedCallbackOutcome<StartCompletion> = await awaitBoundedCallback(
+            timeout: Self.startTimeoutSeconds,
+            onLate: { completion in
+                // The start landed after we gave up and tore down: stop it again so a
+                // stream nobody owns does not keep capturing.
+                guard completion.error == nil else { return }
+                AudioCaptureDiagnostics.append("system_audio_stream_late_start_stopped")
+                boxed.stream.stopCapture(completionHandler: nil)
             }
+        ) { done in
+            stream.startCapture { error in
+                done(StartCompletion(error: error))
+            }
+        }
+        switch outcome {
+        case .completed(let completion):
+            if let error = completion.error { throw error }
+        case .timedOut:
+            logger.error("system_audio_stream_start_timed_out")
+            AudioCaptureDiagnostics.append(
+                "system_audio_stream_start_timeout phase=start_capture timeout_s=\(Int(Self.startTimeoutSeconds))"
+            )
+            throw MeetingAudioError.systemAudioCaptureFailed(
+                "ScreenCaptureKit did not start within \(Int(Self.startTimeoutSeconds))s"
+            )
         }
     }
 
     private func stopCapture(_ stream: SCStream) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        let outcome: BoundedCallbackOutcome<Bool> = await awaitBoundedCallback(
+            timeout: Self.stopTimeoutSeconds
+        ) { done in
             stream.stopCapture { _ in
-                continuation.resume()
+                done(true)
             }
+        }
+        if case .timedOut = outcome {
+            logger.error("system_audio_stream_stop_timed_out")
+            AudioCaptureDiagnostics.append(
+                "system_audio_stream_stop_timeout timeout_s=\(Int(Self.stopTimeoutSeconds))"
+            )
         }
     }
 
