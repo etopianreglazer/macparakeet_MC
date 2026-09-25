@@ -495,6 +495,62 @@ final class MicrophoneCaptureTests: XCTestCase {
         XCTAssertEqual(platform.lastSucceededAttempt, .implicitSystemDefault(resolvedDeviceID: 20))
     }
 
+    /// The explicit System Default pin started but never delivered (the failure
+    /// upstream reverted the pin for): the next start skips it once and uses the
+    /// implicit route; the start after that pins again.
+    func testPlatformSkipsExplicitDefaultOnceAfterNeverDelivered() throws {
+        let recorder = MicrophoneCaptureInputDeviceSetterRecorder()
+        let platform = AVAudioEngineMicrophonePlatform(
+            deviceAttemptsBuilder: {
+                [
+                    MeetingInputDeviceAttempt(source: .systemDefault, deviceID: 20),
+                    .implicitSystemDefault(resolvedDeviceID: 20),
+                ]
+            },
+            inputDeviceSetter: { deviceID, _ in
+                recorder.record(deviceID)
+                return true
+            },
+            engineStarter: { _, _, _, _ in }
+        )
+        defer { platform.stopEngine() }
+
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 1024, tapHandler: { _, _ in })
+        XCTAssertEqual(platform.lastSucceededAttempt, MeetingInputDeviceAttempt(source: .systemDefault, deviceID: 20))
+
+        platform.noteCurrentEngineNeverDelivered()
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 1024, tapHandler: { _, _ in })
+        XCTAssertEqual(platform.lastSucceededAttempt, .implicitSystemDefault(resolvedDeviceID: 20))
+
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 1024, tapHandler: { _, _ in })
+        XCTAssertEqual(platform.lastSucceededAttempt, MeetingInputDeviceAttempt(source: .systemDefault, deviceID: 20))
+        XCTAssertEqual(recorder.deviceIDs, [20, 20], "only the two pinned starts set the device")
+    }
+
+    func testNeverDeliveredOnImplicitRouteChangesNothing() throws {
+        let platform = AVAudioEngineMicrophonePlatform(
+            deviceAttemptsBuilder: {
+                [
+                    MeetingInputDeviceAttempt(source: .selected(uid: "usb-mic"), deviceID: 10),
+                    .implicitSystemDefault(resolvedDeviceID: 20),
+                ]
+            },
+            inputDeviceSetter: { _, _ in true },
+            engineStarter: { _, _, _, _ in }
+        )
+        defer { platform.stopEngine() }
+
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 1024, tapHandler: { _, _ in })
+        platform.noteCurrentEngineNeverDelivered()
+        try platform.configureAndStart(vpioEnabled: false, bufferSize: 1024, tapHandler: { _, _ in })
+
+        XCTAssertEqual(
+            platform.lastSucceededAttempt,
+            MeetingInputDeviceAttempt(source: .selected(uid: "usb-mic"), deviceID: 10),
+            "a user-selected device is never skipped"
+        )
+    }
+
     func testPlatformFallsBackToImplicitSystemDefaultWhenExplicitDefaultSetFails() throws {
         let recorder = MicrophoneCaptureInputDeviceSetterRecorder()
         let platform = AVAudioEngineMicrophonePlatform(

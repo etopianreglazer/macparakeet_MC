@@ -612,6 +612,87 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         }
     }
 
+    // MARK: - Liveness watchdog (callbacks, not loudness)
+
+    /// A stream whose watchdog ticks every 20 ms: a 100 ms callback gap is a
+    /// freeze, an engine that never delivered gets 150 ms of grace, and the
+    /// watchdog waits 150 ms before rebuilding a still-dead input again.
+    private func makeWatchdogStream() -> SharedMicrophoneStream {
+        SharedMicrophoneStream(
+            platform: platform,
+            bufferSize: 1024,
+            followDefaultInputBackoff: [.milliseconds(5)],
+            inputPolicy: MicrophoneInputPolicy(
+                recheckSchedule: [],
+                staleAfter: 0.03,
+                warmupGrace: 0.15,
+                livenessInterval: 0.02,
+                callbackGapLimit: 0.1,
+                livenessRetryInterval: 0.15,
+                livenessRetryCap: 0.15
+            )
+        )
+    }
+
+    func testLivenessRebuildsWhenCallbacksStopWithoutAnyHint() async throws {
+        // Bluetooth churn: the engine still says running, its callbacks stopped,
+        // and no HAL hint arrived to trigger a recheck.
+        let stream = makeWatchdogStream()
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        deliverOneBuffer()
+
+        try await waitUntil("rebuild after the callback gap") { self.platform.configureAndStartCalls.count >= 2 }
+        XCTAssertEqual(stream.diagnostics.subscriberCount, 1)
+        await stream.unsubscribe(token)
+    }
+
+    func testLivenessLeavesADeliveringEngineAlone() async throws {
+        // A quiet room still delivers buffers on cadence: never a rebuild.
+        let stream = makeWatchdogStream()
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        let pump = startBufferPump(every: .milliseconds(10))
+        defer { pump.cancel() }
+
+        try await Task.sleep(for: .milliseconds(400))
+
+        XCTAssertEqual(platform.configureAndStartCalls.count, 1)
+        pump.cancel()
+        await stream.unsubscribe(token)
+    }
+
+    func testLivenessRebuildsAnEngineThatNeverDeliveredAndTellsThePlatform() async throws {
+        let stream = makeWatchdogStream()
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+
+        try await waitUntil("rebuild after the warm-up grace") { self.platform.configureAndStartCalls.count >= 2 }
+        XCTAssertGreaterThanOrEqual(platform.neverDeliveredNoteCount, 1)
+        await stream.unsubscribe(token)
+    }
+
+    func testLivenessRetriesAnEngineThatStaysDown() async throws {
+        // Every rebuild fails (the follow run gives up): the watchdog keeps
+        // retrying on its backoff instead of leaving the recording silent.
+        let stream = makeWatchdogStream()
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        platform.configureAndStartError = MockError.simulatedFailure
+        platform.simulateEngineStopped()
+
+        try await waitUntil("two watchdog rebuild attempts") { self.platform.configureAndStartCalls.count >= 3 }
+
+        platform.configureAndStartError = nil
+        try await waitUntil("recovered") { stream.diagnostics.engineRunning && self.platform.isEngineRunning }
+        await stream.unsubscribe(token)
+    }
+
+    func testLivenessStopsWhenTheStreamGoesIdle() async throws {
+        let stream = makeWatchdogStream()
+        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
+        await stream.unsubscribe(token)
+
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(platform.configureAndStartCalls.count, 1, "no rebuild for a stream nobody subscribes to")
+    }
+
     func testFollowWhileIdleDoesNotStartTheEngine() async throws {
         platform.fireDefaultInputChange()
         try await Task.sleep(for: .milliseconds(120))
@@ -726,6 +807,13 @@ private final class MockMicrophonePlatform: MicrophoneEnginePlatform, @unchecked
 
     func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?) {
         lock.withLock { _defaultInputChangeHandler = handler }
+    }
+
+    private var _neverDeliveredNotes = 0
+    var neverDeliveredNoteCount: Int { lock.withLock { _neverDeliveredNotes } }
+
+    func noteCurrentEngineNeverDelivered() {
+        lock.withLock { _neverDeliveredNotes += 1 }
     }
 
     /// Test hook — what the real platform does on a HAL default-input change

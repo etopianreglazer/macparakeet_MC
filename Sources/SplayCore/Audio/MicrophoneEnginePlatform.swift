@@ -50,9 +50,16 @@ public protocol MicrophoneEnginePlatform: AnyObject, Sendable {
     /// `SharedMicrophoneStream` runs `MicrophoneInputPolicy`, which rebuilds
     /// only when the engine is no longer delivering. Pass `nil` to clear.
     func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?)
+
+    /// The running engine started but never delivered a buffer within the
+    /// warm-up grace. A platform that pinned the system default explicitly
+    /// skips that explicit attempt on its next start (implicit route instead).
+    func noteCurrentEngineNeverDelivered()
 }
 
 public extension MicrophoneEnginePlatform {
+    func noteCurrentEngineNeverDelivered() {}
+
     /// Default no-op so platforms that don't observe device changes (test
     /// doubles, the diagnostic-only `AudioProcessor` path) need no changes.
     func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?) {}
@@ -93,6 +100,11 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     private var audioEngine = AVAudioEngine()
     private var running: Bool = false
     private var lastSucceededAttemptLocked: MeetingInputDeviceAttempt?
+    /// Set when the engine built on the explicit System Default attempt never
+    /// delivered; the next `configureAndStart` drops that attempt once so the
+    /// implicit route gets a turn (upstream MacParakeet reverted the explicit
+    /// pin, 0.6.18, because some Macs started it silent).
+    private var skipExplicitSystemDefaultOnce = false
     /// Token for the `AVAudioEngine.configurationChangeNotification` observer
     /// installed on the current `audioEngine` instance. Cleared on
     /// `tearDown` / `resetEngine` / `replaceEngineAfterFailure` so the
@@ -213,7 +225,15 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 tearDownLocked()
             }
 
-            let attempts = deviceAttemptsBuilder?() ?? []
+            var attempts = deviceAttemptsBuilder?() ?? []
+            if skipExplicitSystemDefaultOnce {
+                skipExplicitSystemDefaultOnce = false
+                let before = attempts.count
+                attempts.removeAll { $0.source == .systemDefault && !$0.usesImplicitSystemDefault }
+                AudioCaptureDiagnostics.append(
+                    "shared_mic_engine_skip_explicit_default removed=\(before - attempts.count)"
+                )
+            }
             if attempts.isEmpty {
                 // No device chain — use whatever the engine's input node picks.
                 try startConfiguredEngineLocked(
@@ -256,7 +276,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                         "shared_mic_engine_input_device_started source=\(attempt.source.logValue, privacy: .public) transport=\(transport, privacy: .public) vpio=\(vpioEnabled, privacy: .public)"
                     )
                     AudioCaptureDiagnostics.append(
-                        "shared_mic_engine_input_device_started source=\(attempt.source.logValue) device=\(deviceLabel) transport=\(transport) vpio=\(vpioEnabled)"
+                        "shared_mic_engine_input_device_started source=\(attempt.source.logValue) routing=\(attempt.usesImplicitSystemDefault ? "implicit" : "explicit") device=\(deviceLabel) transport=\(transport) vpio=\(vpioEnabled)"
                     )
                     return
                 } catch {
@@ -274,6 +294,15 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             }
 
             throw lastError ?? AVAudioEngineMicrophonePlatformError.noDeviceAvailable
+        }
+    }
+
+    public func noteCurrentEngineNeverDelivered() {
+        queue.sync {
+            guard let attempt = lastSucceededAttemptLocked,
+                  attempt.source == .systemDefault,
+                  !attempt.usesImplicitSystemDefault else { return }
+            skipExplicitSystemDefaultOnce = true
         }
     }
 

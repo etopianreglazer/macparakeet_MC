@@ -122,6 +122,12 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         var recheckArmed = false
         var recheckGeneration = 0
         var engineRestartCount = 0
+        /// Liveness watchdog (`MicrophoneInputPolicy.onLivenessTick`): one loop
+        /// while anyone is subscribed, plus its own rebuild history for backoff.
+        var livenessArmed = false
+        var livenessGeneration = 0
+        var lastLivenessRestartNanos: UInt64 = 0
+        var livenessRestartsSinceBuffer = 0
     }
 
     private enum EngineAction: Equatable {
@@ -250,6 +256,80 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         case .recheck(let after):
             scheduleRecheck(index: index + 1, after: after, generation: generation)
         }
+    }
+
+    // MARK: - Liveness watchdog
+
+    /// Start the watchdog loop if it is not already running. Called after every
+    /// successful subscribe; the loop ends by itself when the stream goes idle.
+    private func armLivenessWatchdog() {
+        guard let interval = inputPolicy.livenessInterval else { return }
+        let generation: Int? = lock.withLock { state in
+            guard !state.livenessArmed else { return nil }
+            state.livenessArmed = true
+            state.livenessGeneration += 1
+            state.lastLivenessRestartNanos = 0
+            state.livenessRestartsSinceBuffer = 0
+            return state.livenessGeneration
+        }
+        guard let generation else { return }
+        Task { [weak self] in
+            while true {
+                try? await Task.sleep(for: .seconds(interval))
+                guard let self, self.livenessTick(generation: generation) else { return }
+            }
+        }
+    }
+
+    /// One tick. Returns `false` when the loop should end (stream idle or a
+    /// newer loop took over).
+    private func livenessTick(generation: Int) -> Bool {
+        let snapshot: (startedAt: UInt64, lastBuffer: UInt64, lastRestart: UInt64, restarts: Int)? =
+            lock.withLock { state in
+                guard state.livenessGeneration == generation else { return nil }
+                guard !state.subscribers.isEmpty else {
+                    state.livenessArmed = false
+                    return nil
+                }
+                // A buffer since the watchdog's last rebuild: the input is back.
+                if state.livenessRestartsSinceBuffer > 0,
+                   state.lastBufferAtNanos > state.lastLivenessRestartNanos {
+                    state.livenessRestartsSinceBuffer = 0
+                }
+                return (
+                    state.engineStartedAtNanos,
+                    state.lastBufferAtNanos,
+                    state.lastLivenessRestartNanos,
+                    state.livenessRestartsSinceBuffer
+                )
+            }
+        guard let snapshot else { return false }
+        let now = Self.uptimeNanos()
+        let verdict = inputPolicy.onLivenessTick(
+            engineRunning: platform.isEngineRunning,
+            engineStartedAt: Self.seconds(snapshot.startedAt),
+            lastBufferAt: Self.seconds(snapshot.lastBuffer),
+            lastRestartAt: Self.seconds(snapshot.lastRestart),
+            restartsSinceBuffer: snapshot.restarts,
+            now: Self.seconds(now) ?? 0
+        )
+        guard case .restart(let reason) = verdict else { return true }
+        let restarts: Int = lock.withLock { state in
+            state.lastLivenessRestartNanos = now
+            state.livenessRestartsSinceBuffer += 1
+            return state.livenessRestartsSinceBuffer
+        }
+        AudioCaptureDiagnostics.append(
+            "shared_mic_liveness reason=\(reason) action=restart restarts_since_buffer=\(restarts)"
+        )
+        if reason == "never_delivered" {
+            // A pinned device that starts but never delivers is the failure
+            // upstream reverted the explicit System Default pin for: let the
+            // next build use the implicit route instead.
+            platform.noteCurrentEngineNeverDelivered()
+        }
+        followDefaultInputChange()
+        return true
     }
 
     /// Note a fresh engine start. Called *before* the platform call so a first
@@ -387,6 +467,7 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
 
                 if action == .none {
                     self.emitDiagnosticsLog(transition: "subscribe", wantsVPIO: wantsVPIO)
+                    self.armLivenessWatchdog()
                     cont.resume(returning: token)
                     return
                 }
@@ -394,6 +475,7 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
                 do {
                     try self.executeEngineAction(action)
                     self.emitDiagnosticsLog(transition: "subscribe", wantsVPIO: wantsVPIO)
+                    self.armLivenessWatchdog()
                     cont.resume(returning: token)
                 } catch {
                     self.lock.withLock { state in

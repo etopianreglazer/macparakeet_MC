@@ -219,6 +219,22 @@ Log grammar:
 `shared_mic_input_recheck n=… reason=alive|stopped|engine_down|warming|never_delivered action=…`
 → `shared_mic_follow_default_input` for the rebuild itself.
 
+**Hints are not the only way an input dies — the liveness watchdog (Mac).**
+While anyone is subscribed, `SharedMicrophoneStream` ticks
+`MicrophoneInputPolicy.onLivenessTick` every 1 s and rebuilds when the
+engine is down (a follow run that gave up), when a delivering engine's
+**callbacks** stop for 5 s (Bluetooth churn freeze, upstream #860), or
+when an engine never delivers within the 15 s warm-up grace. It measures
+callbacks, never loudness — a quiet room delivers a buffer every ~93 ms —
+so it does not contradict "dead ≠ silent". Rebuilds of a still-dead input
+back off 10 s → 20 s → 40 s → 60 s cap and reset on the next buffer.
+`never_delivered` on the explicit System Default pin makes the platform
+skip that attempt once (implicit route instead) — the failure upstream
+reverted the pin for. Off on iOS (interruptions take the engine down on
+purpose). Log: `shared_mic_liveness reason=engine_down|callbacks_stopped|never_delivered
+action=restart restarts_since_buffer=N`, `shared_mic_engine_skip_explicit_default`,
+and `shared_mic_engine_input_device_started … routing=explicit|implicit`.
+
 **Diagnostic logging is observability-only.** The first-buffer
 watchdog and recording heartbeat in `AudioRecorder` log to
 `dictation-audio.log` but **never** abort the recording. PR #210
