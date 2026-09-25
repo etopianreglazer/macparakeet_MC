@@ -107,6 +107,14 @@ manager.initialize() }`, and don't reach into `STTRuntime`'s
 private state. Warm-up happens automatically (background or
 explicit); use `STTRuntime.observeWarmUpProgress()` to surface UI.
 
+**macOS 14 runs Parakeet differently — on purpose.** Sonoma's Neural
+Engine crashes on parallel or long Parakeet work (upstream MacParakeet
+#998, #1089). `ParakeetSonomaSafety` gives `STTRuntime` one long-form
+window at a time and CPU + GPU compute units on 14 only; 15+ keeps
+FluidAudio's defaults. Nothing on this dev Mac (macOS 26) exercises the
+14 path — verify on a Sonoma machine. With the FluidAudio 0.15.x bump,
+narrow it to the encoder (`encoderComputeUnits:`) as upstream does.
+
 **Hotkey state is pure and testable.** `FnKeyStateMachine` and
 `HotkeyGestureController` take abstract gesture events with timestamps
 and emit actions. Don't add CGEvent or NSEvent imports here — that

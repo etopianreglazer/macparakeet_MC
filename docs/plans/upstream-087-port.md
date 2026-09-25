@@ -22,10 +22,10 @@ bug fixes. None had been ported. This plan ports them in Splay's shape, not upst
 | # | Fix | Upstream ref | State |
 |---|---|---|---|
 | 1 | Bound ScreenCaptureKit content/start/stop (10 s / 5 s) and writer finish (10 s) so Stop always returns. Never `cancelWriting()` (deletes the file). Late start success is stopped again. | #814, 92810829, df8f7dcf | done |
-| 2 | A failed transcription holds with **Retry** instead of vanishing after 5 s; green only after the `.md` is written. | #761/#762/#869, #818, #698 | |
-| 3 | Bare-`fn` event tap `.listenOnly`; crash report kept as a content-free line in the log instead of being deleted unread; invalidate the tap's Mach port on teardown. | #1142/c9b972bf, #1021, a9aeac35 | |
-| 4 | Mic that starts silent or freezes: explicit-default attempt with no callback in a bounded window → one rebuild on the implicit route; callback-gap watchdog armed after the first buffer (callbacks, not loudness — dead ≠ silent); `routing=` in the log. | #860, #1010 | |
-| 5 | Sonoma long-file crash: `parallelChunkConcurrency: 1` + encoder off the ANE on macOS 14; later FluidAudio 0.14.5 → 0.15.7 with a before/after WER check. | #998, #1089, ab2671a5 | |
+| 2 | A failed transcription holds with **Retry** instead of vanishing after 5 s; green only after the `.md` is written. | #761/#762/#869, #818, #698 | done |
+| 3 | Bare-`fn` event tap `.listenOnly`; crash report kept as a content-free line in the log instead of being deleted unread; invalidate the tap's Mach port on teardown. | #1142/c9b972bf, #1021, a9aeac35 | done |
+| 4 | Mic that starts silent or freezes: explicit-default attempt with no callback in a bounded window → one rebuild on the implicit route; callback-gap watchdog armed after the first buffer (callbacks, not loudness — dead ≠ silent); `routing=` in the log. | #860, #1010 | done — Mac-only watchdog (off on iOS) |
+| 5 | Sonoma long-file crash: `parallelChunkConcurrency: 1` + encoder off the ANE on macOS 14; later FluidAudio 0.14.5 → 0.15.7 with a before/after WER check. | #998, #1089, ab2671a5 | first half done (whole-model CPU+GPU on 14); FluidAudio bump open |
 
 Smaller, unscheduled: fn tap during transcription is dropped (#535-lite queue); Accessibility granted
 after launch is not picked up; a stray key between two `fn` taps still counts as a double tap; live

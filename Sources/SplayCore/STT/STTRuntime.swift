@@ -730,14 +730,17 @@ public actor STTRuntime: STTRuntimeProtocol {
             let progressHandler = Self.makeDownloadProgressHandler(warmUpProgressHandler)
 
             let downloadedModels = try await AsrModels.downloadAndLoad(
+                configuration: ParakeetSonomaSafety.modelConfiguration(),
                 version: version,
                 progressHandler: progressHandler
             )
             do {
                 // FluidAudio progress is manager-scoped, so each slot keeps its
                 // own manager while the read-only model bundle stays shared.
-                let loadedInteractiveManager = AsrManager(config: .default)
-                let loadedBackgroundManager = AsrManager(config: .default)
+                // Sonoma: one long-form window at a time (ParakeetSonomaSafety).
+                let asrConfig = ParakeetSonomaSafety.asrConfig()
+                let loadedInteractiveManager = AsrManager(config: asrConfig)
+                let loadedBackgroundManager = AsrManager(config: asrConfig)
                 interactiveManager = loadedInteractiveManager
                 backgroundManager = loadedBackgroundManager
                 try await loadedInteractiveManager.loadModels(downloadedModels)
