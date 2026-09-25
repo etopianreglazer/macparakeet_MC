@@ -15,6 +15,15 @@ final class HotkeyManagerTests: XCTestCase {
         CGEventFlags(rawValue: masks.reduce(0, |))
     }
 
+    /// Bare modifiers (the `fn` gesture) only observe, so their tap must not
+    /// hold other apps' keystrokes; triggers that can consume a key keep filtering.
+    func testModifierTriggersUseListenOnlyTap() {
+        XCTAssertEqual(HotkeyManager.eventTapOptions(for: .fn), .listenOnly)
+        XCTAssertEqual(HotkeyManager.eventTapOptions(for: .option), .listenOnly)
+        XCTAssertEqual(HotkeyManager.eventTapOptions(for: .fromKeyCode(96)), .defaultTap)
+        XCTAssertEqual(HotkeyManager.eventTapOptions(for: .fnSpace), .defaultTap)
+    }
+
     func testDoubleTapOnlyGestureModeDoesNotStartHoldRecording() {
         let manager = HotkeyManager(trigger: .fn, gestureMode: .doubleTapOnly)
 

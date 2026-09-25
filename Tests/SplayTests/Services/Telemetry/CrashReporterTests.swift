@@ -118,68 +118,42 @@ final class CrashReporterTests: XCTestCase {
 
     // MARK: - Telemetry Integration
 
-    func testSendPendingReportSendsEventAndDeletesFile() async {
-        let content = """
-        crash_type: signal
-        signal: 11
-        name: SIGSEGV
-        timestamp: 1711900000
-        app_ver: 0.5.1
-        os_ver: 15.3.1
-        uuid: TESTID
-        slide: 0x100000
-        --- stack ---
-        0x1234
-        0x5678
-        """
-        try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
+    func testKeepPendingReportLocallyMovesReportIntoArchive() throws {
+        let content = "crash_type: signal\nsignal: 11\nname: SIGSEGV\ntimestamp: 1711900000\napp_ver: 0.1\nos_ver: 14.6\n--- stack ---\n0x1234\n"
+        try content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
+        let archive = testDir + "/archive"
 
-        let mock = MockTelemetryService()
-        await CrashReporter.sendPendingReport(via: mock, from: testCrashPath)
+        let kept = CrashReporter.keepPendingReportLocally(from: testCrashPath, archiveDirectory: archive)
 
-        // Verify event was sent
-        XCTAssertEqual(mock.sentEvents.count, 1)
-        if case .crashOccurred(let crashType, let signal, let name, _, _, _, _, _, _, _) = mock.sentEvents.first {
-            XCTAssertEqual(crashType, "signal")
-            XCTAssertEqual(signal, "11")
-            XCTAssertEqual(name, "SIGSEGV")
-        } else {
-            XCTFail("Expected crashOccurred event")
+        let keptPath = try XCTUnwrap(kept)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: testCrashPath))
+        XCTAssertEqual(try String(contentsOfFile: keptPath, encoding: .utf8), content)
+        XCTAssertTrue(keptPath.hasSuffix("crash-1711900000.txt"))
+    }
+
+    func testKeepPendingReportLocallyWithoutReportDoesNothing() {
+        XCTAssertNil(CrashReporter.keepPendingReportLocally(
+            from: testDir + "/nonexistent.txt",
+            archiveDirectory: testDir + "/archive"
+        ))
+    }
+
+    func testKeepPendingReportLocallyPrunesOldestBeyondLimit() throws {
+        let archive = testDir + "/archive"
+        try FileManager.default.createDirectory(atPath: archive, withIntermediateDirectories: true)
+        for index in 0..<CrashReporter.maxArchivedReports {
+            let name = String(format: "crash-10000000%02d.txt", index)
+            try "old".write(toFile: archive + "/" + name, atomically: true, encoding: .utf8)
         }
+        let content = "crash_type: signal\nsignal: 6\nname: SIGABRT\ntimestamp: 2000000000\napp_ver: 0.1\n"
+        try content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
-        // Verify file was deleted
-        XCTAssertFalse(FileManager.default.fileExists(atPath: testCrashPath))
-    }
+        CrashReporter.keepPendingReportLocally(from: testCrashPath, archiveDirectory: archive)
 
-    func testSendPendingReportDeletesFileEvenWhenTelemetryDisabled() async {
-        let content = "crash_type: signal\nsignal: 6\nname: SIGABRT\ntimestamp: 0\napp_ver: 0.1\n"
-        try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
-
-        // NoOp explicitly reports the event as handled so disabled telemetry drops do not retry forever.
-        let noop = NoOpTelemetryService()
-        await CrashReporter.sendPendingReport(via: noop, from: testCrashPath)
-
-        // File should still be deleted
-        XCTAssertFalse(FileManager.default.fileExists(atPath: testCrashPath))
-    }
-
-    func testSendPendingReportNoOpWithoutCrashFile() async {
-        let mock = MockTelemetryService()
-        await CrashReporter.sendPendingReport(via: mock, from: testDir + "/nonexistent.txt")
-        XCTAssertTrue(mock.sentEvents.isEmpty)
-    }
-
-    func testSendPendingReportKeepsFileWhenTelemetryFlushFails() async {
-        let content = "crash_type: signal\nsignal: 6\nname: SIGABRT\ntimestamp: 0\napp_ver: 0.1\n"
-        try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
-
-        let mock = MockTelemetryService()
-        mock.sendAndFlushResult = false
-
-        await CrashReporter.sendPendingReport(via: mock, from: testCrashPath)
-
-        XCTAssertEqual(mock.sentEvents.count, 1)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: testCrashPath))
+        let names = try FileManager.default.contentsOfDirectory(atPath: archive).sorted()
+        XCTAssertEqual(names.count, CrashReporter.maxArchivedReports)
+        XCTAssertFalse(names.contains("crash-1000000000.txt"), "the oldest report is pruned")
+        XCTAssertTrue(names.contains("crash-2000000000.txt"))
     }
 
     // MARK: - Reviewer-Flagged Edge Cases
@@ -270,7 +244,7 @@ final class CrashReporterTests: XCTestCase {
         XCTAssertEqual(report?.stackTrace, ["0xABCD"])
     }
 
-    func testSendPendingReportIncludesStackTraceInProps() async {
+    func testLoadPendingReportParsesAllFields() throws {
         let content = """
         crash_type: signal
         signal: 11
@@ -285,24 +259,18 @@ final class CrashReporterTests: XCTestCase {
         0xBBBB
         0xCCCC
         """
-        try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
+        try content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
-        let mock = MockTelemetryService()
-        await CrashReporter.sendPendingReport(via: mock, from: testCrashPath)
-
-        if case .crashOccurred(_, _, _, _, let appVer, let osVer, let uuid, let slide, let reason, let stackTrace) = mock.sentEvents.first {
-            XCTAssertEqual(appVer, "0.5.1")
-            XCTAssertEqual(osVer, "15.3")
-            XCTAssertEqual(uuid, "TEST-UUID")
-            XCTAssertEqual(slide, "0x100000")
-            XCTAssertNil(reason)
-            XCTAssertEqual(stackTrace, "0xAAAA\n0xBBBB\n0xCCCC")
-        } else {
-            XCTFail("Expected crashOccurred event")
-        }
+        let report = try XCTUnwrap(CrashReporter.loadPendingReport(from: testCrashPath))
+        XCTAssertEqual(report.appVersion, "0.5.1")
+        XCTAssertEqual(report.osVersion, "15.3")
+        XCTAssertEqual(report.uuid, "TEST-UUID")
+        XCTAssertEqual(report.slide, "0x100000")
+        XCTAssertNil(report.reason)
+        XCTAssertEqual(report.stackTrace, ["0xAAAA", "0xBBBB", "0xCCCC"])
     }
 
-    func testExceptionReasonWithNewlinesIsPreserved() async {
+    func testExceptionReasonWithNewlinesIsPreserved() throws {
         let content = """
         crash_type: exception
         signal: exception
@@ -313,39 +281,11 @@ final class CrashReporterTests: XCTestCase {
         --- stack ---
         0x1234
         """
-        try! content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
+        try content.write(toFile: testCrashPath, atomically: true, encoding: .utf8)
 
-        let mock = MockTelemetryService()
-        await CrashReporter.sendPendingReport(via: mock, from: testCrashPath)
-
-        if case .crashOccurred(_, _, _, _, _, _, _, _, let reason, _) = mock.sentEvents.first {
-            XCTAssertEqual(reason, "index 5 beyond bounds [0..3]\nmore context here")
-        } else {
-            XCTFail("Expected crashOccurred event with reason")
-        }
+        let report = try XCTUnwrap(CrashReporter.loadPendingReport(from: testCrashPath))
+        XCTAssertEqual(report.reason, "index 5 beyond bounds [0..3]\nmore context here")
     }
-}
-
-// MARK: - Mock Telemetry Service
-
-private final class MockTelemetryService: TelemetryServiceProtocol, @unchecked Sendable {
-    var sentEvents = [TelemetryEventSpec]()
-    var sendAndFlushResult = true
-
-    func send(_ event: TelemetryEventSpec) {
-        sentEvents.append(event)
-    }
-
-    func sendAndFlush(_ event: TelemetryEventSpec) async -> Bool {
-        send(event)
-        return sendAndFlushResult
-    }
-
-    func flush() async {}
-    func clearQueue() {
-        sentEvents.removeAll()
-    }
-    func flushForTermination() {}
 }
 
 // NoOpTelemetryService is imported from SplayCore via @testable import

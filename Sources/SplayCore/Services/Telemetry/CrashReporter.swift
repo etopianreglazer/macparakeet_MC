@@ -3,12 +3,13 @@ import Darwin
 import MachO
 
 /// Lightweight crash reporter that persists crash data to disk via async-signal-safe
-/// POSIX I/O, then sends it as a telemetry event on next launch.
+/// POSIX I/O, then keeps it locally on next launch (Splay has no telemetry endpoint).
 ///
 /// Architecture (same as Sentry/PLCrashReporter core):
 ///   1. `install()` — registers signal handlers + ObjC exception handler at app startup
 ///   2. Signal handler — writes crash report to disk using pre-allocated buffers
-///   3. `sendPendingReport(via:)` — reads crash file on next launch, sends telemetry event
+///   3. `keepPendingReportLocally()` — on next launch, logs one content-free line to
+///      the capture log and moves the report into `crash-reports/`
 ///
 /// Known limitations:
 /// - `backtrace()` is not strictly async-signal-safe (can deadlock on dyld lock).
@@ -391,39 +392,79 @@ public final class CrashReporter {
         )
     }
 
-    /// Send any pending crash report as a telemetry event. Delete the file only
-    /// when telemetry reports that the event was delivered or intentionally dropped.
-    /// Call after TelemetryService is initialized.
-    public static func sendPendingReport(via telemetry: TelemetryServiceProtocol) async {
-        await sendPendingReport(via: telemetry, from: crashReportPath)
+    // MARK: - Local keep (Splay has no telemetry endpoint)
+
+    /// Where kept crash reports go: next to the app data, never uploaded.
+    public static var crashArchiveDirectory: String {
+        AppPaths.appSupportDir + "/crash-reports"
     }
 
-    /// Internal variant with injectable path for testing.
-    static func sendPendingReport(via telemetry: TelemetryServiceProtocol, from path: String) async {
-        guard let report = loadPendingReport(from: path) else { return }
+    static let maxArchivedReports = 20
 
-        let stackTraceString = report.stackTrace.joined(separator: "\n")
+    /// Splay's telemetry is a no-op that reports every event as delivered, so
+    /// `sendPendingReport` deleted the previous launch's crash report unread.
+    /// Instead: write one content-free line to the shared capture log (signal /
+    /// exception name and versions — no reason text, which can carry paths) and
+    /// move the report into `crash-reports/` so it can be read later. Returns the
+    /// kept file's path, or nil when there was no pending report.
+    @discardableResult
+    public static func keepPendingReportLocally() -> String? {
+        keepPendingReportLocally(from: crashReportPath, archiveDirectory: crashArchiveDirectory)
+    }
 
-        let delivered = await telemetry.sendAndFlush(.crashOccurred(
-            crashType: report.crashType,
-            signal: report.signal,
-            name: report.name,
-            crashTimestamp: report.timestamp,
-            crashAppVer: report.appVersion,
-            crashOsVer: report.osVersion,
-            uuid: report.uuid,
-            slide: report.slide,
-            reason: report.reason,
-            stackTrace: stackTraceString
-        ))
-
-        if delivered {
-            // Delete only after telemetry has either been flushed or intentionally dropped by opt-out.
-            deleteCrashFile(at: path)
+    @discardableResult
+    static func keepPendingReportLocally(from path: String, archiveDirectory: String) -> String? {
+        guard let report = loadPendingReport(from: path) else { return nil }
+        AudioCaptureDiagnostics.append(
+            "app_previous_launch_crashed type=\(report.crashType) signal=\(report.signal) name=\(report.name) crash_app_ver=\(report.appVersion) crash_os_ver=\(report.osVersion) crash_ts=\(report.timestamp) frames=\(report.stackTrace.count)"
+        )
+        let fileManager = FileManager.default
+        do {
+            try fileManager.createDirectory(atPath: archiveDirectory, withIntermediateDirectories: true)
+            var destination = archiveDirectory + "/crash-\(report.timestamp).txt"
+            if fileManager.fileExists(atPath: destination) {
+                destination = archiveDirectory + "/crash-\(report.timestamp)-\(UUID().uuidString.prefix(8)).txt"
+            }
+            try fileManager.moveItem(atPath: path, toPath: destination)
+            pruneArchive(in: archiveDirectory)
+            return destination
+        } catch {
+            AudioCaptureDiagnostics.append(
+                "app_crash_report_archive_failed \(AudioCaptureDiagnostics.errorFields(error))"
+            )
+            // Never lose it, and never re-report it: rename it in place (same
+            // volume) so the next launch does not log the same old crash again.
+            let fallback = path + ".kept-\(report.timestamp)"
+            do {
+                try fileManager.moveItem(atPath: path, toPath: fallback)
+                return fallback
+            } catch {
+                AudioCaptureDiagnostics.append(
+                    "app_crash_report_keep_failed \(AudioCaptureDiagnostics.errorFields(error))"
+                )
+                return nil
+            }
         }
     }
 
-    private static func deleteCrashFile(at path: String? = nil) {
-        try? FileManager.default.removeItem(atPath: path ?? crashReportPath)
+    private static func pruneArchive(in directory: String) {
+        let fileManager = FileManager.default
+        let names: [String]
+        do {
+            names = try fileManager.contentsOfDirectory(atPath: directory)
+        } catch {
+            AudioCaptureDiagnostics.append("app_crash_report_prune_failed \(AudioCaptureDiagnostics.errorFields(error))")
+            return
+        }
+        let reports = names.filter { $0.hasPrefix("crash-") && $0.hasSuffix(".txt") }.sorted()
+        guard reports.count > maxArchivedReports else { return }
+        for name in reports.prefix(reports.count - maxArchivedReports) {
+            do {
+                try fileManager.removeItem(atPath: directory + "/" + name)
+            } catch {
+                AudioCaptureDiagnostics.append("app_crash_report_prune_failed \(AudioCaptureDiagnostics.errorFields(error))")
+            }
+        }
     }
+
 }

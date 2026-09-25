@@ -86,15 +86,36 @@ public final class HotkeyManager {
     deinit {
         // Inline cleanup — deinit is nonisolated, can't call @MainActor stop().
         // Safe because deinit guarantees exclusive access to self.
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        if let source = runLoopSource, let runLoop = installedRunLoop {
-            CFRunLoopRemoveSource(runLoop, source, .commonModes)
-        }
+        Self.tearDownTap(eventTap, source: runLoopSource, runLoop: installedRunLoop)
         retainedSelf?.release()
         startupTimer?.cancel()
         holdTimer?.cancel()
+    }
+
+    /// Disable the tap, detach its run-loop source, and invalidate its Mach
+    /// port — disabling alone leaves the tap registered with the window server,
+    /// so every restart leaked one (upstream MacParakeet a9aeac35). Static so
+    /// the nonisolated `deinit` and `stop()` share it.
+    private static func tearDownTap(_ tap: CFMachPort?, source: CFRunLoopSource?, runLoop: CFRunLoop?) {
+        if let tap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+        }
+        if let source, let runLoop {
+            CFRunLoopRemoveSource(runLoop, source, .commonModes)
+        }
+        if let tap {
+            CFMachPortInvalidate(tap)
+        }
+    }
+
+    /// A modifier trigger (bare `fn`, the Splay gesture) only *observes* — its
+    /// handler always passes the event on — so its tap is listen-only. A filtering
+    /// (`.defaultTap`) tap makes macOS hold every keystroke in every app until
+    /// our main-thread callback returns, so any Splay main-thread stall delayed
+    /// the user's typing system-wide (upstream MacParakeet CRT-123 / #1142).
+    /// Key-code and chord triggers can consume their key and keep `.defaultTap`.
+    static func eventTapOptions(for trigger: HotkeyTrigger) -> CGEventTapOptions {
+        trigger.kind == .modifier ? .listenOnly : .defaultTap
     }
 
     /// Start listening for key events. Requires Accessibility permission.
@@ -111,7 +132,7 @@ public final class HotkeyManager {
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,
+            options: Self.eventTapOptions(for: trigger),
             eventsOfInterest: eventMask,
             callback: { _, type, event, refcon -> Unmanaged<CGEvent>? in
                 guard let refcon else { return Unmanaged.passUnretained(event) }
@@ -151,12 +172,7 @@ public final class HotkeyManager {
 
     /// Stop listening for key events
     public func stop() {
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-        }
-        if let source = runLoopSource, let runLoop = installedRunLoop {
-            CFRunLoopRemoveSource(runLoop, source, .commonModes)
-        }
+        Self.tearDownTap(eventTap, source: runLoopSource, runLoop: installedRunLoop)
         // Balance the passRetained from start() to avoid leaking self
         retainedSelf?.release()
         retainedSelf = nil

@@ -182,9 +182,9 @@ final class AppEnvironment {
         telemetryService = telemetry
         Telemetry.configure(telemetry)
         Telemetry.send(.appLaunched)
-        Task {
-            await CrashReporter.sendPendingReport(via: telemetry)
-        }
+        // No endpoint to send a crash report to: keep it locally (a line in the
+        // capture log + the file under crash-reports/) instead of deleting it unread.
+        CrashReporter.keepPendingReportLocally()
 
         transcriptionService = TranscriptionService(
             audioProcessor: audioProcessor,
