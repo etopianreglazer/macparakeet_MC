@@ -49,6 +49,17 @@ public enum AutoSaveScope: String, Sendable {
     }
 }
 
+public enum AutoSaveError: LocalizedError, Equatable {
+    case folderUnavailable
+
+    public var errorDescription: String? {
+        switch self {
+        case .folderUnavailable:
+            return "The transcript folder isn't available. Reconnect or choose the folder, then retry."
+        }
+    }
+}
+
 /// Automatically saves completed transcriptions to a user-chosen folder.
 /// Reads configuration from UserDefaults; does nothing when auto-save is disabled
 /// or no folder is configured.
@@ -73,13 +84,30 @@ public final class AutoSaveService {
     }
 
     /// Save the transcription if auto-save is enabled for the given scope.
-    /// Failures are logged but never surfaced to the user.
+    /// Failures are logged but never surfaced to the user. Callers that must
+    /// know whether the file landed (the recording flow) use `save(_:scope:)`.
     public func saveIfEnabled(_ transcription: Transcription, scope: AutoSaveScope = .transcription) {
+        _ = try? save(transcription, scope: scope)
+    }
+
+    /// Save the transcription if auto-save is enabled for `scope`, throwing when
+    /// it is enabled but the file could not be written. Returns the written
+    /// transcript URL, or `nil` when auto-save is turned off.
+    ///
+    /// The recording flow calls this *before* it deletes the recovery lock and
+    /// shows green: a transcript that exists only in the database is invisible
+    /// in Splay (Recents lists files), so a failed write must be a held failure,
+    /// not a silent log line (upstream MacParakeet #818 / #698).
+    @discardableResult
+    public func save(_ transcription: Transcription, scope: AutoSaveScope = .transcription) throws -> URL? {
         // Fork: auto-export transcripts to the Finder folder by default ("it just
         // works"). An explicit user toggle-off still wins. See docs/fork-product-model.md.
-        guard (defaults.object(forKey: scope.enabledKey) as? Bool) ?? true else { return }
+        guard (defaults.object(forKey: scope.enabledKey) as? Bool) ?? true else { return nil }
         let format = AutoSaveFormat(rawValue: defaults.string(forKey: scope.formatKey) ?? "md") ?? .md
         let operationContext = Observability.childOperationContext()
+        // `SettingsViewModel` seeds the default folder at launch, so a nil here is
+        // a bookmark that no longer resolves (e.g. an unplugged drive): reported,
+        // never silently redirected.
         guard let folderURL = resolveFolder(scope: scope) else {
             logger.warning("Auto-save enabled but no valid folder configured for \(scope.rawValue).")
             sendAutoSaveOperation(
@@ -89,7 +117,7 @@ public final class AutoSaveService {
                 outcome: .unavailable,
                 errorType: "folder_unavailable"
             )
-            return
+            throw AutoSaveError.folderUnavailable
         }
 
         let fileURL = buildFileURL(for: transcription, format: format, in: folderURL)
@@ -119,6 +147,7 @@ public final class AutoSaveService {
                 format: format,
                 outcome: .success
             )
+            return fileURL
         } catch {
             logger.error("Auto-save failed for \(scope.rawValue): \(error.localizedDescription)")
             sendAutoSaveOperation(
@@ -128,6 +157,7 @@ public final class AutoSaveService {
                 outcome: .failure,
                 errorType: Observability.errorType(for: error)
             )
+            throw error
         }
     }
 

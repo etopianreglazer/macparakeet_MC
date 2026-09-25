@@ -27,9 +27,14 @@ final class AppEnvironmentConfigurer {
         /// The island mark click and the menu-bar "Open Splay" item present the
         /// menu card (the second surface), opened to its recents tab.
         let onOpenRecentCard: () -> Void
-        /// Clicking the failed island clears the held failure and presents a
-        /// card carrying the failure message — the error text's one visible home.
-        let onOpenErrorCard: (String) -> Void
+        /// Clicking the failed island presents a card carrying the failure
+        /// message — the error text's one visible home. `onChoice` nil: a plain
+        /// OK card (the failure was already cleared). Non-nil: the card offers
+        /// Retry / Dismiss and reports the choice (`true` = Retry, `false` =
+        /// Dismiss or the card closed any other way); the failure stays held
+        /// until then. `fileWrite` picks the title for a transcript whose file
+        /// could not be written.
+        let onOpenErrorCard: (_ message: String, _ fileWrite: Bool, _ onChoice: ((Bool) -> Void)?) -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
         let onHotkeyBecameAvailable: () -> Void
@@ -149,8 +154,10 @@ final class AppEnvironmentConfigurer {
             onTranscriptionReady: { [weak self] transcription in
                 guard let self else { return }
                 // Two-surface design: the finished meeting is saved and surfaces
-                // in the recents card — no window is opened to display it.
-                self.transcriptionViewModel.presentCompletedTranscription(transcription, autoSave: true)
+                // in the recents card — no window is opened to display it. The
+                // coordinator already wrote the file (before showing green), so
+                // no second auto-save here.
+                self.transcriptionViewModel.presentCompletedTranscription(transcription, autoSave: false)
                 self.libraryViewModel.loadTranscriptions()
             },
             onRecordingBegan: {
@@ -226,15 +233,25 @@ final class AppEnvironmentConfigurer {
             }
             // The mark (and the done pill) opens the menu card (the second surface)
             // — except when the island is holding a failed-recording state, where
-            // the click clears it back to idle AND opens a card carrying the
-            // failure's actual text (the island's light is wordless; the card is
-            // where the app says *why* — a failure must never be a silent vanish).
+            // the click opens a card carrying the failure's actual text (the
+            // island's light is wordless; the card is where the app says *why* —
+            // a failure must never be a silent vanish). A non-retryable failure is
+            // cleared back to idle on the click; a retryable one (the recording is
+            // on disk) stays held until the card's Retry or Dismiss.
             controller.onOpenCard = {
                 if let meeting = coordinatorRefs.meeting, meeting.isAwaitingFailureDismissal {
                     let message = meeting.heldFailureMessage
                         ?? "The last recording failed. Check the selected microphone and try again."
-                    meeting.dismissFailure()
-                    callbacks.onOpenErrorCard(message)
+                    if meeting.canRetryFailure {
+                        // The recording is on disk: the card offers Retry, and the
+                        // failure stays held until the user picks one.
+                        callbacks.onOpenErrorCard(message, meeting.heldFailureIsFileWrite, { [weak meeting] retry in
+                            if retry { meeting?.retryFailure() } else { meeting?.dismissFailure() }
+                        })
+                    } else {
+                        meeting.dismissFailure()
+                        callbacks.onOpenErrorCard(message, false, nil)
+                    }
                 } else {
                     callbacks.onOpenRecentCard()
                 }

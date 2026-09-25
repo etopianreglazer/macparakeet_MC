@@ -157,7 +157,10 @@ final class MeetingRecordingFlowStateMachineTests: XCTestCase {
         )
     }
 
-    func testTranscriptionFailureShowsErrorAndSchedulesDismiss() {
+    /// A failed transcription holds (no auto-dismiss) like a capture failure:
+    /// the audio is safe but Splay has no Library, so a vanishing error would
+    /// leave the user no way to retry (upstream MacParakeet #761/#762).
+    func testTranscriptionFailureShowsErrorAndHolds() {
         var machine = MeetingRecordingFlowStateMachine()
         _ = machine.handle(.startRequested)
         _ = machine.handle(.permissionsGranted(generation: 1))
@@ -167,10 +170,41 @@ final class MeetingRecordingFlowStateMachineTests: XCTestCase {
         let effects = machine.handle(.transcriptionFailed(generation: 1, message: "Boom"))
 
         XCTAssertEqual(machine.state, .finishing(outcome: .error("Boom")))
+        XCTAssertEqual(effects, [.showError("Boom"), .updateMenuBar(.idle)])
+    }
+
+    func testRetryAfterTranscriptionFailureTranscribesAgainInSameGeneration() {
+        var machine = MeetingRecordingFlowStateMachine()
+        let transcriptionID = UUID()
+        _ = machine.handle(.startRequested)
+        _ = machine.handle(.permissionsGranted(generation: 1))
+        _ = machine.handle(.recordingStarted(generation: 1))
+        _ = machine.handle(.stopRequested)
+        _ = machine.handle(.transcriptionFailed(generation: 1, message: "Boom"))
+
+        let effects = machine.handle(.retryRequested)
+
+        XCTAssertEqual(machine.state, .transcribing)
+        XCTAssertEqual(machine.generation, 1)
         XCTAssertEqual(
             effects,
-            [.showError("Boom"), .updateMenuBar(.idle), .startAutoDismissTimer(seconds: 5)]
+            [.cancelAutoDismissTimer, .showTranscribingState, .updateMenuBar(.processing), .retryTranscription]
         )
+
+        _ = machine.handle(.transcriptionCompleted(generation: 1, transcriptionID: transcriptionID))
+        XCTAssertEqual(machine.state, .finishing(outcome: .completed(transcriptionID)))
+    }
+
+    func testRetryIsIgnoredOutsideAHeldFailure() {
+        var machine = MeetingRecordingFlowStateMachine()
+        XCTAssertEqual(machine.handle(.retryRequested), [])
+        XCTAssertEqual(machine.state, .idle)
+
+        _ = machine.handle(.startRequested)
+        _ = machine.handle(.permissionsGranted(generation: 1))
+        _ = machine.handle(.recordingStarted(generation: 1))
+        XCTAssertEqual(machine.handle(.retryRequested), [])
+        XCTAssertEqual(machine.state, .recording)
     }
 
     func testAutoDismissReturnsToIdle() {

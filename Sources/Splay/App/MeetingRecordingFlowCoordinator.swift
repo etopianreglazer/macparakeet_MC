@@ -42,6 +42,10 @@ final class MeetingRecordingFlowCoordinator {
     private let onTranscriptionReady: (Transcription) -> Void
     private let onRecordingBegan: () -> Void
     private let onFlowReturnedToIdle: () -> Void
+    /// Writes the finished transcript file. Throws when auto-save is on but the
+    /// file could not be written; runs *before* the recovery lock is deleted and
+    /// the island shows green, so green always means "the .md is on disk".
+    private let saveTranscriptFile: @MainActor (Transcription) throws -> Void
 
     private var stateMachine = MeetingRecordingFlowStateMachine()
     private var pillController: MeetingRecordingPillController?
@@ -76,6 +80,10 @@ final class MeetingRecordingFlowCoordinator {
     /// `isAwaitingFailureDismissal`), so the click that clears it can show the
     /// *why* in a card instead of discarding the message.
     private(set) var heldFailureMessage: String?
+    /// What Retry would redo for the held failure: the recording is stopped and
+    /// its audio + recovery lock are on disk. Nil when there is nothing to retry
+    /// (start/capture failures, or stop itself failed).
+    private var pendingRetry: MeetingRecordingFinisher.Step?
     private var activeFlowSettlementWaiters: [CheckedContinuation<Void, Never>] = []
     private var completedTranscription: Transcription?
     private var currentMeetingOperationContext: ObservabilityOperationContext?
@@ -96,7 +104,10 @@ final class MeetingRecordingFlowCoordinator {
         onMenuBarIconUpdate: @escaping (BreathWaveIcon.MenuBarState) -> Void,
         onTranscriptionReady: @escaping (Transcription) -> Void,
         onRecordingBegan: @escaping () -> Void = {},
-        onFlowReturnedToIdle: @escaping () -> Void = {}
+        onFlowReturnedToIdle: @escaping () -> Void = {},
+        saveTranscriptFile: @escaping @MainActor (Transcription) throws -> Void = { transcription in
+            try AutoSaveService().save(transcription, scope: .meeting)
+        }
     ) {
         self.meetingRecordingService = meetingRecordingService
         self.transcriptionService = transcriptionService
@@ -109,6 +120,7 @@ final class MeetingRecordingFlowCoordinator {
         self.onTranscriptionReady = onTranscriptionReady
         self.onRecordingBegan = onRecordingBegan
         self.onFlowReturnedToIdle = onFlowReturnedToIdle
+        self.saveTranscriptFile = saveTranscriptFile
     }
 
     /// Trigger source for the *next* `.startRequested` event. Reset to nil
@@ -193,10 +205,11 @@ final class MeetingRecordingFlowCoordinator {
         }
     }
 
-    /// True while the island is holding a failed-recording state that no longer
-    /// auto-dismisses (see `.captureFailed` in the state machine). The island's
-    /// click routes here so tapping the failed pill clears it instead of opening
-    /// the recents card.
+    /// True while the island is holding a failed-recording state that does not
+    /// auto-dismiss (`.captureFailed` and `.transcriptionFailed` in the state
+    /// machine). The island's click routes here instead of opening the recents
+    /// card: a non-retryable failure is cleared on click; a retryable one stays
+    /// held until the user picks Retry or Dismiss on the card.
     var isAwaitingFailureDismissal: Bool {
         if case .finishing(outcome: .error) = stateMachine.state { return true }
         return false
@@ -207,7 +220,103 @@ final class MeetingRecordingFlowCoordinator {
     func dismissFailure() {
         guard isAwaitingFailureDismissal else { return }
         heldFailureMessage = nil
+        pendingRetry = nil
         sendEvent(.dismissRequested)
+    }
+
+    /// True when the held failure is a stopped recording whose final step can be
+    /// run again (the error card then offers Retry next to OK).
+    var canRetryFailure: Bool {
+        isAwaitingFailureDismissal && pendingRetry != nil
+    }
+
+    /// True when the held failure is a transcript that exists but whose file
+    /// write failed (the card says "not saved"); false for a failed transcription.
+    var heldFailureIsFileWrite: Bool {
+        if case .save = pendingRetry { return true }
+        return false
+    }
+
+    /// Run the failed final step again for the held recording.
+    func retryFailure() {
+        guard canRetryFailure else { return }
+        heldFailureMessage = nil
+        sendEvent(.retryRequested)
+    }
+
+    /// The final step for a stopped recording (`MeetingRecordingFinisher`:
+    /// transcribe → write the file → delete the lock), mapped onto the flow.
+    /// A failure holds a Retry-able error; the lock stays in place.
+    private func finishStoppedRecording(
+        _ step: MeetingRecordingFinisher.Step,
+        isRetry: Bool,
+        gen: Int,
+        operationContext: ObservabilityOperationContext,
+        liveWordCount: Int,
+        liveTranscriptLagged: Bool
+    ) async {
+        let finisher = MeetingRecordingFinisher(
+            meetingRecordingService: meetingRecordingService,
+            transcriptionService: transcriptionService,
+            transcriptionRepo: transcriptionRepo,
+            saveTranscriptFile: saveTranscriptFile
+        )
+        let outcome = await Observability.withOperationContext(operationContext) {
+            await finisher.finish(step, isRetry: isRetry)
+        }
+        let output: MeetingRecordingOutput = switch step {
+        case .transcribe(let recording): recording
+        case .save(_, let recording): recording
+        }
+        switch outcome {
+        case .completed(let transcription):
+            sendMeetingOperation(
+                outcome: .success,
+                output: output,
+                stage: .completeTranscription,
+                liveWordCount: liveWordCount,
+                liveTranscriptLagged: liveTranscriptLagged
+            )
+            currentMeetingOperationContext = nil
+            currentMeetingTrigger = nil
+            completedTranscription = transcription
+            sendEvent(.transcriptionCompleted(generation: gen, transcriptionID: transcription.id))
+        case .failed(let error, let retry, let stage):
+            pendingRetry = retry
+            reportTranscriptionFailure(
+                error,
+                gen: gen,
+                output: output,
+                stage: stage == .transcription ? .transcription : .completeTranscription,
+                liveWordCount: liveWordCount,
+                liveTranscriptLagged: liveTranscriptLagged
+            )
+        }
+    }
+
+    private func reportTranscriptionFailure(
+        _ error: Error,
+        gen: Int,
+        output: MeetingRecordingOutput?,
+        stage: TelemetryMeetingOperationStage,
+        liveWordCount: Int,
+        liveTranscriptLagged: Bool
+    ) {
+        Telemetry.send(.meetingRecordingFailed(
+            errorType: TelemetryErrorClassifier.classify(error),
+            errorDetail: TelemetryErrorClassifier.errorDetail(error)
+        ))
+        sendMeetingOperation(
+            outcome: .failure,
+            output: output,
+            stage: stage,
+            liveWordCount: liveWordCount,
+            liveTranscriptLagged: liveTranscriptLagged,
+            errorType: TelemetryErrorClassifier.classify(error)
+        )
+        currentMeetingOperationContext = nil
+        currentMeetingTrigger = nil
+        sendEvent(.transcriptionFailed(generation: gen, message: error.localizedDescription))
     }
 
     func stopRecordingAndWaitForCompletion() async {
@@ -516,58 +625,63 @@ final class MeetingRecordingFlowCoordinator {
             let notesVM = panelViewModel?.notesViewModel
             let operationContext = currentMeetingOperationContext ?? ObservabilityOperationContext()
             currentMeetingOperationContext = operationContext
+            pendingRetry = nil
             actionTask = Task { @MainActor in
-                var stoppedOutput: MeetingRecordingOutput?
-                var transcriptionFinished = false
+                let output: MeetingRecordingOutput
                 do {
-                    let transcription = try await Observability.withOperationContext(operationContext) {
+                    output = try await Observability.withOperationContext(operationContext) {
                         // Flush any keystrokes typed in the last < 250 ms so
                         // they make it onto the lock file and into the saved
                         // Transcription.userNotes (ADR-020 §8).
                         await notesVM?.commit()
                         let output = try await meetingRecordingService.stopRecording()
-                        stoppedOutput = output
                         Telemetry.send(.meetingRecordingCompleted(
                             durationSeconds: output.durationSeconds,
                             liveWordCount: liveWordCount,
                             liveTranscriptLagged: liveTranscriptLagged
                         ))
-                        let transcription = try await transcriptionService.transcribeMeeting(recording: output, onProgress: nil)
-                        transcriptionFinished = true
-                        await meetingRecordingService.completeTranscription(for: output)
-                        return transcription
+                        return output
                     }
-                    self.sendMeetingOperation(
-                        outcome: .success,
-                        output: stoppedOutput,
-                        stage: .completeTranscription,
+                } catch {
+                    // Nothing stopped cleanly, so there is nothing to retry in
+                    // this session; the recovery lock (if any) is picked up on
+                    // the next launch.
+                    self.reportTranscriptionFailure(
+                        error,
+                        gen: gen,
+                        output: nil,
+                        stage: .stopRecording,
                         liveWordCount: liveWordCount,
                         liveTranscriptLagged: liveTranscriptLagged
                     )
-                    self.currentMeetingOperationContext = nil
-                    self.currentMeetingTrigger = nil
-                    self.completedTranscription = transcription
-                    self.sendEvent(.transcriptionCompleted(generation: gen, transcriptionID: transcription.id))
-                } catch {
-                    if let stoppedOutput {
-                        await meetingRecordingService.finishTranscriptionAttempt(for: stoppedOutput)
-                    }
-                    Telemetry.send(.meetingRecordingFailed(
-                        errorType: TelemetryErrorClassifier.classify(error),
-                        errorDetail: TelemetryErrorClassifier.errorDetail(error)
-                    ))
-                    self.sendMeetingOperation(
-                        outcome: .failure,
-                        output: stoppedOutput,
-                        stage: stoppedOutput == nil ? .stopRecording : (transcriptionFinished ? .completeTranscription : .transcription),
-                        liveWordCount: liveWordCount,
-                        liveTranscriptLagged: liveTranscriptLagged,
-                        errorType: TelemetryErrorClassifier.classify(error)
-                    )
-                    self.currentMeetingOperationContext = nil
-                    self.currentMeetingTrigger = nil
-                    self.sendEvent(.transcriptionFailed(generation: gen, message: error.localizedDescription))
+                    return
                 }
+                await self.finishStoppedRecording(
+                    .transcribe(output),
+                    isRetry: false,
+                    gen: gen,
+                    operationContext: operationContext,
+                    liveWordCount: liveWordCount,
+                    liveTranscriptLagged: liveTranscriptLagged
+                )
+            }
+
+        case .retryTranscription:
+            guard let retry = pendingRetry else { return }
+            pendingRetry = nil
+            let gen = stateMachine.generation
+            let operationContext = currentMeetingOperationContext ?? ObservabilityOperationContext()
+            currentMeetingOperationContext = operationContext
+            AudioCaptureDiagnostics.append("meeting_recording_retry_requested")
+            actionTask = Task { @MainActor in
+                await self.finishStoppedRecording(
+                    retry,
+                    isRetry: true,
+                    gen: gen,
+                    operationContext: operationContext,
+                    liveWordCount: 0,
+                    liveTranscriptLagged: false
+                )
             }
 
         case .finalizeFailedCapture:

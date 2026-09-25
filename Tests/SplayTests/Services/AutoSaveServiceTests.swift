@@ -308,6 +308,38 @@ final class AutoSaveServiceTests: XCTestCase {
         XCTAssertEqual(errorType, "folder_unavailable")
     }
 
+    // MARK: - Throwing save (the recording flow's green-means-on-disk gate)
+
+    func testSaveReturnsWrittenURL() throws {
+        configureAutoSave(enabled: true, format: .md)
+        let url = try makeService().save(makeTranscription())
+        let written = try XCTUnwrap(url)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: written.path))
+    }
+
+    func testSaveReturnsNilWhenDisabled() throws {
+        configureAutoSave(enabled: false)
+        XCTAssertNil(try makeService().save(makeTranscription()))
+    }
+
+    func testSaveThrowsWhenFolderIsGone() {
+        configureAutoSave(enabled: true, format: .md)
+        try! FileManager.default.removeItem(at: tempDir)
+
+        XCTAssertThrowsError(try makeService().save(makeTranscription())) { error in
+            XCTAssertEqual(error as? AutoSaveError, .folderUnavailable)
+        }
+    }
+
+    func testSaveThrowsWhenWriteFails() throws {
+        configureAutoSave(enabled: true, format: .md)
+        // A read-only folder: the bookmark resolves but the export cannot write.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: tempDir.path)
+        defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tempDir.path) }
+
+        XCTAssertThrowsError(try makeService().save(makeTranscription()))
+    }
+
     func testFallsBackToMarkdownForInvalidStoredFormat() {
         configureAutoSave(enabled: true, format: .md)
         // Corrupt the format key

@@ -35,6 +35,9 @@ public enum MeetingRecordingFlowEvent: Equatable, Sendable {
     case captureFailed(generation: Int, message: String)
     case transcriptionCompleted(generation: Int, transcriptionID: UUID)
     case transcriptionFailed(generation: Int, message: String)
+    /// User chose Retry on a held failure whose recording is still on disk.
+    /// The coordinator only sends this when it holds something to retry.
+    case retryRequested
     case dismissRequested
     case autoDismissExpired(generation: Int)
 }
@@ -45,6 +48,9 @@ public enum MeetingRecordingFlowEffect: Equatable, Sendable {
     case startRecording
     case showTranscribingState
     case stopRecordingAndTranscribe
+    /// Re-run the failed final step (transcribe and/or write the file) for the
+    /// recording that is already stopped and on disk.
+    case retryTranscription
     case finalizeFailedCapture
     case showCompleted
     case showError(String)
@@ -124,8 +130,8 @@ public struct MeetingRecordingFlowStateMachine: Equatable, Sendable {
             guard gen == generation else { return [] }
             state = .finishing(outcome: .error(message))
             // Fork: a capture failure means nothing was saved (zero-buffer cold
-            // Bluetooth mic → `noAudioCaptured`). Unlike a transcription failure
-            // (audio is safe in Library), this must NOT auto-dismiss — if it
+            // Bluetooth mic → `noAudioCaptured`). Like a transcription failure
+            // (below), this must NOT auto-dismiss — if it
             // vanished after 8s the user, often away from the screen dictating,
             // would return to an idle island with no sign the recording died.
             // We hold the error until the user dismisses it (clicking the failed
@@ -147,7 +153,20 @@ public struct MeetingRecordingFlowStateMachine: Equatable, Sendable {
         case (.transcribing, .transcriptionFailed(let gen, let message)):
             guard gen == generation else { return [] }
             state = .finishing(outcome: .error(message))
-            return [.showError(message), .updateMenuBar(.idle), .startAutoDismissTimer(seconds: 5)]
+            // Fork: held, like `.captureFailed`. The audio is safe on disk, but
+            // Splay has no Library to retry from — the held card offers Retry.
+            return [.showError(message), .updateMenuBar(.idle)]
+
+        case (.finishing(outcome: .error), .retryRequested):
+            // Same generation: the retry finishes the *same* recording, so its
+            // completion/failure events must match.
+            state = .transcribing
+            return [
+                .cancelAutoDismissTimer,
+                .showTranscribingState,
+                .updateMenuBar(.processing),
+                .retryTranscription,
+            ]
 
         case (.finishing, .dismissRequested):
             state = .idle

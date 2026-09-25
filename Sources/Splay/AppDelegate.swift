@@ -337,8 +337,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onOpenRecentCard: { [weak self] in
                     self?.presentRecentCard()
                 },
-                onOpenErrorCard: { [weak self] message in
-                    self?.presentErrorCard(message: message)
+                onOpenErrorCard: { [weak self] message, fileWrite, onChoice in
+                    self?.presentErrorCard(message: message, fileWrite: fileWrite, onChoice: onChoice)
                 },
                 onToggleMeetingRecordingFromHotkey: { [weak self] in
                     guard let self, !self.onboardingWindowController.isVisible else { return }
@@ -558,19 +558,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Present a small card carrying a recording failure's actual message. The
     /// island's failed light is wordless, so this card is the one place the app
     /// says *why* — a failure must never be a silent vanish. Opened by clicking
-    /// the failed island (which also clears the held failure state).
-    private func presentErrorCard(message: String) {
-        splayCardController.onDismiss = { [weak self] in self?.islandController?.setHeldOpen(false) }
+    /// the failed island. `onChoice` nil → plain OK card (the held failure was
+    /// already cleared). Non-nil → Retry / Dismiss (the recording is on disk and
+    /// the failure is still held); closing the card any other way counts as
+    /// Dismiss, so a held failure can never be left stuck behind a closed card.
+    private func presentErrorCard(message: String, fileWrite: Bool = false, onChoice: ((Bool) -> Void)? = nil) {
+        var choiceMade = false
+        let choose: (Bool) -> Void = { retry in
+            guard !choiceMade else { return }
+            choiceMade = true
+            onChoice?(retry)
+        }
+        splayCardController.onDismiss = { [weak self] in
+            choose(false)
+            self?.islandController?.setHeldOpen(false)
+        }
         islandController?.setHeldOpen(true)
         splayCardController.present { dismiss, _ in
             AnyView(SplayCardView(
                 chrome: SplayCardChrome(
                     glyph: "",
-                    title: "Recording failed",
+                    title: fileWrite ? "Transcript not saved" : (onChoice == nil ? "Recording failed" : "Transcription failed"),
                     message: message,
                     width: 320,
                     danger: true,
-                    primaryLabel: "OK"
+                    primaryLabel: onChoice == nil ? "OK" : "Retry",
+                    secondaryLabel: onChoice == nil ? nil : "Dismiss"
                 ),
                 // Custom header: the shell's glyph tile renders `Text`, so an SF
                 // Symbol name would appear as its literal string — draw the
@@ -585,7 +598,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 .foregroundStyle(SplayCardPalette.tint(danger: true))
                         )
                 ),
-                onPrimary: { dismiss() }
+                onPrimary: {
+                    choose(onChoice != nil)
+                    dismiss()
+                },
+                onSecondary: {
+                    choose(false)
+                    dismiss()
+                }
             ))
         }
     }
