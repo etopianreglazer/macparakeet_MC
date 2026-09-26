@@ -229,7 +229,36 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         NSApp.mainMenu = mainMenu
     }
 
+    /// AppKit's per-item defaults key for where the icon sits (points from the
+    /// screen's right edge). "Item-0" is the default autosave name of our one item.
+    static let statusItemPositionKey = "NSStatusItem Preferred Position Item-0"
+
+    /// On a notched screen a crowded menu bar can leave the icon remembered
+    /// *behind the camera*, where macOS draws it offscreen — Splay then has no
+    /// visible menu bar icon at all (owner, 2026-09-26). Returns a position right
+    /// of the notch when the remembered one is hidden (or absent); nil keeps it.
+    static func correctedStatusItemPosition(stored: Double?, rightOfNotchWidth: CGFloat?) -> Double? {
+        guard let rightOfNotchWidth, rightOfNotchWidth > 0 else { return nil }
+        let visibleLimit = Double(rightOfNotchWidth) - 40   // an icon's width inside the right area
+        if let stored, stored > 0, stored <= visibleLimit { return nil }
+        return (Double(rightOfNotchWidth) / 2).rounded()
+    }
+
+    private func placeStatusItemRightOfNotch() {
+        // The menu bar lives on the primary screen (screens[0]).
+        guard let screen = NSScreen.screens.first else { return }
+        let rightArea = screen.auxiliaryTopRightArea?.width
+        let defaults = UserDefaults.standard
+        let stored = defaults.object(forKey: Self.statusItemPositionKey) as? Double
+        guard let position = Self.correctedStatusItemPosition(stored: stored, rightOfNotchWidth: rightArea) else { return }
+        defaults.set(position, forKey: Self.statusItemPositionKey)
+        AudioCaptureDiagnostics.append(
+            "splay_status_item moved_right_of_notch stored=\(stored.map { String($0) } ?? "nil") position=\(position)"
+        )
+    }
+
     func setupMenuBar() {
+        placeStatusItemRightOfNotch()
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         guard let statusItem,
