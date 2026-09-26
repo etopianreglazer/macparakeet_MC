@@ -15,7 +15,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     private let meetingRecordingActiveProvider: () -> Bool
     private let dictationCaptureActiveProvider: () -> Bool
     private let onOpenSettings: () -> Void
-    /// Menu-bar "Open Splay" presents the recents card (the second surface).
+    /// Menu-bar "Recordings" presents the recents card (the second surface).
     private let onOpenRecent: () -> Void
     private let onStartDictation: () -> Void
     private let onToggleMeetingRecording: () -> Void
@@ -250,13 +250,16 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         menu.delegate = self
         let appName = Self.appDisplayName
 
-        let openItem = NSMenuItem(
-            title: "Open \(appName)",
+        // Splay's menu: the card, dictation recall, capture, then app chrome.
+        // Each item carries an SF Symbol so the menu scans at a glance.
+        let recordingsItem = NSMenuItem(
+            title: "Recordings",
             action: #selector(openRecentCard),
             keyEquivalent: "o"
         )
-        openItem.target = self
-        menu.addItem(openItem)
+        recordingsItem.target = self
+        recordingsItem.image = Self.symbol("waveform")
+        menu.addItem(recordingsItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -267,6 +270,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         )
         pasteItem.isEnabled = false
         pasteItem.target = self
+        pasteItem.image = Self.symbol("doc.on.clipboard")
         menu.addItem(pasteItem)
         pasteLastMenuItem = pasteItem
 
@@ -277,20 +281,11 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         )
         recentItem.submenu = NSMenu()
         recentItem.isHidden = true
+        recentItem.image = Self.symbol("text.bubble")
         menu.addItem(recentItem)
         recentDictationsMenuItem = recentItem
 
         menu.addItem(NSMenuItem.separator())
-
-        let transcribeFileItem = NSMenuItem(
-            title: "Transcribe File...",
-            action: #selector(transcribeFileFromMenu),
-            keyEquivalent: ""
-        )
-        transcribeFileItem.target = self
-        applyChordShortcut(fileTranscriptionHotkeyTriggerProvider(), to: transcribeFileItem)
-        menu.addItem(transcribeFileItem)
-        transcribeFileMenuItems.append(transcribeFileItem)
 
         if AppFeatures.meetingRecordingEnabled {
             let recordMeetingItem = NSMenuItem(
@@ -299,10 +294,22 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
                 keyEquivalent: ""
             )
             recordMeetingItem.target = self
+            recordMeetingItem.image = Self.symbol("record.circle")
             applyChordShortcut(meetingHotkeyTriggerProvider(), to: recordMeetingItem)
             menu.addItem(recordMeetingItem)
             recordMeetingMenuItems.append(recordMeetingItem)
         }
+
+        let transcribeFileItem = NSMenuItem(
+            title: "Transcribe File...",
+            action: #selector(transcribeFileFromMenu),
+            keyEquivalent: ""
+        )
+        transcribeFileItem.target = self
+        transcribeFileItem.image = Self.symbol("doc.badge.plus")
+        applyChordShortcut(fileTranscriptionHotkeyTriggerProvider(), to: transcribeFileItem)
+        menu.addItem(transcribeFileItem)
+        transcribeFileMenuItems.append(transcribeFileItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -312,6 +319,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
             keyEquivalent: ""
         )
         hotkeyItem.isEnabled = false
+        hotkeyItem.image = Self.symbol("keyboard")
         menu.addItem(hotkeyItem)
         hotkeyMenuItem = hotkeyItem
 
@@ -321,6 +329,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
             keyEquivalent: ","
         )
         settingsItem.target = self
+        settingsItem.image = Self.symbol("gearshape")
         menu.addItem(settingsItem)
 
         let checkForUpdatesItem = NSMenuItem(
@@ -329,6 +338,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
             keyEquivalent: ""
         )
         checkForUpdatesItem.target = updaterController
+        checkForUpdatesItem.image = Self.symbol("arrow.triangle.2.circlepath")
         menu.addItem(checkForUpdatesItem)
 
         menu.addItem(NSMenuItem.separator())
@@ -339,9 +349,17 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
             keyEquivalent: "q"
         )
         quitItem.target = self
+        quitItem.image = Self.symbol("power")
         menu.addItem(quitItem)
 
         statusItem.menu = menu
+    }
+
+    /// An SF Symbol sized for a menu item (template, so it follows the menu's
+    /// text colour and highlight).
+    private static func symbol(_ name: String) -> NSImage? {
+        NSImage(systemSymbolName: name, accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
     }
 
     func refreshHotkeyTitle() {
@@ -370,7 +388,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         onShowAboutPanel()
     }
 
-    /// Menu-bar "Open Splay" → the recents card.
+    /// Menu-bar "Recordings" → the recents card.
     @objc private func openRecentCard() {
         onOpenRecent()
     }
@@ -454,9 +472,9 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         transcribeFileMenuItems.forEach { $0.isEnabled = environmentReady }
         recordMeetingMenuItems.forEach {
             $0.isEnabled = environmentReady
-            $0.title = meetingRecordingActiveProvider()
-                ? "Stop Recording"
-                : "Start Recording"
+            let active = meetingRecordingActiveProvider()
+            $0.title = active ? "Stop Recording" : "Start Recording"
+            $0.image = Self.symbol(active ? "stop.circle" : "record.circle")
         }
 
         guard let env = environmentProvider() else {

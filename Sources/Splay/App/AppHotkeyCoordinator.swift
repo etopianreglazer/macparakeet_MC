@@ -67,10 +67,13 @@ final class AppHotkeyCoordinator {
     }
 
     var hotkeyMenuTitle: String {
-        Self.menuTitle(
-            handsFree: settingsViewModel.hotkeyTrigger,
-            pushToTalk: settingsViewModel.pushToTalkHotkeyTrigger
-        )
+        Self.fnGestureMenuTitle(for: settingsViewModel.hotkeyTrigger)
+    }
+
+    /// The menu bar's hint line for Splay's Fn gestures (`setupFnRecordingHotkey`).
+    static func fnGestureMenuTitle(for trigger: HotkeyTrigger) -> String {
+        guard !trigger.isDisabled else { return "Recording Shortcut: Disabled" }
+        return "\(trigger.displayName): Tap Record · Double Dictate · Triple Meeting"
     }
 
     struct DictationHotkeyPlan: Equatable {

@@ -29,7 +29,7 @@ enum SplayCardTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .recents:  return "Recent recordings"
+        case .recents:  return "Recordings"
         case .settings: return "Settings"
         case .about:    return "About Splay"
         }

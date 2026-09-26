@@ -359,6 +359,17 @@ final class AppHotkeyCoordinatorTests: XCTestCase {
         XCTAssertEqual(conflictReports, 1)
     }
 
+    func testFnGestureMenuTitleDescribesTheThreeGestures() {
+        XCTAssertEqual(
+            AppHotkeyCoordinator.fnGestureMenuTitle(for: .fn),
+            "\(HotkeyTrigger.fn.displayName): Tap Record · Double Dictate · Triple Meeting"
+        )
+        XCTAssertEqual(
+            AppHotkeyCoordinator.fnGestureMenuTitle(for: .disabled),
+            "Recording Shortcut: Disabled"
+        )
+    }
+
     func testResumeModeMatchesActiveDictationRole() {
         XCTAssertEqual(
             AppHotkeyCoordinator.resumeMode(.persistent, for: .singleTapToggle),
