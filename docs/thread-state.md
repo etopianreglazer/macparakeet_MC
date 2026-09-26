@@ -6,49 +6,56 @@
 > the previous thread's block is demoted to `docs/thread-log.md` (verbatim, newest first) each time this is
 > rewritten. **Hard cap: 150 lines.** If it is longer, move something to the log or to a plan/README.
 >
-> **Last updated:** 2026-09-26, thread 17 (end) — **MAC: 54b6dd09 PRESSED OK; ISLAND VOICE METER BUILT, INSTALLED,
-> PRESSED OK ("looking really cool"); GLOW REMOVED.** Owner direction: Mac only. Thread 16's block is in `docs/thread-log.md`.
+> **Last updated:** 2026-09-26, thread 18 — **MAC: UPSTREAM 0.8.7 MIC HANDLING PORTED (4 slices) + DISCARD BUG FIXED,
+> INSTALLED, NOT YET PRESSED.** Owner direction: Mac first, iPhone later "in depth". Thread 17's block is in `docs/thread-log.md`.
 
 ## 1. Live state
 
-- Branch `ios/utility-layer`. **Nothing pushed.** New this thread: `ee8a669c` (island voice meter + timer; glow removed)
-  and the end-of-thread docs commit. (Worked in worktree branch `claude/upbeat-mccarthy-3350ca`, fast-forwarded
-  from `ios/utility-layer` — owner: fast-forward `ios/utility-layer` to it.)
-- **Mac:** `/Applications/Splay.app` = `ee8a669c` (dev install 2026-09-26 ~12:18), **running**, pressed once: double-tap,
-  45 s, completed, no `_timeout` / `shared_mic_liveness` / restart lines.
-- **Engine is now Parakeet.** Splay's `speechRecognitionEngine` was `whisper` (large-v3-turbo); its Neural-Engine
-  compile cache had been dropped, so the first load compiled for >3.5 min and looked like a hang (killed twice).
-  Owner chose Parakeet (`defaults write com.macparakeet.mc speechRecognitionEngine parakeet`).
-- **Upstream `MacParakeet.app` (0.8.7) runs alongside Splay** and is used for dictation — shares the log; filter by pid.
-- **Suite:** 1855 tests, the same 5 known environmental cases (6 assertion failures), zero new. **Vet:** no issues.
+- Branch `ios/utility-layer`, fast-forwarded to thread 17's worktree branch at the start (`fca4668b`). **Nothing pushed.**
+  New: `82c10ed8` (Discard deletes the stuck DB row + launch sweep of orphaned `processing` rows; recovery now logs
+  `meeting_recovery_*`), `7fa52805` / `352f77e2` / `e3490f5f` / `ccf9e349` (mic port slices 1–4).
+- **Mac:** `/Applications/Splay.app` = `ccf9e349` (dev install 2026-09-26 ~15:55), **running, not yet used for a
+  recording.** On launch it swept the two stuck rows (`meeting_recovery_swept_orphan_row` ×2); DB has 0 `processing`.
+  Owner confirmed the 2026-09-25 12:22 recording was deleted by their own **Discard** click (no data-loss bug).
+- **Suite:** 1960 XCTest (same 5 known environmental cases, 6 assertions) + 17 swift-testing, all green otherwise.
+  **Check both frameworks** — the `swift test` output ends with a swift-testing summary; an issue there does not show
+  up in the XCTest `error: -[…]` lines (a classifier test failed that way mid-thread and Vet caught it). iOS
+  `SplayCore` compiles. **Vet:** every slice vetted; last round no issues.
 
-## 2. Thread 17 results
+## 2. What the mic port changed (full record: `docs/plans/upstream-mic-port.md` § "As built")
 
-- **§3 checks of thread 16, all on Parakeet:** plain tap ×2 and double-tap ×2 — `routing=explicit` built-in mic, first
-  buffer 40–100 ms, rechecks `alive → ignore`, Stop → stopped 0.19–0.58 s, no system-audio timeouts, and a 10 s+
-  pause produced **no** `shared_mic_liveness` (dead ≠ silent holds). AirPods / Retry / typing-lag were not pressed:
-  the owner redirected (below).
-- **Island voice meter** (`docs/plans/island-voice-meter.md`, picked in a live prototype tuner, variant D = Voice
-  Memos layout): recording = 5 red bars left (mic level only; still the menu control) + `m:ss` timer right (stop
-  control). Silent = flat red; dead = flat motionless amber. **All glow removed** (desktop bloom panel, halo, rim +
-  mark shadows, talk sway, Settings "Talking glow" slider). Thin rim line kept as the state colour. Owner: "the new
-  UI looks better, the old feels a bit dated" — the rest of the island/card may get the same treatment.
+- **Mac engine = upstream's, taken whole and unedited** (except `routing=` on the started line + the macOS gate):
+  implicit System Default (no pin), 1 s usable-buffer start gate (zero Bluetooth PCM doesn't count, one retry),
+  default-input changes never rebuild a healthy engine, stop/stall → one recovery episode 0.5→16 s (~31 s) → engine
+  death. Unused upstream bits (prewarm `prepare`, a notification nobody observes, nil lifecycle fields, long
+  functions) kept **on purpose** for upstream parity — Vet flags them; declined.
+- **Gone on the Mac:** Splay's liveness watchdog, hint/recheck rebuilds, the explicit-default pin
+  (`mac-input-policy.md` is HISTORICAL for the Mac, still live for iOS).
+- **iPhone unchanged:** own class in `MicrophoneEnginePlatform+iOS.swift`, hint/recheck path intact.
+- **Dead mic mid-recording:** mic-only → recording fails after the recovery (held failure, audio kept). Mic + system
+  → `meeting_capture_source_interrupted source=microphone`, recording carries on with system audio, island turns
+  **amber** (`MeetingCaptureHealth.microphoneInterrupted`), meter flat; both sources gone → fails. (Upstream's rule.)
+- `MicrophoneCapture.stop()` is now `async` (returns after real teardown); log lines carry `process_id=` — filter by it.
 
-## 3. ⭐ Next thread starts here
+## 3. ⭐ Next thread starts here — press the Mac build (`ccf9e349`)
 
-1. **Port upstream's mic handling (macOS)** — owner: *"stop forcing our own approach."* The brief is
-   `docs/plans/upstream-mic-port.md`: check/refine it first (§ "Check / refine"), confirm iOS keeps its current
-   path, then build in slices, test, `/vet`, install, and have the owner press the AirPods cases listed there.
-2. **Bugs found this thread (not fixed):**
-   - **Discard leaves a DB row stuck `processing`** — `MeetingRecordingRecoveryService.discard` deletes the session
-     folder but not the `transcriptions` row (the 2026-09-25 12:22 row and one from 2026-09-08 sit in `processing`).
-     The 12:22 recording (killed during the Whisper compile) was deleted at the 12:33 relaunch — only the launch
-     dialog's **Discard** can do that; **ask the owner** whether they clicked it (asked twice, unanswered).
-   - **Recovery is invisible in `dictation-audio.log`** (os_log `.info` only) — add diagnostics lines.
-   - **Whisper cold load looks like a hang** — no feedback on the island, no timeout, and `whisperOptimizedVariants`
-     still says "warm" after the ANE cache is gone. Low priority while Parakeet is the engine.
-3. **Visual refresh (owner, open):** the new meter look is liked, "the old feels a bit dated" — ask which surfaces next
-   (card? transcribing/done faces?) and prototype in the live tuner before porting.
-4. Still owed: the iOS island-dwell change in `ios/Splay/App/RecordingCoordinator.swift` was **never vetted** (thread
-   15) — `/vet` it before the next iOS unit. FluidAudio 0.14.5 → 0.15.7 and the small items in
-   `docs/plans/upstream-087-port.md` stay open (after the mic port).
+Log grammar: `Sources/SplayCore/Audio/README.md` § "Mac log grammar". Filter `dictation-audio.log` by Splay's
+`process_id` (upstream MacParakeet writes the same file).
+1. **Plain tap, talk, stop** → `shared_mic_engine_input_device_started source=system_default routing=implicit …`,
+   `audio_engine_lifecycle operation=start outcome=success …`, green, `.md` written. Starts may take up to ~1 s longer
+   than before (the start gate) — note if the island ambers at start.
+2. **Double-tap, stop** → promptly stopped, no `system_audio_stream_*_timeout`.
+3. **AirPods (the point of the port):** (a) record on the built-in mic with AirPods connected, trigger a switch → expect
+   `audio_default_input_changed notifications=N` and **no** rebuild, bars keep moving. (b) record *through* AirPods and
+   move them to the phone → `shared_mic_engine_configuration_changed` → `…_config_change_recovery_attempt` →
+   `…_succeeded` on the built-in mic, bars resume. Silence in a quiet room must never produce `…_callback_stalled`.
+4. Still unpressed from thread 16: the Retry path and typing-lag check (thread-log, thread 16 block §3).
+
+## 4. Decided, not done
+
+- **iPhone "in depth" comes after the Mac** (owner). Owed there: `/vet` the thread-15 island-dwell change in
+  `ios/Splay/App/RecordingCoordinator.swift`; decide whether iOS moves to upstream-style recovery too.
+- **Open from before:** Whisper cold load looks like a hang (low priority on Parakeet); visual refresh of the other
+  island/card surfaces (ask which, prototype in the live tuner); FluidAudio 0.14.5 → 0.15.7 with a WER check and the
+  small items in `docs/plans/upstream-087-port.md`; Mac visual pass + second-Mac install (`docs/launch-checklist.md` §C4).
+- Held failures block `fn` until the island is clicked (owner's earlier decision) — revisit if it annoys.

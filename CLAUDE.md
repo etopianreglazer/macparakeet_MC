@@ -113,6 +113,8 @@ swift build                      # everything
 swift test                       # ~1–2 min. Baseline: 5 known environmental failures
                                  #   (AppPaths + 3× SettingsViewModel pre-"-MC" asserts,
                                  #   AX-gated AppHotkeyCoordinator). Zero new = green.
+                                 #   Also read the swift-testing summary at the end —
+                                 #   its issues don't appear in XCTest `error: -[…]` lines.
 scripts/dev/install_local.sh     # SwiftPM bundle → signs with Apple Development → /Applications/Splay.app
                                  #   does NOT relaunch; wait ~2s then `open /Applications/Splay.app`
 ```
