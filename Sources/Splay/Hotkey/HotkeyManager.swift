@@ -19,11 +19,20 @@ public final class HotkeyManager {
     public var onEscapeWhileIdle: (() -> Void)?
     /// Fork single/double-tap Fn: toggle a recording with the given audio source.
     public var onToggleRecording: ((MeetingAudioSourceMode) -> Void)?
+    /// Splay tap/double/triple Fn: start the resolved capture.
+    public var onStartCapture: ((FnCaptureKind) -> Void)?
+    /// Splay tap/double/triple Fn: a tap while a capture is active.
+    public var onStopCapture: (() -> Void)?
+    /// Splay tap/double/triple Fn: queried at each tap; `true` makes it a stop.
+    public var isCaptureActive: () -> Bool {
+        get { gestureController.isCaptureActive }
+        set { gestureController.isCaptureActive = newValue }
+    }
 
     /// Gesture modes whose completed *tap* is delivered on modifier release
     /// (routed through `triggerPressed`), rather than press/hold semantics.
     private var actsOnReleaseTap: Bool {
-        gestureMode == .singleTapToggle || gestureMode == .singleAndDoubleTapToggle
+        gestureMode.actsOnReleaseTap
     }
 
     private let gestureController: HotkeyGestureController
@@ -781,9 +790,10 @@ public final class HotkeyManager {
         case (.persistent, .holdOnly),
              (.holdToTalk, .singleTapToggle),
              (.holdToTalk, .doubleTapOnly),
-             (_, .singleAndDoubleTapToggle):
-            // The fork's single/double-tap Fn mode drives meeting recording, not
-            // dictation, so there is no dictation RecordingMode to resume.
+             (_, .singleAndDoubleTapToggle),
+             (_, .tapDoubleTripleToggle):
+            // The fork's Fn tap modes resolve captures themselves (the app asks
+            // who is active at each tap), so there is no RecordingMode to resume.
             return nil
         }
     }
@@ -1050,6 +1060,10 @@ public final class HotkeyManager {
                 onEscapeWhileIdle?()
             case .toggleRecording(let source):
                 onToggleRecording?(source)
+            case .startCapture(let kind):
+                onStartCapture?(kind)
+            case .stopCapture:
+                onStopCapture?()
             case .scheduleStartupDebounce(let milliseconds):
                 scheduleStartupTimer(after: milliseconds)
             case .scheduleHoldWindow(let milliseconds):

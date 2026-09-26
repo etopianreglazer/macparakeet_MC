@@ -1,5 +1,16 @@
 import Foundation
 
+/// What a resolved bare-`fn` gesture asks for in `.tapDoubleTripleToggle`.
+/// See docs/plans/fn-dictation-double-tap.md.
+public enum FnCaptureKind: Equatable, Sendable {
+    /// Tap: mic-only recording → transcript file.
+    case microphoneRecording
+    /// Double-tap: dictation, pasted into the field focused at stop.
+    case dictation
+    /// Triple-tap: mic + system audio recording → transcript file.
+    case meeting
+}
+
 /// Pure controller for hotkey gesture flow.
 /// Owns gesture semantics and timer directives, but no OS event-tap wiring.
 public final class HotkeyGestureController {
@@ -13,6 +24,10 @@ public final class HotkeyGestureController {
         /// app routes both outputs to the meeting coordinator's `toggleRecording`,
         /// which decides start vs stop. See docs/fork-product-model.md.
         case singleAndDoubleTapToggle
+        /// Splay Fn: tap = mic recording, double-tap = dictation, triple-tap =
+        /// meeting. While a capture is active (`isCaptureActive`), every tap is
+        /// an immediate stop with no window wait. No hold semantics.
+        case tapDoubleTripleToggle
     }
 
     public enum Output: Equatable, Sendable {
@@ -28,6 +43,10 @@ public final class HotkeyGestureController {
         case cancelHoldWindow
         /// Toggle a recording with the given audio source (fork single/double-tap Fn).
         case toggleRecording(source: MeetingAudioSourceMode)
+        /// Start a capture (`.tapDoubleTripleToggle`, resolved gesture).
+        case startCapture(FnCaptureKind)
+        /// Stop whatever capture is active (`.tapDoubleTripleToggle`).
+        case stopCapture
     }
 
     public let tapThresholdMs: Int
@@ -55,11 +74,24 @@ public final class HotkeyGestureController {
         case awaitingSecondTap
     }
 
+    /// State for `.tapDoubleTripleToggle`: each bare tap re-arms a
+    /// `tapThresholdMs` window; the window elapsing resolves the tap count.
+    private enum TapCountState: Equatable {
+        case idle
+        case awaitingSecondTap
+        case awaitingThirdTap
+    }
+
+    /// `.tapDoubleTripleToggle` only: queried at each tap. `true` turns the tap
+    /// into `.stopCapture`. Queried rather than mirrored so it cannot go stale.
+    public var isCaptureActive: () -> Bool = { false }
+
     private let mode: Mode
     private let stateMachine: FnKeyStateMachine
     private var holdOnlyState: HoldOnlyState = .idle
     private var singleTapState: SingleTapState = .idle
     private var singleDoubleState: SingleDoubleTapState = .idle
+    private var tapCountState: TapCountState = .idle
     private var suppressedUntilReset = false
 
     public init(
@@ -118,6 +150,21 @@ public final class HotkeyGestureController {
             }
         }
 
+        if mode == .tapDoubleTripleToggle {
+            switch tapCountState {
+            case .idle:
+                if isCaptureActive() { return [.stopCapture] }
+                tapCountState = .awaitingSecondTap
+                return [.scheduleHoldWindow(milliseconds: tapThresholdMs)]
+            case .awaitingSecondTap:
+                tapCountState = .awaitingThirdTap
+                return [.cancelHoldWindow, .scheduleHoldWindow(milliseconds: tapThresholdMs)]
+            case .awaitingThirdTap:
+                tapCountState = .idle
+                return [.cancelHoldWindow, .startCapture(.meeting)]
+            }
+        }
+
         let action = stateMachine.fnDown(timestampMs: timestampMs)
         var results = outputs(for: action)
         if mode == .doubleTapAndHold, action == .none, stateMachine.state == .waitingForSecondTap {
@@ -146,7 +193,7 @@ public final class HotkeyGestureController {
             return results
         }
 
-        if mode == .singleTapToggle || mode == .singleAndDoubleTapToggle {
+        if mode.actsOnReleaseTap {
             return []
         }
 
@@ -178,7 +225,7 @@ public final class HotkeyGestureController {
             return results
         }
 
-        if mode == .singleTapToggle || mode == .singleAndDoubleTapToggle {
+        if mode.actsOnReleaseTap {
             return []
         }
 
@@ -204,7 +251,7 @@ public final class HotkeyGestureController {
             return nonBareTriggerReleased()
         }
 
-        if mode == .singleTapToggle || mode == .singleAndDoubleTapToggle {
+        if mode.actsOnReleaseTap {
             return []
         }
 
@@ -263,6 +310,14 @@ public final class HotkeyGestureController {
             return []
         }
 
+        if mode == .tapDoubleTripleToggle {
+            if tapCountState != .idle {
+                tapCountState = .idle
+                return [.cancelHoldWindow]
+            }
+            return []
+        }
+
         let wasWaitingForSecondTap = stateMachine.state == .waitingForSecondTap
         let action = stateMachine.escapePressed()
 
@@ -283,7 +338,7 @@ public final class HotkeyGestureController {
         guard !suppressedUntilReset else { return [] }
 
         if mode == .doubleTapOnly { return [] }
-        if mode == .singleTapToggle || mode == .singleAndDoubleTapToggle { return [] }
+        if mode.actsOnReleaseTap { return [] }
         if mode == .holdOnly {
             guard holdOnlyState == .pressed else { return [] }
             holdOnlyState = .active
@@ -303,6 +358,15 @@ public final class HotkeyGestureController {
             singleDoubleState = .idle
             return [.toggleRecording(source: .microphoneOnly)]
         }
+        if mode == .tapDoubleTripleToggle {
+            let resolved = tapCountState
+            tapCountState = .idle
+            switch resolved {
+            case .idle: return []
+            case .awaitingSecondTap: return [.startCapture(.microphoneRecording)]
+            case .awaitingThirdTap: return [.startCapture(.dictation)]
+            }
+        }
         return outputs(for: stateMachine.holdTimerFired())
     }
 
@@ -311,6 +375,7 @@ public final class HotkeyGestureController {
         holdOnlyState = .idle
         singleTapState = .idle
         singleDoubleState = .idle
+        tapCountState = .idle
         stateMachine.reset()
     }
 
@@ -331,6 +396,10 @@ public final class HotkeyGestureController {
             singleDoubleState = .idle
             return
         }
+        if mode == .tapDoubleTripleToggle {
+            tapCountState = .idle
+            return
+        }
         stateMachine.blockUntilReset()
     }
 
@@ -348,6 +417,10 @@ public final class HotkeyGestureController {
             singleDoubleState = .idle
             return
         }
+        if self.mode == .tapDoubleTripleToggle {
+            tapCountState = .idle
+            return
+        }
         stateMachine.resumeRecording(mode: mode)
     }
 
@@ -356,6 +429,7 @@ public final class HotkeyGestureController {
         holdOnlyState = .idle
         singleTapState = .idle
         singleDoubleState = .idle
+        tapCountState = .idle
         stateMachine.reset()
     }
 
@@ -371,6 +445,19 @@ public final class HotkeyGestureController {
             return [.cancelRecording]
         case .discardRecording(let showReadyPill):
             return [.discardRecording(showReadyPill: showReadyPill)]
+        }
+    }
+}
+
+extension HotkeyGestureController.Mode {
+    /// Modes whose completed bare *tap* is delivered on release (the manager
+    /// routes it through `triggerPressed`), rather than press/hold semantics.
+    public var actsOnReleaseTap: Bool {
+        switch self {
+        case .singleTapToggle, .singleAndDoubleTapToggle, .tapDoubleTripleToggle:
+            return true
+        case .doubleTapAndHold, .doubleTapOnly, .holdOnly:
+            return false
         }
     }
 }

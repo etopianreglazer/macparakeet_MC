@@ -426,4 +426,118 @@ final class HotkeyGestureControllerTests: XCTestCase {
             [.toggleRecording(source: .microphoneOnly)]
         )
     }
+
+    // MARK: - tapDoubleTripleToggle (Fn: tap = mic recording, double = dictation, triple = meeting)
+
+    private func makeTriple(active: Bool = false) -> HotkeyGestureController {
+        let controller = HotkeyGestureController(mode: .tapDoubleTripleToggle)
+        controller.isCaptureActive = { active }
+        return controller
+    }
+
+    private let window = FnKeyStateMachine.defaultTapThresholdMs
+
+    func testTriple_singleTapResolvesToMicRecordingAfterWindow() {
+        let controller = makeTriple()
+
+        XCTAssertEqual(controller.triggerPressed(timestampMs: 1_000), [.scheduleHoldWindow(milliseconds: window)])
+        XCTAssertEqual(controller.holdWindowElapsed(), [.startCapture(.microphoneRecording)])
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+    }
+
+    func testTriple_doubleTapWaitsOneMoreWindowThenResolvesToDictation() {
+        let controller = makeTriple()
+        _ = controller.triggerPressed(timestampMs: 1_000)
+
+        // Second tap re-arms the window for a possible third tap; nothing starts yet.
+        XCTAssertEqual(
+            controller.triggerPressed(timestampMs: 1_150),
+            [.cancelHoldWindow, .scheduleHoldWindow(milliseconds: window)]
+        )
+        XCTAssertEqual(controller.holdWindowElapsed(), [.startCapture(.dictation)])
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+    }
+
+    func testTriple_tripleTapResolvesToMeetingImmediately() {
+        let controller = makeTriple()
+        _ = controller.triggerPressed(timestampMs: 1_000)
+        _ = controller.triggerPressed(timestampMs: 1_150)
+
+        XCTAssertEqual(
+            controller.triggerPressed(timestampMs: 1_300),
+            [.cancelHoldWindow, .startCapture(.meeting)]
+        )
+        // A stale window timer afterwards does nothing.
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+    }
+
+    func testTriple_slowThirdTapIsDictationThenAnImmediateStop() {
+        var active = false
+        let controller = HotkeyGestureController(mode: .tapDoubleTripleToggle)
+        controller.isCaptureActive = { active }
+        _ = controller.triggerPressed(timestampMs: 1_000)
+        _ = controller.triggerPressed(timestampMs: 1_150)
+        XCTAssertEqual(controller.holdWindowElapsed(), [.startCapture(.dictation)])
+        active = true
+
+        // The too-late third tap stops the dictation; it never becomes a meeting.
+        XCTAssertEqual(controller.triggerPressed(timestampMs: 1_700), [.stopCapture])
+    }
+
+    func testTriple_tapWhileCaptureActiveStopsWithoutWindowWait() {
+        let controller = makeTriple(active: true)
+
+        XCTAssertEqual(controller.triggerPressed(timestampMs: 1_000), [.stopCapture])
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+        // Every tap while active is a stop; taps never accumulate into a gesture.
+        XCTAssertEqual(controller.triggerPressed(timestampMs: 1_100), [.stopCapture])
+    }
+
+    func testTriple_defaultProviderTreatsNothingAsActive() {
+        let controller = HotkeyGestureController(mode: .tapDoubleTripleToggle)
+        XCTAssertEqual(controller.triggerPressed(timestampMs: 1_000), [.scheduleHoldWindow(milliseconds: window)])
+    }
+
+    func testTriple_strayKeyAndReleaseBetweenTapsDoNotCancelTheGesture() {
+        let controller = makeTriple()
+        _ = controller.triggerPressed(timestampMs: 1_000)
+
+        XCTAssertEqual(controller.triggerReleased(timestampMs: 1_010), [])
+        XCTAssertEqual(controller.nonBareTriggerReleased(), [])
+        XCTAssertEqual(controller.interrupted(), [])
+
+        _ = controller.triggerPressed(timestampMs: 1_150)
+        XCTAssertEqual(controller.interrupted(), [])
+        XCTAssertEqual(controller.holdWindowElapsed(), [.startCapture(.dictation)])
+    }
+
+    func testTriple_escapeCancelsAPendingGestureAtEitherStage() {
+        let controller = makeTriple()
+        _ = controller.triggerPressed(timestampMs: 1_000)
+        XCTAssertEqual(controller.escapePressed(), [.cancelHoldWindow])
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+
+        _ = controller.triggerPressed(timestampMs: 2_000)
+        _ = controller.triggerPressed(timestampMs: 2_150)
+        XCTAssertEqual(controller.escapePressed(), [.cancelHoldWindow])
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+
+        // Escape with nothing pending is not ours to handle.
+        XCTAssertEqual(controller.escapePressed(), [])
+    }
+
+    func testTriple_resetAndSuppressClearAPendingGesture() {
+        let controller = makeTriple()
+        _ = controller.triggerPressed(timestampMs: 1_000)
+        controller.reset()
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+
+        _ = controller.triggerPressed(timestampMs: 2_000)
+        controller.suppressUntilReset()
+        XCTAssertEqual(controller.holdWindowElapsed(), [])
+        XCTAssertEqual(controller.triggerPressed(timestampMs: 2_100), [])
+
+        controller.reset()
+        XCTAssertEqual(controller.triggerPressed(timestampMs: 3_000), [.scheduleHoldWindow(milliseconds: window)])
+    }
 }

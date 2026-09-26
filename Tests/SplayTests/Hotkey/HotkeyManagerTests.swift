@@ -116,6 +116,27 @@ final class HotkeyManagerTests: XCTestCase {
         )
     }
 
+    func testTapDoubleTripleFnCountsBareReleasesAndStopsWhileActive() {
+        let manager = HotkeyManager(trigger: .fn, gestureMode: .tapDoubleTripleToggle)
+        let window = FnKeyStateMachine.defaultTapThresholdMs
+        func tap(at ms: UInt64) -> [HotkeyGestureController.Output] {
+            _ = manager.modifierFlagsChangedOutputsForTesting(flags: [.maskSecondaryFn], timestampMs: ms)
+            return manager.modifierFlagsChangedOutputsForTesting(flags: [], timestampMs: ms + 40)
+        }
+
+        XCTAssertEqual(tap(at: 1_000), [.scheduleHoldWindow(milliseconds: window)])
+        XCTAssertEqual(tap(at: 1_150), [.cancelHoldWindow, .scheduleHoldWindow(milliseconds: window)])
+        XCTAssertEqual(tap(at: 1_300), [.cancelHoldWindow, .startCapture(.meeting)])
+
+        // fn used as a chord (fn+key) is not a tap.
+        _ = manager.modifierFlagsChangedOutputsForTesting(flags: [.maskSecondaryFn], timestampMs: 2_000)
+        _ = manager.modifierKeyDownOutputsForTesting(keyCode: 8, timestampMs: 2_020)
+        XCTAssertEqual(manager.modifierFlagsChangedOutputsForTesting(flags: [], timestampMs: 2_050), [])
+
+        manager.isCaptureActive = { true }
+        XCTAssertEqual(tap(at: 3_000), [.stopCapture])
+    }
+
     func testSingleTapToggleModifierIgnoresNonBareShortcutUse() {
         let manager = HotkeyManager(trigger: .command, gestureMode: .singleTapToggle)
 

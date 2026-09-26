@@ -393,6 +393,8 @@ final class AppHotkeyCoordinatorTests: XCTestCase {
         XCTAssertNil(AppHotkeyCoordinator.resumeMode(.holdToTalk, for: .doubleTapOnly))
         XCTAssertTrue(AppHotkeyCoordinator.shouldSuppressPeer(.holdToTalk, for: .doubleTapOnly))
         XCTAssertNil(AppHotkeyCoordinator.resumeMode(nil, for: .doubleTapAndHold))
+        XCTAssertNil(AppHotkeyCoordinator.resumeMode(.persistent, for: .tapDoubleTripleToggle))
+        XCTAssertTrue(AppHotkeyCoordinator.shouldSuppressPeer(.persistent, for: .tapDoubleTripleToggle))
         XCTAssertFalse(AppHotkeyCoordinator.shouldSuppressPeer(nil, for: .doubleTapAndHold))
     }
 }
