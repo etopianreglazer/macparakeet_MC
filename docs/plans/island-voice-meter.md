@@ -1,6 +1,6 @@
 # Island voice meter — bars left, timer right; the glow goes
 
-> Status: **IN PROGRESS** (thread 17, 2026-09-26).
+> Status: **HISTORICAL** — shipped in `ee8a669c` (thread 17, 2026-09-26), pressed by the owner: "looking really cool".
 
 ## Why
 
@@ -41,4 +41,4 @@ then gate → `sqrt` → gain/1.6 → attack/release envelope; bars peak in the 
    recording stop rect to cover the timer.
 3. Remove the glow panel from `IslandController`, delete `SplayGlow` bloom + settings slider.
 4. Coordinator: island gets mic level only.
-5. Build, focused tests, `swift test`, `/vet`, install, owner presses.
+5. Build, focused tests, `swift test`, `/vet`, install, owner presses. — all done.
