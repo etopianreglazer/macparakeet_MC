@@ -572,7 +572,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                     ch: format?.channelCount ?? 0,
                     isRunning: self.running
                 )
-                let engineIsRunning = engineBox.isRunning()
+                let engineIsRunning = engineBox.isEngineRunning()
                 let defaultInput = AudioCaptureDiagnostics.defaultInputDeviceSummary()
                 AudioCaptureDiagnostics.append(
                     "shared_mic_engine_configuration_changed sr=\(snapshot.sr) ch=\(snapshot.ch) isRunning=\(snapshot.isRunning) engine_is_running=\(engineIsRunning) \(defaultInput)"
@@ -588,7 +588,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 // rebuilds now; still running → it watches whether buffers keep
                 // arriving (`MicrophoneInputPolicy`). Stale notifications for an
                 // engine we already replaced are ignored.
-                guard engineBox.isSameEngine(as: self.audioEngine), self.running else { return }
+                guard engineBox.wraps(self.audioEngine), self.running else { return }
                 if !engineIsRunning {
                     self.tearDownLocked()
                     AudioCaptureDiagnostics.append("shared_mic_engine_configuration_changed_stopped")
@@ -601,7 +601,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 // activation). Reflect that with a teardown — session untouched
                 // — so the stream's policy sees `engine down` and rebuilds now
                 // rather than watching for buffers that will never come.
-                guard engineBox.isSameEngine(as: self.audioEngine) else { return }
+                guard engineBox.wraps(self.audioEngine) else { return }
                 if self.running {
                     self.tearDownLocked()
                     AudioCaptureDiagnostics.append("shared_mic_engine_configuration_changed_stopped")

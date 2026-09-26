@@ -133,10 +133,15 @@ fan-out. There is exactly one instance per process, owned by
   waits for a one-shot framework callback, but never past the deadline;
   a late callback goes to `onLate`. Use it for any completion handler
   that Stop or Start depends on.
-- `AudioCaptureDiagnostics.swift` — public `append(_:)` to
-  `~/Library/Logs/MacParakeet/dictation-audio.log`. 5 MB cap;
-  delete-on-overflow (not rotated). Used by every file in this
-  folder and by `AppDelegate`'s boot marker.
+- `AudioCaptureDiagnostics.swift` — public `append(_:)` (synchronous) and
+  `appendAsync(_:)` (clocks captured at the call, written on a utility
+  queue) to `~/Library/Logs/MacParakeet/dictation-audio.log`. Upstream
+  v0.8.7's writer: a `flock` on the sibling `dictation-audio.log.lock`
+  serialises writers across processes (never delete that file); at the
+  5 MB cap the newest ~2.5 MB of complete lines are kept. A main-thread
+  append never blocks — on contention or rotation it defers the same
+  record to the queue. Used by every file in this folder and by
+  `AppDelegate`'s boot marker.
 - `AudioChunker.swift` — actor that buffers resampled audio for
   incremental STT (live meeting transcription).
 - `MeetingLiveAudioChunking.swift`,
@@ -262,13 +267,14 @@ state that assumes a single consumer at a time.
 VPIO state, or the fan-out path with the mic stream. Meeting
 recording composes both via `MeetingAudioCaptureService`.
 
-**The diagnostic log file is shared across processes.** Both the dev
-app and `swift test` write to
-`~/Library/Logs/MacParakeet/dictation-audio.log`. The
-`dictation_diagnostics_session_start` line emitted by `AppDelegate`
-on launch is the only reliable per-process separator. The 5 MB cap
-deletes the file when crossed (no rotation); a heavy user retains
-tens of days of context.
+**The diagnostic log file is shared across processes.** Splay, upstream
+MacParakeet builds running alongside it, and anything run with
+`MACPARAKEET_AUDIO_DIAGNOSTICS_LOG_PATH` write
+`~/Library/Logs/MacParakeet/dictation-audio.log` (`swift test` writes a
+temp file instead). Every line ends with `process_id=… process_session=…
+uptime_ns=…` — filter by `process_id`; `dictation_diagnostics_session_start`
+still marks each launch. At the 5 MB cap the newest ~2.5 MB of complete
+lines are kept (no longer deleted).
 
 ## How to verify a change
 
