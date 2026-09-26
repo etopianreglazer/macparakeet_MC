@@ -19,9 +19,11 @@ writer and scheduler are shared. What is macOS-only is gated with
   `normalizedUID` helper and, on iOS, the `AudioDeviceID` typealias that
   `MeetingInputDeviceAttempt` keeps for API parity (the attempt chain is always
   empty on iOS).
-- `MicrophoneEnginePlatform.swift` + `RecordingAudioSessionLifecycle.swift` —
-  on iOS the HAL default-input listener is replaced by `AVAudioSession`
-  observers, and the session follows the Voice Memos model: **session per
+- `MicrophoneEnginePlatform+iOS.swift` + `RecordingAudioSessionLifecycle.swift` —
+  the iPhone's own `AVAudioEngineMicrophonePlatform` (`#if os(iOS)`; the Mac
+  class in `MicrophoneEnginePlatform.swift` is `#if os(macOS)`, and the
+  protocol, default device setter and error enum are shared there). On iOS the
+  HAL default-input listener is replaced by `AVAudioSession` observers, and the session follows the Voice Memos model: **session per
   recording, engine per configuration** (the full table is in
   `docs/plans/splay-ios-utility-layer.md` § Audio session model). The category
   (`.playAndRecord`, `.default` mode, `.mixWithOthers` so a background start is
@@ -81,7 +83,8 @@ fan-out. There is exactly one instance per process, owned by
   HFP, no cold -10868 retries, no gap); the AirPods we record through
   leaving for the phone stops the engine and is rebuilt onto the new
   default. `docs/plans/mac-input-policy.md` has the measured log.
-- `MicrophoneEnginePlatform.swift` — `AVAudioEngine` wrapper. Device
+- `MicrophoneEnginePlatform.swift` — the Mac `AVAudioEngine` wrapper (iOS:
+  `MicrophoneEnginePlatform+iOS.swift`). Device
   fallback chain, VPIO toggle, tap install, engine recreation on
   every teardown (so coreaudiod releases the VPAU aggregate
   device). Two observers feed the stream's hint: the

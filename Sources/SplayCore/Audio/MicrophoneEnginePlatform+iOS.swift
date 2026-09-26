@@ -3,69 +3,12 @@ import CoreAudio
 import Foundation
 import os
 
-/// Abstract surface that `SharedMicrophoneStream` uses to drive real
-/// `AVAudioEngine` operations. Splitting it out lets unit tests exercise the
-/// stream's state machine and fan-out under a deterministic mock, while the
-/// production adapter handles the Core Audio side.
-///
-/// Implementations must serialize concurrent calls. `SharedMicrophoneStream`
-/// also serializes via its own engine queue, so platform implementations may
-/// rely on that — but they must remain reentrancy-safe (e.g. handle a stop
-/// during a partially-failed start).
-public protocol MicrophoneEnginePlatform: AnyObject, Sendable {
-    /// True between a successful `configureAndStart` and the next
-    /// `stopEngine`. Implementations may also set this to `false` if the
-    /// engine fails post-start.
-    var isEngineRunning: Bool { get }
-
-    /// Live input format reported by the running engine, or `nil` if the
-    /// engine is not running or its format is invalid.
-    var inputFormat: AVAudioFormat? { get }
-
-    /// Idempotent start. Stops any existing engine and rebuilds it with the
-    /// requested VPIO mode. Installs `tapHandler` as the buffer callback;
-    /// the handler runs on the audio render thread.
-    ///
-    /// - Important: The buffer passed to `tapHandler` is valid only for the
-    ///   synchronous duration of the call. Implementations must not retain
-    ///   the buffer past return.
-    func configureAndStart(
-        vpioEnabled: Bool,
-        bufferSize: AVAudioFrameCount,
-        tapHandler: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void
-    ) throws
-
-    /// Stop the engine, remove the tap, and tear down VPIO. Recreates the
-    /// underlying `AVAudioEngine` so coreaudiod releases the VPAU aggregate
-    /// (`CADefaultDeviceAggregate-<pid>-N`). Mirrors the ephemeral-engine
-    /// pattern proven in `MicrophoneCapture` (PR #186).
-    func stopEngine()
-
-    /// Install the **input hint** handler. Fired whenever the input situation
-    /// may have changed: the system default input device changed (Mac HAL
-    /// listener, alive for the platform's lifetime, so idle fires happen too),
-    /// the engine posted a configuration change (both platforms; the engine
-    /// has stopped and `isEngineRunning` says so), an input route changed or
-    /// an interruption ended (iOS). The owner decides what to do —
-    /// `SharedMicrophoneStream` runs `MicrophoneInputPolicy`, which rebuilds
-    /// only when the engine is no longer delivering. Pass `nil` to clear.
-    func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?)
-
-    /// The running engine started but never delivered a buffer within the
-    /// warm-up grace. A platform that pinned the system default explicitly
-    /// skips that explicit attempt on its next start (implicit route instead).
-    func noteCurrentEngineNeverDelivered()
-}
-
-public extension MicrophoneEnginePlatform {
-    func noteCurrentEngineNeverDelivered() {}
-
-    /// Default no-op so platforms that don't observe device changes (test
-    /// doubles, the diagnostic-only `AudioProcessor` path) need no changes.
-    func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?) {}
-}
-
-#if os(macOS)
+#if os(iOS)
+// The iPhone keeps Splay's own engine platform (AVAudioSession route-change and
+// interruption observers feed the input hint → MicrophoneInputPolicy → restart).
+// The macOS class in MicrophoneEnginePlatform.swift follows upstream MacParakeet;
+// upstream has no iOS model, so this copy is deliberately separate. See
+// docs/plans/upstream-mic-port.md.
 /// Production adapter that drives a real `AVAudioEngine`. Mirrors the
 /// engine-lifecycle invariants from `MicrophoneCapture` (PR #186):
 ///
@@ -115,17 +58,20 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     /// the stopped engine down, and fires the input hint so the stream's
     /// policy rebuilds.
     private var configurationChangeObserver: NSObjectProtocol?
-    /// HAL `kAudioHardwarePropertyDefaultInputDevice` listener. Installed once
-    /// (first engine start), removed in `deinit` — it describes the *system*,
-    /// not an engine, and a recording whose engine is between rebuild attempts
-    /// still needs to hear that the input came back. Fires on idle too; the
-    /// stream ignores hints with no subscribers.
-    private var defaultInputChangeObserver: AudioObjectPropertyListenerBlock?
+    /// AVAudioSession route-change + interruption observers (iOS has no HAL
+    /// default-input listener). Installed once for the platform's
+    /// lifetime, not per engine: they describe the *session*, and a recording
+    /// whose engine is between rebuild attempts (or stopped by an interruption)
+    /// still needs to hear that it may come back.
+    private var audioSessionObservers: [NSObjectProtocol] = []
+    /// The session policy (`RecordingAudioSessionLifecycle` documents the model).
+    /// Queue-held like `running`.
+    private var audioSession = RecordingAudioSessionLifecycle()
     /// The input-hint handler (`setDefaultInputChangeHandler`): fired by the
-    /// HAL default-input listener, the configuration-change observer and, on
-    /// iOS, the route-change / interruption observers. The owner runs
-    /// `MicrophoneInputPolicy` on it. Held under its own lock — the HAL
-    /// listener fires on `defaultInputListenerQueue`, not the engine `queue`.
+    /// configuration-change observer and the route-change / interruption
+    /// observers. The owner runs `MicrophoneInputPolicy` on it. Held under its
+    /// own lock — the observers (`queue: nil`) fire on whichever thread posts
+    /// the notification, not the engine `queue`.
     private let defaultInputChangeHandlerLock = NSLock()
     private var _defaultInputChangeHandler: (@Sendable () -> Void)?
 
@@ -136,6 +82,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         self.deviceAttemptsBuilder = deviceAttemptsBuilder
         self.inputDeviceSetter = inputDeviceSetter ?? avAudioEngineDefaultInputDeviceSetter
         self.engineStarter = nil
+        installAudioSessionObservers()
     }
 
     init(
@@ -146,12 +93,13 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         self.deviceAttemptsBuilder = deviceAttemptsBuilder
         self.inputDeviceSetter = inputDeviceSetter ?? avAudioEngineDefaultInputDeviceSetter
         self.engineStarter = engineStarter
+        installAudioSessionObservers()
     }
 
     deinit {
         // Nothing else references the platform any more, so the queue-held
         // helpers are safe to call directly.
-        removeDefaultInputChangeObserverLocked()
+        audioSessionObservers.forEach { NotificationCenter.default.removeObserver($0) }
     }
 
     public var isEngineRunning: Bool {
@@ -292,6 +240,16 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 logger.info("shared_mic_engine_stopped")
                 AudioCaptureDiagnostics.append("shared_mic_engine_stopped")
             }
+            // The session follows the *recording*, not the engine: a recording
+            // whose engine died (failed rebuild, interruption) still holds the
+            // session — mic indicator lit, background window open — until the
+            // user stops. Only here, never in `tearDownLocked`: a follow-the-input
+            // rebuild tears down and restarts while the recording continues and
+            // must keep the session active.
+            if audioSession.shouldDeactivateOnStop {
+                Self.deactivateAudioSession()
+            }
+            audioSession.didDeactivate()
         }
     }
 
@@ -326,7 +284,47 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         bufferSize: AVAudioFrameCount,
         tapHandler: @escaping @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void
     ) throws {
-        try startEngineCoreLocked(vpioEnabled: vpioEnabled, bufferSize: bufferSize, tapHandler: tapHandler)
+        // iOS: the engine only records while the shared audio session is
+        // active in a record-capable category. The session is per *recording*
+        // (`RecordingAudioSessionLifecycle`): configured once per process,
+        // activated on the first start of a recording, and — the rule the
+        // fourth device run broke — never re-activated by a rebuild while the
+        // recording is engaged; iOS refuses that from the background (`'!int'`).
+        // Doing it here (not at app launch) keeps the orange mic indicator honest.
+        let preparation = audioSession.prepareForEngineStart()
+        do {
+            switch preparation {
+            case .configureAndActivate:
+                try Self.configureAudioSessionCategory()
+                try Self.activateAudioSession()
+            case .activateOnly:
+                try Self.activateAudioSession()
+            case .alreadyActive:
+                break
+            }
+        } catch {
+            audioSession.activationFailed()
+            AudioCaptureDiagnostics.append(
+                "audio_session_activate_failed step=\(preparation) \(AudioCaptureDiagnostics.errorFields(error))"
+            )
+            throw error
+        }
+        if preparation != .alreadyActive {
+            audioSession.didActivate()
+        }
+        do {
+            try startEngineCoreLocked(vpioEnabled: vpioEnabled, bufferSize: bufferSize, tapHandler: tapHandler)
+        } catch {
+            // Balanced: a start that fails right after *this call* activated
+            // deactivates again, so a failed first start never leaves the mic
+            // indicator lit. A failed rebuild mid-recording keeps the session —
+            // the recording is still engaged and the next attempt needs it.
+            if preparation != .alreadyActive {
+                Self.deactivateAudioSession()
+                audioSession.didDeactivate()
+            }
+            throw error
+        }
     }
 
     private func startEngineCoreLocked(
@@ -420,10 +418,9 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
 
     private func tearDownLocked() {
         removeConfigurationChangeObserverLocked()
-        // The HAL default-input listener is *not* removed here: it lives for
-        // the platform's lifetime (installed on the first start, removed in
-        // deinit), so a recording whose rebuild failed still hears the input
-        // come back.
+        // The AVAudioSession observers are *not* removed here: they live for
+        // the platform's lifetime (installed in init, removed in deinit), so a
+        // recording whose rebuild failed still hears the route come back.
         guard engineStarter == nil else {
             audioEngine = AVAudioEngine()
             running = false
@@ -472,7 +469,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
 
     /// Observe `AVAudioEngine.configurationChangeNotification` on the
     /// current `audioEngine`: log every fire to `dictation-audio.log` and
-    /// hand the stream an input hint (both platforms).
+    /// hand the stream an input hint.
     /// Core Audio posts this when the engine's input chain is renegotiated
     /// out from under us — default-input device change, sample-rate
     /// change, exclusive-access takeover by another process. Without
@@ -503,19 +500,21 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 self.logger.info(
                     "shared_mic_engine_configuration_changed sr=\(snapshot.sr, privacy: .public) ch=\(snapshot.ch, privacy: .public) isRunning=\(snapshot.isRunning, privacy: .public)"
                 )
-                // Apple: when the I/O unit sees a hardware sample-rate or
-                // channel-count change, the engine *stops*. Reflect that (a
-                // full teardown, so the next start gets a fresh engine with no
-                // stale tap), then hand the stream a hint: engine down → it
-                // rebuilds now; still running → it watches whether buffers keep
-                // arriving (`MicrophoneInputPolicy`). Stale notifications for an
-                // engine we already replaced are ignored.
-                guard engineBox.wraps(self.audioEngine), self.running else { return }
-                if !engineIsRunning {
+                // On iOS this notification means the engine HAS STOPPED (the
+                // I/O unit saw its input or output hardware change — including
+                // the output flipping to the speaker right after our own
+                // activation). Reflect that with a teardown — session untouched
+                // — so the stream's policy sees `engine down` and rebuilds now
+                // rather than watching for buffers that will never come.
+                guard engineBox.wraps(self.audioEngine) else { return }
+                if self.running {
                     self.tearDownLocked()
                     AudioCaptureDiagnostics.append("shared_mic_engine_configuration_changed_stopped")
                 }
-                self.defaultInputChangeHandler?()
+                if self.audioSession.isEngaged {
+                    AudioCaptureDiagnostics.append("shared_mic_engine_configuration_changed_restart")
+                    self.defaultInputChangeHandler?()
+                }
             }
         }
         configurationChangeObserver = token
@@ -528,50 +527,150 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
         }
     }
 
-    private func installDefaultInputChangeObserverLocked() {
-        guard defaultInputChangeObserver == nil else { return }
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
-        )
-        let block: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            AudioCaptureDiagnostics.append(
-                "audio_default_input_changed \(AudioCaptureDiagnostics.defaultInputDeviceSummary())"
+    // No HAL on iOS. Per-engine install/remove are no-ops here: the session
+    // observers below live for the platform's lifetime (see the property doc).
+    private func installDefaultInputChangeObserverLocked() {}
+    private func removeDefaultInputChangeObserverLocked() {}
+
+    /// AVAudioSession's route-change and interruption notifications, mapped to
+    /// the engine-rebuild handler the Mac uses (`RecordingAudioSessionLifecycle`
+    /// spells out the model). Everything is decided on `queue` so it sees the
+    /// same `audioSession` state the start/stop paths do.
+    private func installAudioSessionObservers() {
+        guard audioSessionObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        let session = AVAudioSession.sharedInstance()
+        let routeToken = center.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: session, queue: nil
+        ) { [weak self] notification in
+            let raw = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt ?? 0
+            let reason = AVAudioSession.RouteChangeReason(rawValue: raw) ?? .unknown
+            let previous = notification.userInfo?[AVAudioSessionRouteChangePreviousRouteKey] as? AVAudioSessionRouteDescription
+            let previousInput = previous?.inputs.first
+            let current = session.currentRoute
+            let currentInput = current.inputs.first
+            let inputChanged = RecordingAudioSessionLifecycle.inputRouteChanged(
+                isCategoryChange: reason == .categoryChange,
+                previousInputUID: previousInput?.uid, currentInputUID: currentInput?.uid
             )
-            // A hint, not a trigger: the stream's policy decides whether the
-            // engine (still delivering on its current device?) is rebuilt.
-            self?.defaultInputChangeHandler?()
-        }
-        let status = AudioObjectAddPropertyListenerBlock(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            defaultInputListenerQueue,
-            block
-        )
-        guard status == noErr else {
             AudioCaptureDiagnostics.append(
-                "audio_default_input_listener_failed status=\(status)"
+                "audio_route_changed reason=\(Self.label(for: reason)) input=\(Self.portLabel(previousInput))→\(Self.portLabel(currentInput)) output=\(Self.portLabel(previous?.outputs.first))→\(Self.portLabel(current.outputs.first)) input_changed=\(inputChanged)"
             )
-            return
+            guard inputChanged else { return }   // our own activation, a category set, an output override
+            self?.queue.async { [weak self] in
+                guard let self, self.audioSession.isEngaged else { return }
+                // An input hint, like the Mac's default-input change: the
+                // stream's policy rebuilds only if the engine has stopped
+                // delivering. Session untouched either way.
+                self.defaultInputChangeHandler?()
+            }
         }
-        defaultInputChangeObserver = block
+        let interruptionToken = center.addObserver(
+            forName: AVAudioSession.interruptionNotification, object: session, queue: nil
+        ) { [weak self] notification in
+            let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt ?? 0
+            guard let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
+            switch type {
+            case .began:
+                // A call, Siri or an alarm took the session and stopped the
+                // engine. The recording stays engaged (the island shows "No
+                // input"); the session is marked interrupted so the resume path
+                // knows it must re-activate — the one legitimate re-activation.
+                AudioCaptureDiagnostics.append("audio_session_interruption_began")
+                self?.queue.async { [weak self] in
+                    guard let self else { return }
+                    self.audioSession.interruptionBegan()
+                    // The system stopped the engine: tear it down (session
+                    // untouched) so the `.ended` hint reads `engine down` and
+                    // rebuilds immediately instead of after a recheck.
+                    if self.running { self.tearDownLocked() }
+                }
+            case .ended:
+                let optionsRaw = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+                let shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsRaw).contains(.shouldResume)
+                AudioCaptureDiagnostics.append("audio_session_interruption_ended should_resume=\(shouldResume)")
+                guard shouldResume else { return }
+                self?.queue.async { [weak self] in
+                    guard let self, self.audioSession.isEngaged else { return }
+                    // iOS says the interrupter is gone: the rebuild re-activates
+                    // (`.activateOnly`) and restarts the engine.
+                    self.defaultInputChangeHandler?()
+                }
+            @unknown default:
+                break
+            }
+        }
+        audioSessionObservers = [routeToken, interruptionToken]
     }
 
-    private func removeDefaultInputChangeObserverLocked() {
-        guard let block = defaultInputChangeObserver else { return }
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain
+    private static func portLabel(_ port: AVAudioSessionPortDescription?) -> String {
+        port?.portType.rawValue ?? "none"
+    }
+
+    /// Record-capable session. `.playAndRecord` (not `.record`) so a future
+    /// start/stop sound or haptic can play, and so the audio background mode
+    /// keeps the process alive while the session is active. `.default` mode
+    /// keeps the system's speech-friendly input processing; `.measurement`
+    /// would hand Parakeet a rawer, quieter signal.
+    ///
+    /// `.mixWithOthers` is not optional: a recording started from a Control
+    /// or the Action Button begins with the app in the background, and iOS
+    /// refuses to activate a *non-mixable* session there (`'!int'`,
+    /// `cannotInterruptOthers`, 560557684 — seen on the first device run,
+    /// 2026-09-13). Mixable sessions may activate in the background; the cost
+    /// is that another app's music keeps playing under the recording.
+    ///
+    /// Issued once per process (`RecordingAudioSessionLifecycle.isConfigured`):
+    /// the category persists, and re-issuing it on an active session from the
+    /// background is a re-negotiation iOS may refuse.
+    private static func configureAudioSessionCategory() throws {
+        var options: AVAudioSession.CategoryOptions = [.defaultToSpeaker, .mixWithOthers]
+        if #available(iOS 26.0, *) {
+            options.insert(.allowBluetoothHFP)
+        } else {
+            options.insert(.allowBluetooth)
+        }
+        try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default, options: options)
+        AudioCaptureDiagnostics.append("audio_session_configured category=playAndRecord")
+    }
+
+    /// Once per recording (and again after an interruption ended). Never from a
+    /// rebuild while the recording is engaged.
+    private static func activateAudioSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        try session.setActive(true, options: [])
+        AudioCaptureDiagnostics.append(
+            "audio_session_active category=playAndRecord sr=\(session.sampleRate) input=\(session.currentRoute.inputs.first?.portType.rawValue ?? "none") output=\(session.currentRoute.outputs.first?.portType.rawValue ?? "none")"
         )
-        AudioObjectRemovePropertyListenerBlock(
-            AudioObjectID(kAudioObjectSystemObject),
-            &address,
-            defaultInputListenerQueue,
-            block
-        )
-        defaultInputChangeObserver = nil
+    }
+
+    /// Ending the session is what tells iOS the recording is over (mic
+    /// indicator off, background-audio window closed, other apps' audio resumes).
+    /// Called from `stopEngine()` whenever the session is ours — engine running
+    /// or not — and from a first start that failed right after activating.
+    private static func deactivateAudioSession() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+            AudioCaptureDiagnostics.append("audio_session_inactive")
+        } catch {
+            AudioCaptureDiagnostics.append(
+                "audio_session_deactivate_failed \(AudioCaptureDiagnostics.errorFields(error))"
+            )
+        }
+    }
+
+    private static func label(for reason: AVAudioSession.RouteChangeReason) -> String {
+        switch reason {
+        case .unknown: return "unknown"
+        case .newDeviceAvailable: return "new_device"
+        case .oldDeviceUnavailable: return "device_gone"
+        case .categoryChange: return "category"
+        case .override: return "override"
+        case .wakeFromSleep: return "wake"
+        case .noSuitableRouteForCategory: return "no_route"
+        case .routeConfigurationChange: return "config"
+        @unknown default: return "other"
+        }
     }
 
     public func setDefaultInputChangeHandler(_ handler: (@Sendable () -> Void)?) {
@@ -587,34 +686,3 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     }
 }
 #endif
-
-/// Default explicit-device setter for `AVAudioEngineMicrophonePlatform`
-/// (used when the initializer's `inputDeviceSetter` is `nil`). File-scope and
-/// internal: a public initializer's default argument can only name public
-/// symbols, so the platform choice is resolved inside the initializer instead.
-#if os(macOS)
-let avAudioEngineDefaultInputDeviceSetter: AVAudioEngineMicrophonePlatform.InputDeviceSetter = { deviceID, engine in
-    AudioDeviceManager.setInputDevice(deviceID, on: engine)
-}
-#else
-/// iOS never resolves an explicit device: the attempt chain is empty and
-/// AVAudioSession owns routing, so an explicit set is always a refusal.
-let avAudioEngineDefaultInputDeviceSetter: AVAudioEngineMicrophonePlatform.InputDeviceSetter = { _, _ in false }
-#endif
-
-public enum AVAudioEngineMicrophonePlatformError: Error, Equatable, LocalizedError {
-    case deviceSetFailed(MeetingInputDeviceAttempt)
-    case invalidInputFormat(sampleRate: Double, channels: AVAudioChannelCount)
-    case noDeviceAvailable
-
-    public var errorDescription: String? {
-        switch self {
-        case .deviceSetFailed(let attempt):
-            return "Failed to set \(attempt.source.logValue) input device"
-        case .invalidInputFormat(let sampleRate, let channels):
-            return "Invalid input format: sampleRate=\(sampleRate) channels=\(channels)"
-        case .noDeviceAvailable:
-            return "No microphone input device available"
-        }
-    }
-}
