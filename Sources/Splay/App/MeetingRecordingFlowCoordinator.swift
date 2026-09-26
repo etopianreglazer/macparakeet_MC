@@ -10,6 +10,12 @@ enum MeetingRecordingQuitState {
 
 @MainActor
 final class MeetingRecordingFlowCoordinator {
+    /// True whenever the flow is not idle — including transcribing, the done
+    /// dwell, and a held failure (which blocks `fn` until the island is
+    /// clicked). A bare-`fn` tap then means "stop" (`toggleRecording` ignores
+    /// it where stopping makes no sense).
+    var isFnBusy: Bool { stateMachine.state != .idle }
+
     var isMeetingRecordingActive: Bool {
         switch stateMachine.state {
         case .idle, .finishing:

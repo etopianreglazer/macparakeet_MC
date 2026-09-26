@@ -12,9 +12,9 @@ final class AppHotkeyCoordinator {
     private let onReadyForSecondTap: () -> Void
     private let onEscapeWhileIdle: () -> Void
     private let onToggleMeetingRecording: () -> Void
-    /// Fork island: single/double-tap Fn toggles a recording with the given
-    /// audio source (single = mic only, double = mic + system).
-    private let onFnToggleRecording: (MeetingAudioSourceMode) -> Void
+    /// Splay Fn: tap = mic recording, double-tap = dictation, triple-tap =
+    /// meeting; a tap while any of them runs stops it.
+    private let fnCaptureRouter: FnCaptureRouter
     private let onTriggerFileTranscription: () -> Void
     private let onDictationHotkeyManagersChanged: ([HotkeyManager]) -> Void
     private let onAnyHotkeyEnabled: () -> Void
@@ -41,7 +41,7 @@ final class AppHotkeyCoordinator {
         onReadyForSecondTap: @escaping () -> Void,
         onEscapeWhileIdle: @escaping () -> Void,
         onToggleMeetingRecording: @escaping () -> Void,
-        onFnToggleRecording: @escaping (MeetingAudioSourceMode) -> Void,
+        fnCaptureRouter: FnCaptureRouter,
         onTriggerFileTranscription: @escaping () -> Void,
         onDictationHotkeyManagersChanged: @escaping ([HotkeyManager]) -> Void,
         onAnyHotkeyEnabled: @escaping () -> Void,
@@ -57,7 +57,7 @@ final class AppHotkeyCoordinator {
         self.onReadyForSecondTap = onReadyForSecondTap
         self.onEscapeWhileIdle = onEscapeWhileIdle
         self.onToggleMeetingRecording = onToggleMeetingRecording
-        self.onFnToggleRecording = onFnToggleRecording
+        self.fnCaptureRouter = fnCaptureRouter
         self.onTriggerFileTranscription = onTriggerFileTranscription
         self.onDictationHotkeyManagersChanged = onDictationHotkeyManagersChanged
         self.onAnyHotkeyEnabled = onAnyHotkeyEnabled
@@ -303,12 +303,13 @@ final class AppHotkeyCoordinator {
         dictationHotkeyManagers.forEach { $0.resetToIdle() }
     }
 
-    /// Fork island: Fn is the recording key, not a dictation key. A single bare
-    /// tap toggles a mic-only recording; a double tap toggles a mic+system
-    /// recording. Both route through the meeting coordinator (which decides start
-    /// vs stop). No push-to-talk. See docs/fork-product-model.md.
+    /// Splay Fn: tap = mic-only recording, double-tap = dictation (pasted at
+    /// stop), triple-tap = mic + system meeting; a tap while any of them runs
+    /// stops it. `FnCaptureRouter` decides busy and routes. No push-to-talk.
+    /// See docs/plans/fn-dictation-double-tap.md.
     func setupFnRecordingHotkey() {
-        // Dictation is no longer driven by Fn; clear any dictation managers.
+        // Fn dictation runs through the router, not upstream's dictation
+        // gesture managers (their reset/cancel sync does not apply); clear them.
         onDictationHotkeyManagersChanged([])
 
         let trigger = settingsViewModel.hotkeyTrigger
@@ -317,10 +318,11 @@ final class AppHotkeyCoordinator {
             return
         }
 
-        let manager = HotkeyManager(trigger: trigger, gestureMode: .singleAndDoubleTapToggle)
-        manager.onToggleRecording = { [weak self] source in
-            self?.onFnToggleRecording(source)
-        }
+        let manager = HotkeyManager(trigger: trigger, gestureMode: .tapDoubleTripleToggle)
+        let router = fnCaptureRouter
+        manager.isCaptureActive = { router.isCaptureActive }
+        manager.onStartCapture = { kind in router.start(kind) }
+        manager.onStopCapture = { router.stop() }
         manager.onEscapeWhileIdle = { [weak self] in
             self?.onEscapeWhileIdle()
         }

@@ -193,9 +193,18 @@ final class AppEnvironmentConfigurer {
                 coordinatorRefs.dictation?.dismissOverlayIfError()
             },
             onToggleMeetingRecording: callbacks.onToggleMeetingRecordingFromHotkey,
-            onFnToggleRecording: { sourceMode in
-                coordinatorRefs.meeting?.toggleRecording(trigger: .hotkey, sourceModeOverride: sourceMode)
-            },
+            fnCaptureRouter: FnCaptureRouter(
+                isDictationBusy: { coordinatorRefs.dictation?.isFnBusy ?? false },
+                isMeetingBusy: { coordinatorRefs.meeting?.isFnBusy ?? false },
+                startDictation: {
+                    coordinatorRefs.dictation?.startDictation(mode: .persistent, trigger: .hotkey)
+                },
+                stopDictation: { coordinatorRefs.dictation?.stopDictation() },
+                startRecording: { sourceMode in
+                    coordinatorRefs.meeting?.startRecording(trigger: .hotkey, sourceModeOverride: sourceMode)
+                },
+                stopRecording: { coordinatorRefs.meeting?.toggleRecording(trigger: .hotkey) }
+            ),
             onTriggerFileTranscription: callbacks.onTriggerFileTranscriptionFromHotkey,
             onDictationHotkeyManagersChanged: { managers in
                 coordinatorRefs.dictation?.hotkeyManagers = managers

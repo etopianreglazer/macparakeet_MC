@@ -86,6 +86,20 @@ final class DictationFlowCoordinator {
         }
     }
 
+    /// True while a bare-`fn` tap must mean "stop" rather than start a new
+    /// gesture: capturing, transcribing, or in the cancel countdown. The
+    /// `.finishing` display states time out on their own and accept a new start.
+    var isFnBusy: Bool { Self.isFnBusy(for: stateMachine.state) }
+
+    static func isFnBusy(for state: DictationFlowState) -> Bool {
+        switch state {
+        case .checkingEntitlements, .startingService, .recording, .pendingStop, .processing, .cancelCountdown:
+            return true
+        case .idle, .ready, .finishing:
+            return false
+        }
+    }
+
     static func menuBarPreference(for state: DictationFlowState) -> BreathWaveIcon.MenuBarState? {
         switch state {
         case .startingService, .recording, .pendingStop:
