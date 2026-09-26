@@ -167,11 +167,34 @@ final class MeetingAudioCaptureServiceTests: XCTestCase {
         XCTFail("Timed out waiting for system-only capture events")
     }
 
-    func testEmitsRuntimeErrorEventWhenMicrophoneStalls() async throws {
+    func testEmitsSourceInterruptedWhenMicrophoneStallsInMicrophoneAndSystemMode() async throws {
         let microphone = MockMeetingMicrophoneCapture()
         let service = MeetingAudioCaptureService(
             microphoneCapture: microphone,
             systemAudioCaptureFactory: { MockMeetingSystemAudioCapture() }
+        )
+
+        let events = await service.events
+        _ = try await service.start()
+        defer { Task { await service.stop() } }
+
+        microphone.emitStall(.captureRuntimeFailure("shared microphone engine stopped unexpectedly"))
+
+        var iterator = events.makeAsyncIterator()
+        let emitted = await iterator.next()
+        guard case let .sourceInterrupted(source, _)? = emitted else {
+            XCTFail("Expected .sourceInterrupted event, got \(String(describing: emitted))")
+            return
+        }
+        XCTAssertEqual(source, .microphone)
+    }
+
+    func testEmitsRuntimeErrorEventWhenMicrophoneStallsInMicrophoneOnlyMode() async throws {
+        let microphone = MockMeetingMicrophoneCapture()
+        let service = MeetingAudioCaptureService(
+            microphoneCapture: microphone,
+            systemAudioCaptureFactory: { MockMeetingSystemAudioCapture() },
+            sourceModeProvider: { .microphoneOnly }
         )
 
         let events = await service.events

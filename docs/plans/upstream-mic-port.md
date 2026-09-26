@@ -1,6 +1,9 @@
 # Upstream mic handling — adopt MacParakeet 0.8.7's approach (macOS)
 
-> Status: **BRIEF — check and refine before starting** (written end of thread 17, 2026-09-26).
+> Status: **BUILT, awaiting the owner's press** (thread 18, 2026-09-26). Built in four slices —
+> `7fa52805` transport helpers + shared log writer, `352f77e2` iOS platform in its own file,
+> `e3490f5f` MicrophoneCapture lifecycle, then the platform/stream swap — see "As built" at the end.
+> The sections below are the original brief (thread 17).
 > Supersedes the "keep the explicit System Default pin" decision in `upstream-087-port.md` and the
 > policy in `mac-input-policy.md` for **macOS**. iOS keeps today's behaviour.
 
@@ -70,3 +73,31 @@ notification so they switch away/back → expect `audio_default_input_changed` a
 record *through* AirPods and move them to the phone → expect `shared_mic_engine_configuration_changed`
 → `config_change_recovery_attempt` → `…_succeeded` on the built-in mic, bars keep moving, no gap.
 Silence in a quiet room must never produce a stall line.
+
+## As built (thread 18)
+
+- **Owner decisions:** Mac only; the iPhone keeps its own engine class
+  (`MicrophoneEnginePlatform+iOS.swift`) and its hint/recheck path, unchanged. A dead mic ends a
+  mic-only recording after upstream's ~31 s recovery (audio kept, held failure).
+- **Taken whole from upstream, deliberately unedited** so later upstream diffs apply cleanly: the
+  Mac `AVAudioEngineMicrophonePlatform`, `MutableMicrophoneTapHandler`,
+  `DefaultInputChangeBurstCoalescer`, `AudioEngineLifecycleDiagnostics`, and their tests. That
+  includes code Splay does not call yet — `prepare` (upstream's dictation prewarm), the
+  `.macParakeetMicrophoneSelectionDidChange` posts (nothing observes them), the lifecycle
+  `scope`/`workflowID`/`consumer` fields (always nil) — and upstream's long functions. Vet flagged
+  these as dead code / refactor candidates; declined on purpose. Splay edits inside upstream code:
+  `routing=` on `shared_mic_engine_input_device_started`, the macOS gate, telemetry/correlation
+  removed from the lifecycle sink.
+- **Stream:** upstream's unexpected-stop wiring (`platform_engine_dead`). The liveness watchdog is
+  gone; `engineRestartCount` stays (only iOS increments it). The hint/recheck path stays ungated —
+  the Mac platform simply never fires hints — so its tests keep running on the Mac.
+- **Meeting capture — upstream's "fail only when every source is gone":** a dead mic in a
+  mic + system recording is `meeting_capture_source_interrupted source=microphone` and the
+  recording carries on with system audio; `MeetingCaptureHealth.microphoneInterrupted` turns the
+  island amber (dead ≠ silent). Both sources gone → the recording fails.
+- **Also taken:** upstream's `TelemetryErrorClassifier` rule that only known platform NSError
+  domains survive into `error_type` (custom domains become `NSError.<code>`).
+- **Not taken:** upstream's 2 s no-first-buffer stall in `MicrophoneCapture` (Splay's first-buffer
+  check stays log-only; the Mac platform's 1 s start gate covers startup), passive/pre-roll
+  subscribers and prewarm wiring, `DiagnosticLogScope`, `MeetingMicHealthMonitor`, the rest of
+  upstream's meeting source-recovery machinery.

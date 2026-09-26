@@ -961,10 +961,23 @@ final class MeetingRecordingFlowCoordinator {
     /// to the island's amber waiting light. Purely visual — never fails the
     /// recording; silence is not a failure (see the poll comment above).
     private func updateAudioAliveness(_ health: MeetingCaptureHealth, isActivelyRecording: Bool, now: Date = Date()) {
+        let alive = Self.isAudioAlive(health, isActivelyRecording: isActivelyRecording, now: now)
+        guard alive != lastPushedAudioAlive else { return }
+        lastPushedAudioAlive = alive
+        AudioCaptureDiagnostics.append("meeting_audio_alive=\(alive)")
+        onAudioAlive?(alive)
+    }
+
+    /// Dead ≠ silent: `false` only when the input is genuinely dead — nothing
+    /// written for a while, or the mic died in a mic + system recording that
+    /// carries on with system audio.
+    static func isAudioAlive(_ health: MeetingCaptureHealth, isActivelyRecording: Bool, now: Date) -> Bool {
         let alive: Bool
         if !isActivelyRecording {
             // Paused / stopping / transcribing: settle back to the normal light.
             alive = true
+        } else if health.microphoneInterrupted {
+            alive = false
         } else if let startedAt = health.startedAt,
                   now.timeIntervalSince(startedAt) < Self.audioAliveStartupGrace {
             alive = true
@@ -977,10 +990,7 @@ final class MeetingRecordingFlowCoordinator {
         } else {
             alive = false
         }
-        guard alive != lastPushedAudioAlive else { return }
-        lastPushedAudioAlive = alive
-        AudioCaptureDiagnostics.append("meeting_audio_alive=\(alive)")
-        onAudioAlive?(alive)
+        return alive
     }
 
     private func failActiveCapture(message: String) {

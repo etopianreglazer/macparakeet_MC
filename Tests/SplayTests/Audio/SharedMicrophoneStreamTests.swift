@@ -279,6 +279,38 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         await stream.unsubscribe(t2)
     }
 
+    func testUnexpectedPlatformStopInvalidatesSubscribersAndFiresEngineDeathCallbacks() async throws {
+        let firstDeath = TestCounter()
+        let secondDeath = TestCounter()
+
+        let firstToken = try await stream.subscribe(
+            wantsVPIO: false,
+            onEngineDeath: { firstDeath.increment() }
+        ) { _, _ in }
+        _ = try await stream.subscribe(
+            wantsVPIO: false,
+            onEngineDeath: { secondDeath.increment() }
+        ) { _, _ in }
+
+        platform.simulateUnexpectedStop()
+        let deadline = ContinuousClock.now + .seconds(1)
+        while (firstDeath.value < 1 || secondDeath.value < 1), ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(1))
+        }
+
+        let diagnostics = stream.diagnostics
+        XCTAssertEqual(diagnostics.subscriberCount, 0)
+        XCTAssertFalse(diagnostics.engineRunning)
+        XCTAssertFalse(diagnostics.vpioEngaged)
+        XCTAssertEqual(firstDeath.value, 1)
+        XCTAssertEqual(secondDeath.value, 1)
+
+        // The terminal callback already invalidated this token. A late owner
+        // cleanup remains idempotent and must not stop a future engine.
+        await stream.unsubscribe(firstToken)
+        XCTAssertEqual(platform.stopEngineCallCount, 0)
+    }
+
     func testEngineDeathCallbackOptionalForBackwardsCompat() async throws {
         // Subscribers that don't pass onEngineDeath must keep working — the
         // promotion failure handles `nil` callbacks without trying to fire
@@ -612,87 +644,6 @@ final class SharedMicrophoneStreamTests: XCTestCase {
         }
     }
 
-    // MARK: - Liveness watchdog (callbacks, not loudness)
-
-    /// A stream whose watchdog ticks every 20 ms: a 100 ms callback gap is a
-    /// freeze, an engine that never delivered gets 150 ms of grace, and the
-    /// watchdog waits 150 ms before rebuilding a still-dead input again.
-    private func makeWatchdogStream() -> SharedMicrophoneStream {
-        SharedMicrophoneStream(
-            platform: platform,
-            bufferSize: 1024,
-            followDefaultInputBackoff: [.milliseconds(5)],
-            inputPolicy: MicrophoneInputPolicy(
-                recheckSchedule: [],
-                staleAfter: 0.03,
-                warmupGrace: 0.15,
-                livenessInterval: 0.02,
-                callbackGapLimit: 0.1,
-                livenessRetryInterval: 0.15,
-                livenessRetryCap: 0.15
-            )
-        )
-    }
-
-    func testLivenessRebuildsWhenCallbacksStopWithoutAnyHint() async throws {
-        // Bluetooth churn: the engine still says running, its callbacks stopped,
-        // and no HAL hint arrived to trigger a recheck.
-        let stream = makeWatchdogStream()
-        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
-        deliverOneBuffer()
-
-        try await waitUntil("rebuild after the callback gap") { self.platform.configureAndStartCalls.count >= 2 }
-        XCTAssertEqual(stream.diagnostics.subscriberCount, 1)
-        await stream.unsubscribe(token)
-    }
-
-    func testLivenessLeavesADeliveringEngineAlone() async throws {
-        // A quiet room still delivers buffers on cadence: never a rebuild.
-        let stream = makeWatchdogStream()
-        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
-        let pump = startBufferPump(every: .milliseconds(10))
-        defer { pump.cancel() }
-
-        try await Task.sleep(for: .milliseconds(400))
-
-        XCTAssertEqual(platform.configureAndStartCalls.count, 1)
-        pump.cancel()
-        await stream.unsubscribe(token)
-    }
-
-    func testLivenessRebuildsAnEngineThatNeverDeliveredAndTellsThePlatform() async throws {
-        let stream = makeWatchdogStream()
-        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
-
-        try await waitUntil("rebuild after the warm-up grace") { self.platform.configureAndStartCalls.count >= 2 }
-        XCTAssertGreaterThanOrEqual(platform.neverDeliveredNoteCount, 1)
-        await stream.unsubscribe(token)
-    }
-
-    func testLivenessRetriesAnEngineThatStaysDown() async throws {
-        // Every rebuild fails (the follow run gives up): the watchdog keeps
-        // retrying on its backoff instead of leaving the recording silent.
-        let stream = makeWatchdogStream()
-        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
-        platform.configureAndStartError = MockError.simulatedFailure
-        platform.simulateEngineStopped()
-
-        try await waitUntil("two watchdog rebuild attempts") { self.platform.configureAndStartCalls.count >= 3 }
-
-        platform.configureAndStartError = nil
-        try await waitUntil("recovered") { stream.diagnostics.engineRunning && self.platform.isEngineRunning }
-        await stream.unsubscribe(token)
-    }
-
-    func testLivenessStopsWhenTheStreamGoesIdle() async throws {
-        let stream = makeWatchdogStream()
-        let token = try await stream.subscribe(wantsVPIO: false) { _, _ in }
-        await stream.unsubscribe(token)
-
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(platform.configureAndStartCalls.count, 1, "no rebuild for a stream nobody subscribes to")
-    }
-
     func testFollowWhileIdleDoesNotStartTheEngine() async throws {
         platform.fireDefaultInputChange()
         try await Task.sleep(for: .milliseconds(120))
@@ -809,11 +760,21 @@ private final class MockMicrophonePlatform: MicrophoneEnginePlatform, @unchecked
         lock.withLock { _defaultInputChangeHandler = handler }
     }
 
-    private var _neverDeliveredNotes = 0
-    var neverDeliveredNoteCount: Int { lock.withLock { _neverDeliveredNotes } }
+    private var _unexpectedStopHandler: (@Sendable () -> Void)?
 
-    func noteCurrentEngineNeverDelivered() {
-        lock.withLock { _neverDeliveredNotes += 1 }
+    func setUnexpectedStopHandler(_ handler: (@Sendable () -> Void)?) {
+        lock.withLock { _unexpectedStopHandler = handler }
+    }
+
+    /// Test hook — the platform exhausted its recovery for a post-start
+    /// engine death (Mac: upstream's recovery episode).
+    func simulateUnexpectedStop() {
+        let handler = lock.withLock { () -> (@Sendable () -> Void)? in
+            _isRunning = false
+            _tapHandler = nil
+            return _unexpectedStopHandler
+        }
+        handler?()
     }
 
     /// Test hook — what the real platform does on a HAL default-input change

@@ -156,6 +156,13 @@ public actor MeetingAudioCaptureService {
                 ? .sourceInterrupted(source: .system, error: error)
                 : .error(error)
         }
+        // Mirror image, as upstream MacParakeet: a dead mic ends a mic-only
+        // recording, but a mic + system recording carries on with system audio.
+        let microphoneFailureEvent: @Sendable (MeetingAudioError) -> MeetingAudioCaptureEvent = { error in
+            sourceMode.capturesSystemAudio
+                ? .sourceInterrupted(source: .microphone, error: error)
+                : .error(error)
+        }
 
         do {
             if sourceMode.capturesMicrophone {
@@ -178,7 +185,7 @@ public actor MeetingAudioCaptureService {
                         self?.eventSink.emit(.microphoneBuffer(copy, time))
                     },
                     onStall: { [weak self] error in
-                        self?.eventSink.emit(.error(error))
+                        self?.eventSink.emit(microphoneFailureEvent(error))
                     }
                 )
             }

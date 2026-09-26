@@ -1,6 +1,11 @@
 # Microphone input policy — stay on the device that is delivering
 
-> Status: **ACTIVE** (thread 15, 2026-09-14). Owner direction: account for AirPods
+> Status: **HISTORICAL for macOS** (thread 18, 2026-09-26): the Mac now runs upstream MacParakeet
+> v0.8.7's mic handling — see `upstream-mic-port.md`; the hint/recheck policy, the liveness watchdog
+> and the explicit System Default pin described below are gone on the Mac. **Still live on iOS**
+> (`MicrophoneInputPolicy` hint/recheck half, fed by AVAudioSession route/interruption hints).
+>
+> Original status: ACTIVE (thread 15, 2026-09-14). Owner direction: account for AirPods
 > auto-switching between the iPhone and the Mac *architecturally*, in the spirit of the iOS
 > session model (`splay-ios-utility-layer.md` § Audio session model).
 

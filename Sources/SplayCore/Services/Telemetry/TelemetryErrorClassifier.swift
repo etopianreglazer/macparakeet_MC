@@ -4,7 +4,19 @@ import Foundation
 ///
 /// Produces strings like "URLError.notConnectedToInternet", "DictationServiceError",
 /// "CancellationError" — more useful for grouping than raw `type(of:)` class names.
+/// NSError domains are retained only for known platform errors; custom domains
+/// become `NSError.<code>` even when their text resembles a technical identifier
+/// (upstream MacParakeet v0.8.7).
 public enum TelemetryErrorClassifier {
+    private static let knownNSErrorDomains: Set<String> = [
+        NSCocoaErrorDomain,
+        NSPOSIXErrorDomain,
+        NSOSStatusErrorDomain,
+        NSURLErrorDomain,
+        "AVFoundationErrorDomain",
+        "com.apple.coreaudio.avfaudio",
+    ]
+
     public static func classify(_ error: Error) -> String {
         // URLError: include the code name for network diagnosis
         if let urlError = error as? URLError {
@@ -28,9 +40,11 @@ public enum TelemetryErrorClassifier {
             return typeName
         }
 
-        // Bridged NSError with a specific domain — include domain + code
+        // Retain only known platform domains. Custom NSError domains are
+        // arbitrary strings, so even single-word values are discarded.
         let nsError = error as NSError
-        return "\(nsError.domain).\(nsError.code)"
+        let safeDomain = knownNSErrorDomains.contains(nsError.domain) ? nsError.domain : "NSError"
+        return "\(safeDomain).\(nsError.code)"
     }
 
     /// Returns a privacy-safe error detail string: paths and URLs stripped, truncated to 512 chars.

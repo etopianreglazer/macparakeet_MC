@@ -71,6 +71,11 @@ extension MeetingInputDeviceAttempt.Source {
     }
 }
 
+/// Builds the ordered device-attempt chain the shared mic engine walks on
+/// every start: selected (explicit) → System Default (**implicit, never
+/// pinned** — AVAudioEngine follows the macOS route) → built-in. Upstream
+/// MacParakeet v0.8.7; Splay previously pinned the resolved default first,
+/// which upstream reverted in 0.6.18 because some Macs started it silent.
 public func meetingInputDeviceAttempts(
     selectedUID: String?,
     selectedInputDeviceID: (String) -> AudioDeviceID?,
@@ -90,9 +95,7 @@ public func meetingInputDeviceAttempts(
     }
 
     let defaultDeviceID = defaultInputDevice()
-    if selectedUID == nil, let defaultDeviceID {
-        appendExplicit(.systemDefault, deviceID: defaultDeviceID)
-    } else if let defaultDeviceID {
+    if let defaultDeviceID {
         seenDeviceIDs.insert(defaultDeviceID)
     }
     attempts.append(.implicitSystemDefault(resolvedDeviceID: defaultDeviceID))
@@ -553,7 +556,8 @@ public final class MicrophoneCapture: @unchecked Sendable {
             }
             guard let observer else { return }
             // Tag this distinctly: a genuine engine-death stall (the shared engine
-            // stopped unexpectedly) reaches `stallObserver` and becomes `.error`.
+            // stopped unexpectedly) reaches `stallObserver`, which ends a mic-only
+            // recording and interrupts only the mic source of a mic + system one.
             // Different route from the first-buffer watchdog, which is log-only and
             // never fails on silence — this marker keeps the two apart in the log.
             AudioCaptureDiagnostics.append(

@@ -47,11 +47,18 @@ struct TelemetryErrorClassifierTests {
             == "CancellationError")
     }
 
-    @Test("classifies NSError with domain and code")
-    func nsError() {
+    @Test("keeps a known platform NSError domain with its code")
+    func nsErrorKnownDomain() {
+        let error = NSError(domain: NSOSStatusErrorDomain, code: -10868)
+        #expect(TelemetryErrorClassifier.classify(error)
+            == "NSOSStatusErrorDomain.-10868")
+    }
+
+    @Test("drops a custom NSError domain, keeping only the code")
+    func nsErrorCustomDomain() {
         let error = NSError(domain: "TestDomain", code: 42)
         #expect(TelemetryErrorClassifier.classify(error)
-            == "TestDomain.42")
+            == "NSError.42")
     }
 
     // MARK: - errorDetail

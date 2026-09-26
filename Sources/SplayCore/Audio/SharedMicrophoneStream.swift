@@ -43,7 +43,8 @@ import os
 ///    return.
 ///
 /// 7. **Engine death is observable.** When a deferred-VPIO promotion's
-///    `tearDown → setVoiceProcessingEnabled → start` sequence fails, the
+///    `tearDown → setVoiceProcessingEnabled → start` sequence fails, or the
+///    platform exhausts its own recovery (`setUnexpectedStopHandler`), the
 ///    engine is left stopped. `diagnostics.engineRunning` reflects this,
 ///    remaining subscriptions are invalidated, and each captured
 ///    `onEngineDeath` callback fires (off-lock, off the engine queue) so
@@ -122,12 +123,6 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         var recheckArmed = false
         var recheckGeneration = 0
         var engineRestartCount = 0
-        /// Liveness watchdog (`MicrophoneInputPolicy.onLivenessTick`): one loop
-        /// while anyone is subscribed, plus its own rebuild history for backoff.
-        var livenessArmed = false
-        var livenessGeneration = 0
-        var lastLivenessRestartNanos: UInt64 = 0
-        var livenessRestartsSinceBuffer = 0
     }
 
     private enum EngineAction: Equatable {
@@ -163,13 +158,18 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         self.bufferSize = bufferSize
         self.followDefaultInputBackoff = followDefaultInputBackoff
         self.inputPolicy = inputPolicy
-        // Every input hint — HAL default input changed, engine configuration
-        // changed, iOS route change / interruption ended — lands here. The
-        // policy rebuilds only when the engine has stopped delivering: AirPods
-        // becoming the default while the built-in mic is flowing is ignored;
-        // the AirPods we record through leaving for the phone is not.
+        // iOS: every input hint — engine configuration changed, route change,
+        // interruption ended — lands here, and the policy rebuilds only when
+        // the engine has stopped delivering. The Mac platform follows upstream
+        // MacParakeet and never fires hints: it keeps a healthy engine across
+        // default-input changes and recovers a stopped one itself.
         platform.setDefaultInputChangeHandler { [weak self] in
             self?.inputHint()
+        }
+        // A post-start engine death the platform could not recover (Mac:
+        // upstream's bounded recovery episode exhausted).
+        platform.setUnexpectedStopHandler { [weak self] in
+            self?.handleUnexpectedPlatformStop()
         }
     }
 
@@ -256,80 +256,6 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
         case .recheck(let after):
             scheduleRecheck(index: index + 1, after: after, generation: generation)
         }
-    }
-
-    // MARK: - Liveness watchdog
-
-    /// Start the watchdog loop if it is not already running. Called after every
-    /// successful subscribe; the loop ends by itself when the stream goes idle.
-    private func armLivenessWatchdog() {
-        guard let interval = inputPolicy.livenessInterval else { return }
-        let generation: Int? = lock.withLock { state in
-            guard !state.livenessArmed else { return nil }
-            state.livenessArmed = true
-            state.livenessGeneration += 1
-            state.lastLivenessRestartNanos = 0
-            state.livenessRestartsSinceBuffer = 0
-            return state.livenessGeneration
-        }
-        guard let generation else { return }
-        Task { [weak self] in
-            while true {
-                try? await Task.sleep(for: .seconds(interval))
-                guard let self, self.livenessTick(generation: generation) else { return }
-            }
-        }
-    }
-
-    /// One tick. Returns `false` when the loop should end (stream idle or a
-    /// newer loop took over).
-    private func livenessTick(generation: Int) -> Bool {
-        let snapshot: (startedAt: UInt64, lastBuffer: UInt64, lastRestart: UInt64, restarts: Int)? =
-            lock.withLock { state in
-                guard state.livenessGeneration == generation else { return nil }
-                guard !state.subscribers.isEmpty else {
-                    state.livenessArmed = false
-                    return nil
-                }
-                // A buffer since the watchdog's last rebuild: the input is back.
-                if state.livenessRestartsSinceBuffer > 0,
-                   state.lastBufferAtNanos > state.lastLivenessRestartNanos {
-                    state.livenessRestartsSinceBuffer = 0
-                }
-                return (
-                    state.engineStartedAtNanos,
-                    state.lastBufferAtNanos,
-                    state.lastLivenessRestartNanos,
-                    state.livenessRestartsSinceBuffer
-                )
-            }
-        guard let snapshot else { return false }
-        let now = Self.uptimeNanos()
-        let verdict = inputPolicy.onLivenessTick(
-            engineRunning: platform.isEngineRunning,
-            engineStartedAt: Self.seconds(snapshot.startedAt),
-            lastBufferAt: Self.seconds(snapshot.lastBuffer),
-            lastRestartAt: Self.seconds(snapshot.lastRestart),
-            restartsSinceBuffer: snapshot.restarts,
-            now: Self.seconds(now) ?? 0
-        )
-        guard case .restart(let reason) = verdict else { return true }
-        let restarts: Int = lock.withLock { state in
-            state.lastLivenessRestartNanos = now
-            state.livenessRestartsSinceBuffer += 1
-            return state.livenessRestartsSinceBuffer
-        }
-        AudioCaptureDiagnostics.append(
-            "shared_mic_liveness reason=\(reason) action=restart restarts_since_buffer=\(restarts)"
-        )
-        if reason == "never_delivered" {
-            // A pinned device that starts but never delivers is the failure
-            // upstream reverted the explicit System Default pin for: let the
-            // next build use the implicit route instead.
-            platform.noteCurrentEngineNeverDelivered()
-        }
-        followDefaultInputChange()
-        return true
     }
 
     /// Note a fresh engine start. Called *before* the platform call so a first
@@ -467,7 +393,6 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
 
                 if action == .none {
                     self.emitDiagnosticsLog(transition: "subscribe", wantsVPIO: wantsVPIO)
-                    self.armLivenessWatchdog()
                     cont.resume(returning: token)
                     return
                 }
@@ -475,7 +400,6 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
                 do {
                     try self.executeEngineAction(action)
                     self.emitDiagnosticsLog(transition: "subscribe", wantsVPIO: wantsVPIO)
-                    self.armLivenessWatchdog()
                     cont.resume(returning: token)
                 } catch {
                     self.lock.withLock { state in
@@ -534,18 +458,7 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
                 } catch {
                     switch action {
                     case .reconfigureToVPIO:
-                        let deathCallbacks: [EngineDeathHandler] = self.lock.withLock { state in
-                            let callbacks = state.subscribers.values.compactMap(\.onEngineDeath)
-                            state.subscribers.removeAll()
-                            state.vpioEngaged = false
-                            // Engine was torn down inside configureAndStart
-                            // before the VPIO start failed — it's stopped,
-                            // not running raw.
-                            state.engineRunning = false
-                            state.vpioDeferred = false
-                            Self.refreshHandlersSnapshot(&state)
-                            return callbacks
-                        }
+                        let deathCallbacks = self.invalidateSubscribersAfterEngineDeath()
                         let errorType = AudioCaptureDiagnostics.errorType(error)
                         self.logger.error(
                             "shared_mic_engine_reconfigure_failed engine_dead=true error_type=\(errorType, privacy: .public) error_detail=\(error.localizedDescription, privacy: .private)"
@@ -554,15 +467,7 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
                             "shared_mic_engine_reconfigure_failed engine_dead=true \(AudioCaptureDiagnostics.errorFields(error))"
                         )
                         self.emitDiagnosticsLog(transition: "unsubscribe_engine_dead", wantsVPIO: nil)
-                        // Fire callbacks off-lock and off the engine queue so
-                        // a slow handler cannot block future stream operations.
-                        if !deathCallbacks.isEmpty {
-                            self.callbackQueue.async {
-                                for callback in deathCallbacks {
-                                    callback()
-                                }
-                            }
-                        }
+                        self.fireEngineDeathCallbacks(deathCallbacks)
                     case .stopEngine:
                         let errorType = AudioCaptureDiagnostics.errorType(error)
                         self.logger.error(
@@ -660,6 +565,50 @@ public final class SharedMicrophoneStream: @unchecked Sendable {
 
     private static func refreshHandlersSnapshot(_ state: inout State) {
         state.handlersSnapshot = state.subscribers.values.map(\.handler)
+    }
+
+    private func invalidateSubscribersAfterEngineDeath() -> [EngineDeathHandler] {
+        lock.withLock { state in
+            let callbacks = state.subscribers.values.compactMap(\.onEngineDeath)
+            state.subscribers.removeAll()
+            state.vpioEngaged = false
+            // configureAndStart tears down the running engine before a restart
+            // failure, so the stream is stopped rather than still running raw.
+            state.engineRunning = false
+            state.vpioDeferred = false
+            Self.refreshHandlersSnapshot(&state)
+            return callbacks
+        }
+    }
+
+    /// Fire off-lock and off the engine queue so a slow handler cannot block
+    /// future stream operations.
+    private func fireEngineDeathCallbacks(_ callbacks: [EngineDeathHandler]) {
+        guard !callbacks.isEmpty else { return }
+        callbackQueue.async {
+            for callback in callbacks {
+                callback()
+            }
+        }
+    }
+
+    /// Reconcile the stream's logical state after the platform has exhausted
+    /// recovery for a post-start engine death. Enters through `engineQueue` so
+    /// it cannot interleave with subscribe/unsubscribe. A platform restart that
+    /// wins the race suppresses this now-stale notification. (Upstream
+    /// MacParakeet v0.8.7.)
+    private func handleUnexpectedPlatformStop() {
+        engineQueue.async { [weak self] in
+            guard let self, !self.platform.isEngineRunning else { return }
+            let shouldInvalidate = self.lock.withLock { state in
+                state.engineRunning || !state.subscribers.isEmpty
+            }
+            guard shouldInvalidate else { return }
+
+            let deathCallbacks = self.invalidateSubscribersAfterEngineDeath()
+            self.emitDiagnosticsLog(transition: "platform_engine_dead", wantsVPIO: nil)
+            self.fireEngineDeathCallbacks(deathCallbacks)
+        }
     }
 
     // MARK: - State machine (pure, lock-held)

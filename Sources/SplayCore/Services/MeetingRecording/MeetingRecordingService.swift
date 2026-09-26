@@ -41,19 +41,25 @@ public struct MeetingCaptureHealth: Sendable, Equatable {
     public let lastSuccessfulWriteAt: Date?
     public let writtenFrameCount: Int64
     public let persistedByteCount: Int64
+    /// The mic source died during a mic + system recording that carries on
+    /// with system audio. The writer keeps succeeding (system audio), so
+    /// `lastSuccessfulWriteAt` alone cannot show the dead input.
+    public let microphoneInterrupted: Bool
 
     public init(
         mode: CaptureMode,
         startedAt: Date? = nil,
         lastSuccessfulWriteAt: Date? = nil,
         writtenFrameCount: Int64 = 0,
-        persistedByteCount: Int64 = 0
+        persistedByteCount: Int64 = 0,
+        microphoneInterrupted: Bool = false
     ) {
         self.mode = mode
         self.startedAt = startedAt
         self.lastSuccessfulWriteAt = lastSuccessfulWriteAt
         self.writtenFrameCount = writtenFrameCount
         self.persistedByteCount = persistedByteCount
+        self.microphoneInterrupted = microphoneInterrupted
     }
 }
 
@@ -734,7 +740,8 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
             startedAt: currentSession?.startedAt,
             lastSuccessfulWriteAt: lastSuccessfulWriteAt,
             writtenFrameCount: microphoneFrames + systemFrames,
-            persistedByteCount: byteCount
+            persistedByteCount: byteCount,
+            microphoneInterrupted: interruptedSources.contains(.microphone)
         )
     }
 
@@ -948,7 +955,7 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
     private func handleCaptureEvent(_ event: MeetingAudioCaptureEvent) async {
         switch event {
         case .microphoneBuffer(let buffer, let time):
-            guard !captureFailed else { return }
+            guard !captureFailed, !interruptedSources.contains(.microphone) else { return }
             let handling = captureBufferHandling(time: time)
             guard handling != .drop else { return }
             do {
@@ -1020,8 +1027,20 @@ public actor MeetingRecordingService: MeetingRecordingServiceProtocol {
 
         switch source {
         case .microphone:
-            await failCapture(error)
+            // Carry on while system audio is still captured (upstream: a
+            // recording fails only when every source is gone).
+            guard captureHealthMetrics.sourceMode?.capturesSystemAudio == true,
+                  !interruptedSources.contains(.system) else {
+                await failCapture(error)
+                return
+            }
+            latestLevels.microphone = 0
         case .system:
+            guard !interruptedSources.contains(.microphone) else {
+                // Both sources are gone.
+                await failCapture(error)
+                return
+            }
             latestLevels.system = 0
             recentSystemRms = 0
             latestSystemSignalAt = nil

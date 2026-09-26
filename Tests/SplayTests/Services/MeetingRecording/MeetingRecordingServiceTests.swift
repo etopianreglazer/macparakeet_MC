@@ -514,6 +514,104 @@ final class MeetingRecordingServiceTests: XCTestCase {
         await service.cancelRecording()
     }
 
+    func testMicrophoneSourceInterruptionKeepsSystemRecordingAlive() async throws {
+        // Double-tap (mic + system): a dead mic engine must not end the
+        // recording while system audio is still captured.
+        let captureService = MockMeetingAudioCaptureService()
+        let service = MeetingRecordingService(
+            audioCaptureService: captureService,
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: CountingMeetingSTTClient()
+        )
+
+        try await service.startRecording()
+        let micBuffer = try XCTUnwrap(makeMonoFloatBuffer(frameCount: 80_000, sampleValue: 0.5))
+        await captureService.yield(.microphoneBuffer(
+            micBuffer,
+            AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: 100.0))
+        ))
+        try await waitForMicLevel(service) { $0 > 0 }
+
+        await captureService.yield(.sourceInterrupted(
+            source: .microphone,
+            error: .captureRuntimeFailure("shared microphone engine stopped unexpectedly")
+        ))
+        try await waitForMicLevel(service) { $0 == 0 }
+
+        let mode = await service.captureMode
+        let stopCalls = await captureService.stopCallCount
+        let health = await service.captureHealth
+        XCTAssertEqual(mode, .full)
+        XCTAssertEqual(stopCalls, 0)
+        XCTAssertTrue(health.microphoneInterrupted, "the island needs the dead mic to show amber")
+
+        // A late buffer from the retired mic must not bring the level back.
+        await captureService.yield(.microphoneBuffer(
+            micBuffer,
+            AVAudioTime(hostTime: AVAudioTime.hostTime(forSeconds: 101.0))
+        ))
+        try await Task.sleep(for: .milliseconds(50))
+        let levelAfterLateBuffer = await service.micLevel
+        XCTAssertEqual(levelAfterLateBuffer, 0)
+
+        await service.cancelRecording()
+    }
+
+    func testMicrophoneSourceInterruptionEndsMicrophoneOnlyRecording() async throws {
+        let captureService = MockMeetingAudioCaptureService(
+            startReport: MeetingAudioCaptureStartReport(
+                sourceMode: .microphoneOnly,
+                microphone: MeetingMicrophoneCaptureStartReport(requestedMode: .raw, effectiveMode: .raw)
+            )
+        )
+        let service = MeetingRecordingService(
+            audioCaptureService: captureService,
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: CountingMeetingSTTClient()
+        )
+
+        try await service.startRecording(sourceMode: .microphoneOnly)
+        await captureService.yield(.sourceInterrupted(
+            source: .microphone,
+            error: .captureRuntimeFailure("shared microphone engine stopped unexpectedly")
+        ))
+        try await Task.sleep(for: .milliseconds(50))
+
+        let mode = await service.captureMode
+        XCTAssertEqual(mode, .stopped)
+
+        await service.cancelRecording()
+    }
+
+    func testRecordingEndsWhenBothSourcesAreInterrupted() async throws {
+        let captureService = MockMeetingAudioCaptureService()
+        let service = MeetingRecordingService(
+            audioCaptureService: captureService,
+            audioConverter: MockMeetingAudioFileConverter(),
+            sttTranscriber: CountingMeetingSTTClient()
+        )
+
+        try await service.startRecording()
+        await captureService.yield(.sourceInterrupted(
+            source: .microphone,
+            error: .captureRuntimeFailure("shared microphone engine stopped unexpectedly")
+        ))
+        try await Task.sleep(for: .milliseconds(50))
+        let modeAfterMic = await service.captureMode
+        XCTAssertEqual(modeAfterMic, .full)
+
+        await captureService.yield(.sourceInterrupted(
+            source: .system,
+            error: .captureRuntimeFailure("system audio stream stopped")
+        ))
+        try await Task.sleep(for: .milliseconds(50))
+
+        let mode = await service.captureMode
+        XCTAssertEqual(mode, .stopped)
+
+        await service.cancelRecording()
+    }
+
     func testSystemSourceInterruptionKeepsMicrophoneRecordingAlive() async throws {
         let captureService = MockMeetingAudioCaptureService()
         let audioConverter = MockMeetingAudioFileConverter()
@@ -1126,6 +1224,21 @@ final class MeetingRecordingServiceTests: XCTestCase {
         while !predicate(await client.callCounts) {
             if startedAt.duration(to: .now) > timeout {
                 XCTFail("Timed out waiting for meeting STT call")
+                return
+            }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    private func waitForMicLevel(
+        _ service: MeetingRecordingService,
+        timeout: Duration = .seconds(1),
+        _ predicate: @escaping (Float) -> Bool
+    ) async throws {
+        let startedAt = ContinuousClock.now
+        while !predicate(await service.micLevel) {
+            if startedAt.duration(to: .now) > timeout {
+                XCTFail("Timed out waiting for mic level predicate")
                 return
             }
             try await Task.sleep(for: .milliseconds(20))

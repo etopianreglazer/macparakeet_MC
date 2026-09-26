@@ -44,11 +44,6 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
     private var audioEngine = AVAudioEngine()
     private var running: Bool = false
     private var lastSucceededAttemptLocked: MeetingInputDeviceAttempt?
-    /// Set when the engine built on the explicit System Default attempt never
-    /// delivered; the next `configureAndStart` drops that attempt once so the
-    /// implicit route gets a turn (upstream MacParakeet reverted the explicit
-    /// pin, 0.6.18, because some Macs started it silent).
-    private var skipExplicitSystemDefaultOnce = false
     /// Token for the `AVAudioEngine.configurationChangeNotification` observer
     /// installed on the current `audioEngine` instance. Cleared on
     /// `tearDown` / `resetEngine` / `replaceEngineAfterFailure` so the
@@ -152,15 +147,7 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
                 tearDownLocked()
             }
 
-            var attempts = deviceAttemptsBuilder?() ?? []
-            if skipExplicitSystemDefaultOnce {
-                skipExplicitSystemDefaultOnce = false
-                let before = attempts.count
-                attempts.removeAll { $0.source == .systemDefault && !$0.usesImplicitSystemDefault }
-                AudioCaptureDiagnostics.append(
-                    "shared_mic_engine_skip_explicit_default removed=\(before - attempts.count)"
-                )
-            }
+            let attempts = deviceAttemptsBuilder?() ?? []
             if attempts.isEmpty {
                 // No device chain — use whatever the engine's input node picks.
                 try startConfiguredEngineLocked(
@@ -221,15 +208,6 @@ public final class AVAudioEngineMicrophonePlatform: MicrophoneEnginePlatform, @u
             }
 
             throw lastError ?? AVAudioEngineMicrophonePlatformError.noDeviceAvailable
-        }
-    }
-
-    public func noteCurrentEngineNeverDelivered() {
-        queue.sync {
-            guard let attempt = lastSucceededAttemptLocked,
-                  attempt.source == .systemDefault,
-                  !attempt.usesImplicitSystemDefault else { return }
-            skipExplicitSystemDefaultOnce = true
         }
     }
 

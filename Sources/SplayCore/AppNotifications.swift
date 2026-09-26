@@ -9,4 +9,7 @@ public extension Notification.Name {
     static let macParakeetAppearanceModeDidChange = Notification.Name("macparakeet.appearanceModeDidChange")
     static let macParakeetMenuBarOnlyModeDidChange = Notification.Name("macparakeet.menuBarOnlyModeDidChange")
     static let macParakeetShowIdlePillDidChange = Notification.Name("macparakeet.showIdlePillDidChange")
+    /// Posted by the Mac mic platform when the input route may have changed
+    /// (upstream MacParakeet v0.8.7). Nothing in Splay observes it yet.
+    static let macParakeetMicrophoneSelectionDidChange = Notification.Name("macparakeet.microphoneSelectionDidChange")
 }

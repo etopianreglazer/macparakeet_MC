@@ -68,33 +68,38 @@ fan-out. There is exactly one instance per process, owned by
 
 **Shared mic engine (the core of this folder)**
 - `SharedMicrophoneStream.swift` — fan-out, VPIO state machine,
-  subscriber tokens, `Diagnostics` snapshot. ADR-015 + ADR-016. Every
-  input *hint* from the platform (default input changed, engine
-  configuration changed, iOS route change / interruption ended) enters
-  `inputHint()`, where `MicrophoneInputPolicy` decides; the rebuild
-  itself (300/800/2000 ms backoff, never fatal) is single-flight:
-  triggers landing mid-run coalesce into one rerun.
-- `MicrophoneInputPolicy.swift` — **stay on the device that is
+  subscriber tokens, `Diagnostics` snapshot. ADR-015 + ADR-016. When the
+  platform reports an unrecoverable post-start death
+  (`setUnexpectedStopHandler`), it invalidates every subscriber and fires
+  their `onEngineDeath` (`shared_mic_diagnostics transition=platform_engine_dead`).
+  **iOS only:** input *hints* (engine configuration changed, route change,
+  interruption ended) enter `inputHint()`, where `MicrophoneInputPolicy`
+  decides; the rebuild (300/800/2000 ms backoff, never fatal) is
+  single-flight. The Mac platform never fires hints.
+- `MicrophoneInputPolicy.swift` — iOS: **stay on the device that is
   delivering; switch only when the current one stops.** Pure, portable,
-  unit-tested. Engine down → rebuild now. Engine up → rechecks at
+  unit-tested on the Mac. Engine down → rebuild now. Engine up → rechecks at
   +1 s / +3 s: a buffer older than 1 s (or none within 15 s of a start)
-  → rebuild; buffers flowing → ignore. AirPods becoming the system
-  default while the built-in mic is delivering is therefore ignored (no
-  HFP, no cold -10868 retries, no gap); the AirPods we record through
-  leaving for the phone stops the engine and is rebuilt onto the new
-  default. `docs/plans/mac-input-policy.md` has the measured log.
-- `MicrophoneEnginePlatform.swift` — the Mac `AVAudioEngine` wrapper (iOS:
-  `MicrophoneEnginePlatform+iOS.swift`). Device
-  fallback chain, VPIO toggle, tap install, engine recreation on
-  every teardown (so coreaudiod releases the VPAU aggregate
-  device). Two observers feed the stream's hint: the
-  `AVAudioEngineConfigurationChange` observer (per engine; the Mac tears
-  the engine down when it reports stopped and hints either way, iOS
-  tears down and hints while the session is engaged) and, on the Mac, a
-  `kAudioHardwarePropertyDefaultInputDevice` listener that lives for
-  the **platform's lifetime** (installed on the first start, removed in
-  `deinit`), so a recording whose rebuild failed still hears the input
-  come back.
+  → rebuild; buffers flowing → ignore.
+- `MicrophoneEnginePlatform.swift` — the protocol, and the **Mac**
+  `AVAudioEngine` wrapper: upstream MacParakeet v0.8.7's, taken whole
+  (`docs/plans/upstream-mic-port.md`). Attempt chain selected (explicit) →
+  System Default (**implicit, never pinned**) → built-in. Every start must
+  deliver a usable buffer within 1 s (on Bluetooth/unknown transport,
+  all-zero PCM does not count; an implicit Bluetooth default that times out
+  gets one rebuilt retry). A default-input change is coalesced and **never
+  tears down a healthy engine**. A configuration change that actually stops
+  the engine starts one recovery episode (fresh engine per attempt, backoff
+  0.5/1/2/4/8/16 s, probation); a 5 s callback gap or 2 s of invalid buffers
+  on a running engine is a stall and recovers the same way. Silent valid
+  PCM is never a failure. Exhausted → `unexpectedStopHandler` → the meeting
+  mic sees engine death. Engine recreated on every teardown (so coreaudiod
+  releases the VPAU aggregate device); VPIO AGC and ducking disabled.
+- `MicrophoneEnginePlatform+iOS.swift` — see Platforms above.
+- `AudioEngineLifecycleDiagnostics.swift` — upstream's per-operation
+  `audio_engine_lifecycle` record (phase timings, attempt count, classified
+  error; start/recovery always, prepare/stop only when slow). Local log
+  only — Splay sends no telemetry.
 
 **Mic consumers (each subscribes to the shared stream)**
 - `AudioRecorder.swift` — dictation capture.
@@ -219,32 +224,33 @@ passed in is valid only for the synchronous duration of the call —
 copy via `copyPCMBufferForAsyncUse` before retaining or dispatching
 async.
 
-**A default-input change is a hint, not a trigger.** Do not add code
-that restarts the engine because the system default moved; route it
-through `SharedMicrophoneStream.inputHint()` and let
-`MicrophoneInputPolicy` decide from "is the engine still delivering".
-Restarting a healthy engine cuts the head off the recording (the
-self-inflicted route change on iOS, AirPods auto-switching on the Mac).
-Log grammar:
-`shared_mic_input_hint … verdict=restart_now|recheck|ignore` →
-`shared_mic_input_recheck n=… reason=alive|stopped|engine_down|warming|never_delivered action=…`
-→ `shared_mic_follow_default_input` for the rebuild itself.
+**A default-input change never tears down a healthy engine.** Do not add
+code that restarts the engine because the system default moved. On the Mac
+the upstream platform owns this (coalesced HAL listener, recovery only when
+the engine actually stopped); on iOS route it through
+`SharedMicrophoneStream.inputHint()` and `MicrophoneInputPolicy`. Restarting
+a healthy engine cuts the head off the recording (AirPods auto-switching).
 
-**Hints are not the only way an input dies — the liveness watchdog (Mac).**
-While anyone is subscribed, `SharedMicrophoneStream` ticks
-`MicrophoneInputPolicy.onLivenessTick` every 1 s and rebuilds when the
-engine is down (a follow run that gave up), when a delivering engine's
-**callbacks** stop for 5 s (Bluetooth churn freeze, upstream #860), or
-when an engine never delivers within the 15 s warm-up grace. It measures
-callbacks, never loudness — a quiet room delivers a buffer every ~93 ms —
-so it does not contradict "dead ≠ silent". Rebuilds of a still-dead input
-back off 10 s → 20 s → 40 s → 60 s cap and reset on the next buffer.
-`never_delivered` on the explicit System Default pin makes the platform
-skip that attempt once (implicit route instead) — the failure upstream
-reverted the pin for. Off on iOS (interruptions take the engine down on
-purpose). Log: `shared_mic_liveness reason=engine_down|callbacks_stopped|never_delivered
-action=restart restarts_since_buffer=N`, `shared_mic_engine_skip_explicit_default`,
-and `shared_mic_engine_input_device_started … routing=explicit|implicit`.
+**Mac log grammar (upstream's).** Start:
+`shared_mic_engine_input_device_started source=… routing=explicit|implicit
+transport=… vpio=… set_device_ms=… start_engine_ms=…`, with
+`…_input_device_retrying … reason=initial_readiness_timeout` for the one
+Bluetooth retry and `…_input_device_start_failed` per failed attempt.
+Default input moved: `audio_default_input_changed notifications=N` (no
+rebuild). Engine reconfigured: `shared_mic_engine_configuration_changed` →
+`…_config_change_recovery_{scheduled,attempt,ready,succeeded}` or
+`…_failed` / `…_exhausted`; `…_configuration_change_ignored` for its own
+echo. Frozen: `shared_mic_engine_callback_stalled`,
+`shared_mic_engine_invalid_buffers`. Given up:
+`shared_mic_diagnostics transition=platform_engine_dead` →
+`meeting_mic_engine_death_stall`. Per operation: `audio_engine_lifecycle …`.
+iOS keeps `shared_mic_input_hint` / `shared_mic_input_recheck` /
+`shared_mic_follow_default_input`.
+
+**When the mic dies in a meeting.** Mic-only: the recording fails
+(held failure, audio kept). Mic + system: `meeting_capture_source_interrupted
+source=microphone` and the recording carries on with system audio; it
+fails only when both sources are gone (upstream's rule).
 
 **Diagnostic logging is observability-only.** The first-buffer
 watchdog and recording heartbeat in `AudioRecorder` log to
