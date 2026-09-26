@@ -5,15 +5,16 @@ import SwiftUI
 /// fn chip) drives capture. All interaction in these states is owned by the
 /// AppKit tracker, so this view is display-only.
 ///
-/// The big ambient bloom now lives on a separate desktop-level panel
-/// (`SplayGlowView`), so the light sprays onto the wallpaper instead of hovering
-/// over your work. The pill keeps only a small local glow + the fiber stripe so
-/// it still reads as alive on top, even when the desktop bloom is behind a window.
+/// No glow (owner, 2026-09-26: "gimmicky"). State colour is carried by the
+/// glyphs and the thin fiber stripe; while recording, the left slot is a voice
+/// meter and the right slot the elapsed time (`SplayIslandMeter.swift`).
 struct SplayIslandIndicator: View {
     let state: SplayIslandState
-    /// The live mic level (0…1, max of mic/system). Envelope-smoothed here to drive
-    /// the talk-reactive recording glow (sweep + rim brightness); unused otherwise.
+    /// The live **mic** level (0…1, per-buffer RMS × 10). Shaped + envelope-smoothed
+    /// here to drive the recording meter; unused otherwise.
     var level: Double = 0
+    /// Elapsed recording time for the right-slot timer.
+    var elapsedSeconds: Int = 0
     /// Whether audio frames are actually arriving (1 Hz writer-health signal).
     /// While recording, false renders the "waiting" register: the recording
     /// light holds a motionless warning amber instead of the breathing red —
@@ -31,8 +32,8 @@ struct SplayIslandIndicator: View {
     var pressedControl: IslandControl = .none
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Smooths the live mic level into the talk-reactive recording glow.
-    @State private var env = TalkEnvelope()
+    /// Smooths the live mic level into the recording meter.
+    @State private var meter = MeterEnvelope()
 
     private var isActive: Bool {
         switch state {
@@ -58,49 +59,35 @@ struct SplayIslandIndicator: View {
         let animated = isActive && !reduceMotion
         TimelineView(.animation(minimumInterval: nil, paused: !animated)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            // Talk-reactive recording level: the smoothed mic envelope × the master
-            // intensity. Only recording reacts; 0 elsewhere and when the Settings
-            // slider is at 0 (which reverts to the original calm sway).
-            let intensity = SplayGlowSettings.shared.talkIntensity
-            let reactive = animated && state == .recording && intensity > 0 && audioAlive
-            let talk = reactive ? env.advance(to: min(1, max(0, level)), at: t) * intensity : 0
-            // The waiting register is deliberately *motionless* — a still amber
-            // is what makes a dead mic legible against ordinary quiet speech.
-            let m = (animated && !waiting) ? motion(at: t, talk: talk) : Motion(fiberOpacity: staticFiberOpacity, markBreathe: (1, 1))
-            let sway = waiting ? .zero
-                : (reactive ? SplayMotion.talkVector(t, level: talk)
-                            : (animated ? SplayMotion.lightVector(t) : .zero))
-            pill(fiberOpacity: m.fiberOpacity, markBreathe: m.markBreathe, live: animated, sway: sway, talk: talk)
-                // Ease the red ↔ amber light swap (dead-mic waiting register)
-                // instead of snapping it mid-frame.
+            // The meter follows your voice only while frames arrive. The waiting
+            // register (dead input) is deliberately *motionless* and flat — a still
+            // amber is what makes a dead mic legible against ordinary quiet speech.
+            let live = state == .recording && audioAlive
+            let drive = live ? SplayMeter.shaped(level) : 0
+            // Reduce Motion: bars still track the level, just unsmoothed + no wobble.
+            let meterLevel = animated ? meter.advance(to: drive, at: t) : drive
+            let m = (animated && !waiting) ? motion(at: t) : Motion(fiberOpacity: staticFiberOpacity, markBreathe: (1, 1))
+            pill(fiberOpacity: m.fiberOpacity, markBreathe: m.markBreathe, live: animated,
+                 meterLevel: meterLevel, meterPhase: (animated && live) ? t : nil)
+                // Ease the red ↔ amber swap (dead-mic waiting register).
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.42), value: audioAlive)
         }
     }
 
     // MARK: Pill
 
-    private func pill(fiberOpacity: Double, markBreathe: (Double, Double), live: Bool, sway: CGSize, talk: Double = 0) -> some View {
+    private func pill(fiberOpacity: Double, markBreathe: (Double, Double), live: Bool,
+                      meterLevel: Double, meterPhase: Double?) -> some View {
         let size = SplayGeometry.size(for: state)
         let radius = SplayGeometry.bottomRadius(for: state)
-        // Talk reaction: the pill's own halo brightens + grows a touch as you speak,
-        // so the "I'm talking" light reads even when the desktop wash is occluded.
-        let haloOpacity = min(1, SplayGlowTuning.haloOpacity * (1 + SplayTalkGlowTuning.brightGain * talk))
-        let haloRadius = SplayGlowTuning.haloRadius * CGFloat(1 + SplayTalkGlowTuning.brightGain * talk * 0.3)
         return ZStack(alignment: .bottom) {
             UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: radius,
                                    bottomTrailingRadius: radius, topTrailingRadius: 0,
                                    style: .continuous)
                 .fill(SplayLight.surface)
                 .frame(width: size.width, height: size.height)
-                // The pill's own soft halo carries the island's visible light (the
-                // desktop bloom is faint + often behind a window). It *leans* with
-                // the light vector — the halo shifts toward the current lighting
-                // direction — and (while recording) brightens with your voice.
-                .shadow(color: SplayLight.palette(for: lightState).bloomHue.opacity(haloOpacity),
-                        radius: haloRadius,
-                        x: sway.width * 0.16, y: 7 + sway.height * 0.12)
                 .overlay(SplayFiberStripe(state: lightState, opacity: fiberOpacity))
-            face(markBreathe: markBreathe, live: live)
+            face(markBreathe: markBreathe, live: live, meterLevel: meterLevel, meterPhase: meterPhase)
                 .frame(width: size.width, height: size.height, alignment: .bottom)
         }
         .frame(maxWidth: .infinity, alignment: .top)
@@ -108,9 +95,9 @@ struct SplayIslandIndicator: View {
 
     // MARK: Face content (left cluster · camera dead zone · right cluster)
 
-    private func face(markBreathe: (Double, Double), live: Bool) -> some View {
+    private func face(markBreathe: (Double, Double), live: Bool, meterLevel: Double, meterPhase: Double?) -> some View {
         HStack(spacing: 0) {
-            leftCluster(markBreathe: markBreathe, live: live)
+            leftCluster(markBreathe: markBreathe, live: live, meterLevel: meterLevel, meterPhase: meterPhase)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if notchAttached {
                 Spacer(minLength: SplayGeometry.cameraDeadZone.width)
@@ -144,9 +131,16 @@ struct SplayIslandIndicator: View {
     /// to stay lavender in every state; it should change colour to match the state.
     private var markColor: Color { SplayLight.palette(for: lightState).fiber }
 
-    @ViewBuilder private func leftCluster(markBreathe: (Double, Double), live: Bool) -> some View {
+    @ViewBuilder private func leftCluster(markBreathe: (Double, Double), live: Bool,
+                                          meterLevel: Double, meterPhase: Double?) -> some View {
         switch state {
-        case .ready, .recording, .transcribing, .dropped:
+        case .recording:
+            // The voice meter sits where the mark was and keeps its job: clicking it
+            // opens the card. Red while frames arrive; flat motionless amber when dead.
+            hoverPop(SplayIslandMeter(level: meterLevel, phase: meterPhase, color: statusDotColor),
+                     control: .menu, scale: 1.12, glow: statusDotColor)
+                .transition(spawn)
+        case .ready, .transcribing, .dropped:
             // The mark is the menu affordance (revealed on hover): clicking it opens
             // the card (recents / settings / about). Kept off the dormant nub so idle
             // stays a quiet, hidden bar.
@@ -170,8 +164,10 @@ struct SplayIslandIndicator: View {
             // glow-free at rest. Clicking it (or anywhere off the mark) records.
             hoverPop(statusDot, control: .record).transition(spawn)
         case .recording:
-            // The same dot, now lit red + glowing = "recording". Clicking it stops.
-            hoverPop(statusDot, control: .stop, scale: 1.2).transition(spawn)
+            // Elapsed time (Voice Memos layout). Clicking it stops.
+            hoverPop(SplayIslandTimer(seconds: elapsedSeconds, color: statusDotColor),
+                     control: .stop, scale: 1.08, glow: statusDotColor)
+                .transition(spawn)
         case .transcribing:
             // "wrapping up" — no button. Amber arc (markColor is the transcribing
             // palette's amber) so the spinner reads as semantic "processing".
@@ -229,38 +225,27 @@ struct SplayIslandIndicator: View {
 
     // MARK: Pieces
 
-    /// The island's persistent record LED (right cluster). A small, light coral-red
-    /// dot — the *colour* is constant (see `statusDotColor`); only the glow and rim
-    /// brighten while recording. So rest = a calm light-red dot (no glow), recording
-    /// = the same dot lit. Clicking it records (idle) or stops (recording); the
-    /// AppKit tracker owns the click. Replaces the old hover-gated dot / stop square.
+    /// The island's record LED (right cluster, ready state). A small, light
+    /// coral-red dot; clicking it records. The AppKit tracker owns the click.
     private var statusDot: some View {
-        let recording = state == .recording
-        return Circle()
+        Circle()
             .fill(statusDotColor)
             .frame(width: 8, height: 8)   // small — a status light, not a button
-            .overlay(Circle().strokeBorder(.white.opacity(recording ? 0.3 : 0.12), lineWidth: 0.5))
-            // Glow ONLY while recording (design brief): the resting bar stays quiet.
-            .shadow(color: recording ? statusDotColor.opacity(0.85) : .clear,
-                    radius: recording ? 5 : 0)
+            .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
     }
 
-    /// A vivid, light coral-red at all times — "the red the button had before."
-    /// (Dimming this to 50% opacity over the near-black pill produced a dark, muddy
-    /// red, which read as an odd colour.) Recording doesn't darken or lighten the
-    /// hue — it just adds the glow below, so rest = light red, recording = the same
-    /// light red, lit. In the waiting register (recording, no frames arriving)
-    /// the LED joins the rest of the light on warning amber.
+    /// A vivid, light coral-red — "the red the button had before." (Dimming it to
+    /// 50% over the near-black pill read as a muddy red.) Also the recording meter
+    /// and timer colour; in the waiting register (recording, no frames arriving)
+    /// they turn warning amber.
     private var statusDotColor: Color {
         waiting ? SplayLight.palette(for: .warning).fiber : SplayLight.recordRed
     }
 
     @ViewBuilder private func mark(markBreathe: (Double, Double), live: Bool) -> some View {
-        // Give the mark its own soft, breathing glow in the state's colour, so the
-        // logo reads coral while recording, lavender while ready, etc.
+        // The mark breathes in the state's colour (lavender while ready, etc.).
         let glyph = SplayGlyph(color: markColor)
             .frame(width: 16, height: 16)
-            .shadow(color: markColor.opacity(0.55), radius: 5)
         if live {
             glyph.scaleEffect(markBreathe.1).opacity(markBreathe.0)
         } else {
@@ -286,20 +271,11 @@ struct SplayIslandIndicator: View {
 
     private struct Motion { let fiberOpacity: Double; let markBreathe: (Double, Double) }
 
-    private func motion(at t: Double, talk: Double = 0) -> Motion {
+    private func motion(at t: Double) -> Motion {
         switch state {
         case .recording:
-            // Rim brightness = your actual voice (talk > 0): the pill's edge lights
-            // up as you speak — the clearest "I'm talking" cue on the pill itself.
-            // With the talk glow off (talk == 0), fall back to the decorative beat.
-            let rim: Double
-            if talk > 0 {
-                rim = 0.45 + 0.55 * min(1, talk)
-            } else {
-                let (voiceOp, _) = SplayMotion.voice(t)
-                rim = 0.45 + 0.55 * ((voiceOp - 0.5) / 0.5)
-            }
-            return Motion(fiberOpacity: rim, markBreathe: SplayMotion.breathe(t, period: 1.9))
+            // A steady rim: the meter carries the "I hear you" signal now.
+            return Motion(fiberOpacity: 1, markBreathe: (1, 1))
         case .transcribing, .dropped:
             let rimsoft = 0.4 + 0.4 * (0.5 - 0.5 * cos(t.truncatingRemainder(dividingBy: 2.2) / 2.2 * 2 * .pi))
             return Motion(fiberOpacity: rimsoft, markBreathe: SplayMotion.breathe(t, period: 1.1))

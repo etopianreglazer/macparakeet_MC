@@ -49,11 +49,11 @@ final class MeetingRecordingFlowCoordinator {
 
     private var stateMachine = MeetingRecordingFlowStateMachine()
     private var pillController: MeetingRecordingPillController?
-    /// Pushes the fast (~30 fps) live audio level to the ambient island's isolated
-    /// glow channel while recording (wired to `IslandController.updateLiveAudioLevel`
+    /// Pushes the fast (~30 fps) live **mic** level to the ambient island's isolated
+    /// channel while recording (wired to `IslandController.updateLiveAudioLevel`
     /// in `AppEnvironmentConfigurer`). Kept separate from the 1 s `pillViewModel`
-    /// poll so the island's talk-reactive wash tracks your voice without relayout-
-    /// churning the Transcribe tile that reads `pillViewModel.micLevel`.
+    /// poll so the island's voice meter tracks you without relayout-churning the
+    /// Transcribe tile that reads `pillViewModel.micLevel`.
     var onLiveAudioLevel: ((Float) -> Void)?
     /// Pushes "is audio actually arriving" (from the 1 s writer-health poll) to
     /// the island so a dead input shows as a motionless amber waiting light
@@ -1016,9 +1016,10 @@ final class MeetingRecordingFlowCoordinator {
                     guard !Task.isCancelled else { break }
                     // Floating pill rosette: straight to CALayer opacity.
                     pillController?.updateLiveAudioLevel(max(mic, system))
-                    // Ambient island: the same fast level via its isolated glow
-                    // channel, so the recording wash tracks your voice in real time.
-                    onLiveAudioLevel?(max(mic, system))
+                    // Ambient island: the mic level alone via its isolated channel,
+                    // so the recording meter shows *your voice* — on a double-tap the
+                    // meeting audio must not read as "I hear you".
+                    onLiveAudioLevel?(mic)
                     // Panel orbs: quantized + change-gated, so a write (and the
                     // leaf re-render it triggers) fires only on a visible step.
                     if let panelViewModel {
@@ -1032,7 +1033,7 @@ final class MeetingRecordingFlowCoordinator {
                         }
                     }
                 } else {
-                    // Not actively recording: settle the island glow to silence.
+                    // Not actively recording: settle the island meter to silence.
                     onLiveAudioLevel?(0)
                 }
                 try? await Task.sleep(for: .milliseconds(33))

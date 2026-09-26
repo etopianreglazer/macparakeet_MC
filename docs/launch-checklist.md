@@ -21,9 +21,8 @@
 - **Phase 6 (the cut) lands first.** Retire the main window and remove the cut-list
   features from user-facing surfaces, so only the two surfaces exist before we check.
   Phase 5 (first-run cards) is **not** in this launch — see Known gaps.
-- **The deferred glow "nudges" get dialled** in the live HTML tuner during the final
-  visual pass (drift visibility / brightness / extend sway to ready, `SplayGlowTuning`),
-  together with the long-open talk-glow verdict.
+- **The glow is gone** (thread 17, owner: "gimmicky"); the recording voice meter replaces
+  it (`docs/plans/island-voice-meter.md`). The old glow nudges no longer apply.
 
 ## The one hard legal constraint
 
@@ -216,9 +215,8 @@ Run against a **freshly installed, Developer-ID-signed** build.
 - [ ] Re-open a transcript from Recents; copy works.
 
 ### C4. Visual pass (the deferred items)
-- [ ] Dial the glow nudges in the live HTML tuner → port to `SplayGlowTuning`.
-- [ ] Confirm the talk-glow reacts to voice (open since thread 6) and dial via the
-      Settings "Talking glow" slider / `SplayTalkGlowTuning`.
+- [ ] Recording meter: bars follow your voice, rest flat in silence, go flat amber on a
+      dead input; timer counts; clicking the timer stops, clicking the bars opens the card.
 - [ ] Island geometry: top-flush, camera housing never covered, nothing drawn on the face.
 
 ### C5. Fresh-machine sanity

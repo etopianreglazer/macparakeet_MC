@@ -259,8 +259,6 @@ final class IslandController: NSObject {
     private var notchCue: IslandNotchCueView?
     /// The ambient bloom rendered on its own panel *below* app windows, so the
     /// light sprays onto the wallpaper instead of hovering over the user's work.
-    private var glowPanel: NSPanel?
-    private var glowHosting: NSHostingView<SplayGlowView>?
     private var localClickMonitor: Any?
     private var globalClickMonitor: Any?
     private var defaultsObserver: NSObjectProtocol?
@@ -396,7 +394,6 @@ final class IslandController: NSObject {
         self.panel = panel
         self.hostingView = hosting
         self.notchCue = cue
-        installGlowPanel()
         defaultsObserver = NotificationCenter.default.addObserver(
             forName: UserDefaults.didChangeNotification, object: UserDefaults.standard, queue: .main
         ) { [weak self] _ in
@@ -440,8 +437,6 @@ final class IslandController: NSObject {
             if NSApp.isHidden { NSApp.unhide(nil) }
             if self.chrome.isNotchResting { self.anchorPanel?.orderFrontRegardless() }
             panel.orderFrontRegardless()
-            // Re-assert the desktop glow; its level keeps it below normal windows.
-            self.glowPanel?.orderFrontRegardless()
         }
     }
 
@@ -458,7 +453,7 @@ final class IslandController: NSObject {
         )
     }
 
-    /// Re-resolve notch mode and re-anchor the (fixed-size) panel + glow. The
+    /// Re-resolve notch mode and re-anchor the (fixed-size) panel. The
     /// panel never resizes — it is a stage the pill morphs within — so this only
     /// runs when the placement preference or screen geometry may have changed.
     private func repositionPanel() {
@@ -466,7 +461,6 @@ final class IslandController: NSObject {
         chrome.isNotchResting = resolvesNotch(for: screen)
         panel.level = chrome.isNotchResting ? .popUpMenu : .floating
         chrome.notchCueInset = 0
-        positionGlowPanel()
         let size = CGSize(width: IslandLayout.panelWidth, height: IslandLayout.panelHeight)
         let origin: NSPoint
         if chrome.isNotchResting {
@@ -475,51 +469,6 @@ final class IslandController: NSObject {
             origin = topCenterOrigin(for: screen, panelSize: size)
         }
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
-    }
-
-    // MARK: Desktop glow panel (the light spills onto the wallpaper, below windows)
-
-    /// Build the second panel that renders only the ambient bloom, at a level
-    /// *below* normal app windows. The pill panel stays on top and carries state;
-    /// this glow drops behind whatever window is open, so it never distracts as a
-    /// foreground overlay. It is inert (ignores all mouse events).
-    private func installGlowPanel() {
-        let size = CGSize(width: IslandLayout.glowPanelWidth, height: IslandLayout.glowPanelHeight)
-        let glow = NSPanel(contentRect: NSRect(origin: .zero, size: size),
-                           styleMask: [.borderless], backing: .buffered, defer: false)
-        glow.isOpaque = false
-        glow.backgroundColor = .clear
-        glow.hasShadow = false
-        glow.ignoresMouseEvents = true
-        // One below `.normal` → above the wallpaper/desktop icons, below every
-        // app window, so the glow reads as light on the desktop itself.
-        glow.level = NSWindow.Level(rawValue: NSWindow.Level.normal.rawValue - 1)
-        glow.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        let hosting = NSHostingView(rootView: SplayGlowView(pill: pillViewModel, chrome: chrome))
-        hosting.frame = NSRect(origin: .zero, size: size)
-        hosting.autoresizingMask = [.width, .height]
-        glow.contentView = hosting
-        self.glowPanel = glow
-        self.glowHosting = hosting
-        positionGlowPanel()
-        glow.orderFrontRegardless()   // visible, but stays below normal windows via its level
-    }
-
-    /// Keep the glow panel aligned with the pill's idle frame.
-    private func positionGlowPanel() {
-        guard let glow = glowPanel, let screen = panel?.screen ?? NSScreen.main else { return }
-        let size = CGSize(width: IslandLayout.glowPanelWidth, height: IslandLayout.glowPanelHeight)
-        let origin: NSPoint
-        if chrome.isNotchResting {
-            origin = NSPoint(x: screen.frame.midX - size.width / 2, y: screen.frame.maxY - size.height)
-        } else {
-            origin = IslandPlacementPreference.panelOrigin(
-                screenFrame: screen.frame, visibleFrame: screen.visibleFrame,
-                safeAreaTop: screen.safeAreaInsets.top, panelSize: size,
-                preference: placementPreference
-            )
-        }
-        glow.setFrame(NSRect(origin: origin, size: size), display: true)
     }
 
     // MARK: Click monitors
@@ -602,14 +551,11 @@ final class IslandController: NSObject {
         ambientVisibilityTimer = nil
         panel?.orderOut(nil)
         anchorPanel?.orderOut(nil)
-        glowPanel?.orderOut(nil)
         anchorPanel = nil
         panel = nil
         hostingView = nil
         trackingView = nil
         notchCue = nil
-        glowPanel = nil
-        glowHosting = nil
     }
 
     /// Reflect the user's "show idle pill" preference. Recording-flow states are
@@ -630,7 +576,7 @@ final class IslandController: NSObject {
         chrome.heldOpen = open
     }
 
-    /// Push the live audio level (0…1) into the island's isolated `liveLevel`
+    /// Push the live mic level (0…1) into the island's isolated `liveLevel`
     /// channel at recording rate (~30 fps). This is the island's equivalent of the
     /// floating pill's CALayer feed — only the island surfaces observe
     /// `IslandChromeModel`, and they already re-render each frame while recording,
@@ -643,8 +589,8 @@ final class IslandController: NSObject {
     }
 
     /// Push whether audio frames are actually arriving (1 Hz, from the
-    /// coordinator's writer-health poll). While recording, false swaps the
-    /// island's light for the motionless warning amber (dead ≠ silent).
+    /// coordinator's writer-health poll). While recording, false turns the
+    /// island's meter + timer a motionless warning amber (dead ≠ silent).
     func updateAudioAlive(_ alive: Bool) {
         guard chrome.audioAlive != alive else { return }
         chrome.audioAlive = alive

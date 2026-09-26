@@ -37,10 +37,10 @@ Tap again to stop. The transcript is written to disk; the audio is kept beside i
 ## Two surfaces, no third
 
 **The island** — a flat-black pill that hangs from the notch. It is an *indicator*, not a
-control panel: nothing is drawn on its face. Its identity is the light behind it, which
-breathes red while recording, turns amber while transcribing, and settles green when the
-file is written. If your microphone is dead rather than merely silent, the light holds a
-motionless amber so you find out in the first second instead of at the end.
+control panel. While you record, five small red bars follow your voice and a timer counts
+up, so you can see it is hearing you; an amber spinner means transcribing, a green check
+means the file is written. If your microphone is dead rather than merely silent, the bars
+go flat and amber so you find out in the first second instead of at the end.
 
 **The card** — one centred panel carrying everything else: recent recordings, settings,
 about. Click the mark on the island to open it. Esc or click away to dismiss.

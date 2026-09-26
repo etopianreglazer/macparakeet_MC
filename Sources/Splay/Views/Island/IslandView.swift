@@ -43,17 +43,10 @@ enum IslandLayout {
     /// horizontally centered and anchored just below the menu bar. Nothing
     /// resizes the panel, so the morph stays smooth and its hit geometry never
     /// changes with the lifecycle state.
-    // The stage must be wide/tall enough to contain the widest indicator bloom
-    // (the recording glow fans out well beyond the pill). The pill stays centred;
-    // the extra width is transparent and click-through.
+    // A fixed stage (sized when the island still had a glow around it). The pill
+    // stays centred; the extra area is transparent and click-through.
     static let panelWidth: CGFloat = 840
     static let panelHeight: CGFloat = 460
-
-    /// The desktop glow renders on its own, *much wider* panel below app windows
-    /// so the Ambilight wash can spread far and fade to nothing without clipping
-    /// at a panel edge. It is inert and click-through, so the extra width is free.
-    static let glowPanelWidth: CGFloat = 1400
-    static let glowPanelHeight: CGFloat = 460
 
     // The panel stage itself starts at the menu-bar safe edge. On the internal
     // notched display an 8pt inset places the idle nub *inside* the physical
@@ -80,6 +73,8 @@ enum IslandLayout {
     /// button). Kept tight — close to the drawn glyph — so hover/click detection
     /// hugs the small dot instead of arming across the whole right of the pill.
     static let controlHitWidth: CGFloat = 16
+    /// Hit width over the recording timer (`m:ss` at 12pt ≈ 28pt, up to 99 min).
+    static let recordingTimerHitWidth: CGFloat = 34
 
     /// Interaction rect for the AppKit tracker — simply the drawn pill (notch-mode
     /// hover is additionally served by `notchRevealRect`).
@@ -111,6 +106,12 @@ enum IslandLayout {
     /// and this rect derive from the same `pillRect`, so they never drift.
     static func controlRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
         let pill = pillRect(for: visual, notchAttached: notchAttached)
+        if visual == .recording {
+            // The recording stop control is the elapsed timer, right-aligned at the
+            // 14pt face padding — cover its width, not just a dot.
+            return CGRect(x: pill.maxX - 14 - recordingTimerHitWidth, y: pill.minY,
+                          width: recordingTimerHitWidth + 8, height: pill.height)
+        }
         let w = controlHitWidth
         // Centre the tight target on the trailing glyph (drawn ~14pt in from the
         // pill's right edge), not flush to the edge, so it sits right over the dot.
@@ -241,14 +242,14 @@ final class IslandChromeModel {
     var pressedControl: IslandControl = .none
     /// Distance from the panel's physically hidden top to the housing's lower edge.
     var notchCueInset: CGFloat = 0
-    /// Live audio level (0…1), pushed at ~30 fps while recording via
+    /// Live **mic** level (0…1), pushed at ~30 fps while recording via
     /// `IslandController.updateLiveAudioLevel` — the island's own isolated channel
-    /// so the talk-reactive glow tracks your voice in real time, without 30 fps
-    /// writes to the shared pill VM. Only the island surfaces observe this model.
+    /// so the recording meter tracks your voice in real time, without 30 fps
+    /// writes to the shared pill VM. Only the island observes this model.
     var liveLevel: Double = 0
     /// Whether audio frames are actually being written while recording (pushed
     /// at 1 Hz from the coordinator's writer-health poll). False turns the
-    /// recording light into a motionless warning amber — dead ≠ silent: a mic
+    /// recording meter + timer into a motionless warning amber — dead ≠ silent: a mic
     /// that delivers nothing is *shown*, the recording is never failed for it.
     /// Self-healing: flips back the moment frames flow.
     var audioAlive = true
@@ -258,7 +259,7 @@ final class IslandChromeModel {
 // MARK: - Island view
 
 /// The ambient island hanging from the notch. Pure **indicator**: it renders the
-/// lifecycle light (bloom + fiber stripe + mark) and nothing else — no controls,
+/// lifecycle indicator (fiber stripe + glyphs, meter + timer while recording) and nothing else — no controls,
 /// no expansion. All interaction is routed through `IslandController`'s AppKit
 /// tracking layer (hover/click on a non-activating panel can't go through
 /// SwiftUI), and anything the app needs to *say* is a card.
@@ -290,6 +291,7 @@ struct IslandView: View {
                 SplayIslandIndicator(
                     state: splayState,
                     level: chrome.liveLevel,
+                    elapsedSeconds: pill.elapsedSeconds,
                     audioAlive: chrome.audioAlive,
                     notchAttached: chrome.isNotchResting,
                     hoveredControl: chrome.hoveredControl,

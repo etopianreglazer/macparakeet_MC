@@ -9,9 +9,10 @@ A one-gesture, on-device voice recorder for Apple Silicon Macs. Tap `fn`, talk, 
 verbatim transcript file. It began as a fork of MacParakeet (GPL-3.0, Daniel Moon) and
 has since been cut down to exactly **two surfaces**:
 
-1. **The island** — a flat-black pill hanging from the notch. Indicator only: the light
-   behind it breathes red while recording, amber while transcribing, green when the file
-   is written; a motionless amber means the input is *dead* (not merely silent).
+1. **The island** — a flat-black pill hanging from the notch. Indicator only, no glow:
+   while recording, five red bars (left) follow *your mic* and a timer (right) counts up;
+   an amber spinner while transcribing, a green check when the file is written. Flat,
+   motionless amber bars mean the input is *dead* (not merely silent).
 2. **The card** — one centred modal (Recents · Settings · About) opened by clicking the
    island's mark. Everything that isn't capture lives here.
 
@@ -51,7 +52,7 @@ nothing polishes them.
 ```
 Package.swift            Splay (app) · SplayCore · SplayViewModels · SplayObjCShims · SplayTests
 Sources/Splay/           AppKit app: AppDelegate, App/ (coordinators), Hotkey/, Views/
-  Views/Island/          the two surfaces: IslandController/View, SplayCard*, SplayGlow, theme
+  Views/Island/          the two surfaces: IslandController/View, SplayIslandMeter, SplayCard*, theme
   Views/MeetingRecording/ floating pill + Notes/Transcript panel shown while recording
   Views/Dictation/       legacy overlay/idle pill (suppressed by the island flag)
   Views/Onboarding/      upstream first-run flow (not wired into first launch yet)
@@ -135,7 +136,7 @@ pre-publish gate: `docs/launch-checklist.md`.
   real regressions here.
 - Multi-file work gets a plan in `docs/plans/`. Mark finished plans `> Status: **HISTORICAL**`.
 - Visual tuning is done in a live HTML slider tuner, not build-install loops; port the
-  dialled constants into `SplayGlowTuning` / `SplayTalkGlowTuning`.
+  dialled constants into the matching tuning enum (e.g. `SplayMeterTuning`).
 - Do not push; the owner pushes.
 
 ## Runtime locations
