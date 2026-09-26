@@ -172,6 +172,61 @@ final class MeetingRecordingRecoveryServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.folderURL.path))
     }
 
+    func testDiscardDeletesIncompleteTranscriptionRow() async throws {
+        let fixture = try makeRecoverableSession()
+        let mixedURL = fixture.folderURL.appendingPathComponent("meeting.m4a")
+        let stuck = Transcription(
+            fileName: fixture.lock.displayName,
+            filePath: mixedURL.path,
+            status: .processing,
+            sourceType: .meeting
+        )
+        try transcriptionRepo.save(stuck)
+
+        try await recoveryService.discard(fixture.lock)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.folderURL.path))
+        XCTAssertNil(try transcriptionRepo.fetch(id: stuck.id))
+    }
+
+    func testDiscoverDeletesProcessingRowOnlyWhenSessionFolderIsGone() async throws {
+        let goneFolder = tempRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let orphan = Transcription(
+            fileName: "Gone",
+            filePath: goneFolder.appendingPathComponent("meeting.m4a").path,
+            status: .processing,
+            sourceType: .meeting
+        )
+        let liveFolder = tempRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: liveFolder, withIntermediateDirectories: true)
+        let live = Transcription(
+            fileName: "Live",
+            filePath: liveFolder.appendingPathComponent("meeting.m4a").path,
+            status: .processing,
+            sourceType: .meeting
+        )
+        let failed = Transcription(
+            fileName: "Failed",
+            filePath: goneFolder.appendingPathComponent("meeting.m4a").path,
+            status: .error,
+            sourceType: .meeting
+        )
+        let outside = Transcription(
+            fileName: "Elsewhere",
+            filePath: "/nonexistent-\(UUID().uuidString)/meeting.m4a",
+            status: .processing,
+            sourceType: .meeting
+        )
+        for row in [orphan, live, failed, outside] { try transcriptionRepo.save(row) }
+
+        _ = try await recoveryService.discoverPendingRecoveries()
+
+        XCTAssertNil(try transcriptionRepo.fetch(id: orphan.id))
+        XCTAssertNotNil(try transcriptionRepo.fetch(id: live.id))
+        XCTAssertNotNil(try transcriptionRepo.fetch(id: failed.id), "only stuck processing rows are swept")
+        XCTAssertNotNil(try transcriptionRepo.fetch(id: outside.id), "rows outside the meetings root are never touched")
+    }
+
     func testDiscardKeepsCompletedTranscriptAudioAndDeletesOnlyLock() async throws {
         let fixture = try makeRecoverableSession(lockState: .awaitingTranscription)
         let mixedURL = fixture.folderURL.appendingPathComponent("meeting.m4a")

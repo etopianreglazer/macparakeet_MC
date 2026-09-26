@@ -84,6 +84,7 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
         // `discoverOrphans` already sorts by `startedAt` with a folder-path
         // tiebreaker for ties — re-sorting here would just drop the
         // tiebreaker without adding any ordering guarantee.
+        sweepOrphanedProcessingRows()
         let candidates = try lockFileStore.discoverOrphans(meetingsRoot: meetingsRoot)
         var viable: [MeetingRecordingLockFile] = []
         viable.reserveCapacity(candidates.count)
@@ -103,7 +104,36 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
                 viable.append(lock)
             }
         }
+        if !viable.isEmpty {
+            AudioCaptureDiagnostics.append("meeting_recovery_pending count=\(viable.count)")
+        }
         return viable
+    }
+
+    /// Deletes meeting rows stuck in `processing` whose session folder is gone.
+    /// Such a row has no audio behind it and no lock file, so no recovery can
+    /// ever finish it; it would otherwise sit in `processing` forever (earlier
+    /// builds' `discard` removed the folder but left the row). Rows whose folder
+    /// still exists, rows in any other status, and rows outside `meetingsRoot`
+    /// are never touched.
+    private func sweepOrphanedProcessingRows() {
+        let rootPrefixes = filePathAliases(for: meetingsRoot).map { $0.hasSuffix("/") ? $0 : $0 + "/" }
+        do {
+            let orphans = try transcriptionRepo.fetchAll(limit: nil).filter { row in
+                guard row.sourceType == .meeting, row.status == .processing,
+                      let path = row.filePath,
+                      rootPrefixes.contains(where: { path.hasPrefix($0) }) else { return false }
+                let folderPath = (path as NSString).deletingLastPathComponent
+                return !fileManager.fileExists(atPath: folderPath)
+            }
+            for row in orphans where try transcriptionRepo.delete(id: row.id) {
+                AudioCaptureDiagnostics.append("meeting_recovery_swept_orphan_row id=\(row.id.uuidString)")
+            }
+        } catch {
+            AudioCaptureDiagnostics.append(
+                "meeting_recovery_sweep_failed error=\(error.localizedDescription)"
+            )
+        }
     }
 
     private func canOfferRecovery(for lock: MeetingRecordingLockFile) throws -> Bool {
@@ -209,6 +239,9 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
             return try completeRecovery(transcription, folderURL: folderURL, lock: lock)
         } catch {
             logger.error("meeting_recovery_transcription_failed session=\(lock.sessionId.uuidString, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
+            AudioCaptureDiagnostics.append(
+                "meeting_recovery_transcription_failed session=\(lock.sessionId.uuidString) error=\(error.localizedDescription)"
+            )
             throw error
         }
     }
@@ -220,10 +253,14 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
             if try existingCompletedTranscription(for: mixedURL) != nil {
                 try lockFileStore.delete(folderURL: folderURL)
                 logger.info("meeting_recovery_discard_cleaned_completed_session session=\(lock.sessionId.uuidString, privacy: .public)")
+                AudioCaptureDiagnostics.append("meeting_recovery_discard_kept_completed session=\(lock.sessionId.uuidString)")
                 return
             }
             try fileManager.removeItem(at: folderURL)
         }
+        let mixedURL = folderURL.appendingPathComponent("meeting.m4a")
+        try deleteIncompleteTranscriptions(for: mixedURL)
+        AudioCaptureDiagnostics.append("meeting_recovery_discarded session=\(lock.sessionId.uuidString)")
     }
 
     private func makeRecoveredAlignment(
@@ -335,6 +372,7 @@ public final class MeetingRecordingRecoveryService: MeetingRecordingRecoveryServ
         try transcriptionRepo.save(recovered)
         try lockFileStore.delete(folderURL: folderURL)
         logger.info("meeting_recovery_completed session=\(lock.sessionId.uuidString, privacy: .public)")
+        AudioCaptureDiagnostics.append("meeting_recovery_completed session=\(lock.sessionId.uuidString)")
         return recovered
     }
 
