@@ -92,16 +92,14 @@ final class IslandMeterTests: XCTestCase {
                     .stop, "x=\(x) notch=\(notchAttached)"
                 )
             }
-            // The bars sit where the mark was (14pt pad, ~16pt wide).
+            // The bars (14pt pad, ~16pt wide) are no longer a card button; a
+            // click there still stops (`clickAction`), it just doesn't pop.
             let barsX = pill.minX + 14 + SplayMeterTuning.width / 2
             XCTAssertEqual(
                 IslandLayout.control(at: CGPoint(x: barsX, y: y), visual: .recording, notchAttached: notchAttached),
-                .menu
+                .none
             )
-            // The stop target never reaches the menu target.
             let stop = IslandLayout.controlRect(for: .recording, notchAttached: notchAttached)
-            let menu = IslandLayout.markRect(for: .recording, notchAttached: notchAttached)
-            XCTAssertFalse(stop.intersects(menu))
             XCTAssertLessThanOrEqual(stop.maxX, pill.maxX)
         }
     }

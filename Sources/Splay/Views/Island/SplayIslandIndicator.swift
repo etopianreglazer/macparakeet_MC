@@ -10,9 +10,14 @@ import SwiftUI
 /// meter and the right slot the elapsed time (`SplayIslandMeter.swift`).
 struct SplayIslandIndicator: View {
     let state: SplayIslandState
+    /// Which capture the active pill shows: recording (meter + timer), meeting
+    /// (twin meter + timer) or dictation (meter + text cursor).
+    var captureKind: IslandCaptureKind = .recording
     /// The live **mic** level (0…1, per-buffer RMS × 10). Shaped + envelope-smoothed
     /// here to drive the recording meter; unused otherwise.
     var level: Double = 0
+    /// The live **system audio** level (0…1) — a meeting's second, fainter meter.
+    var systemLevel: Double = 0
     /// Elapsed recording time for the right-slot timer.
     var elapsedSeconds: Int = 0
     /// Whether audio frames are actually arriving (1 Hz writer-health signal).
@@ -34,6 +39,8 @@ struct SplayIslandIndicator: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Smooths the live mic level into the recording meter.
     @State private var meter = MeterEnvelope()
+    /// Smooths the live system-audio level into a meeting's second meter.
+    @State private var systemMeter = MeterEnvelope()
 
     private var isActive: Bool {
         switch state {
@@ -66,9 +73,12 @@ struct SplayIslandIndicator: View {
             let drive = live ? SplayMeter.shaped(level) : 0
             // Reduce Motion: bars still track the level, just unsmoothed + no wobble.
             let meterLevel = animated ? meter.advance(to: drive, at: t) : drive
+            let systemDrive = (live && captureKind == .meeting) ? SplayMeter.shaped(systemLevel) : 0
+            let systemMeterLevel = animated ? systemMeter.advance(to: systemDrive, at: t) : systemDrive
             let m = (animated && !waiting) ? motion(at: t) : Motion(fiberOpacity: staticFiberOpacity, markBreathe: (1, 1))
             pill(fiberOpacity: m.fiberOpacity, markBreathe: m.markBreathe, live: animated,
-                 meterLevel: meterLevel, meterPhase: (animated && live) ? t : nil)
+                 meterLevel: meterLevel, systemMeterLevel: systemMeterLevel,
+                 meterPhase: (animated && live) ? t : nil)
                 // Ease the red ↔ amber swap (dead-mic waiting register).
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.42), value: audioAlive)
         }
@@ -77,8 +87,8 @@ struct SplayIslandIndicator: View {
     // MARK: Pill
 
     private func pill(fiberOpacity: Double, markBreathe: (Double, Double), live: Bool,
-                      meterLevel: Double, meterPhase: Double?) -> some View {
-        let size = SplayGeometry.size(for: state)
+                      meterLevel: Double, systemMeterLevel: Double, meterPhase: Double?) -> some View {
+        let size = SplayGeometry.size(for: state, notchAttached: notchAttached)
         let radius = SplayGeometry.bottomRadius(for: state)
         return ZStack(alignment: .bottom) {
             UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: radius,
@@ -87,7 +97,8 @@ struct SplayIslandIndicator: View {
                 .fill(SplayLight.surface)
                 .frame(width: size.width, height: size.height)
                 .overlay(SplayFiberStripe(state: lightState, opacity: fiberOpacity))
-            face(markBreathe: markBreathe, live: live, meterLevel: meterLevel, meterPhase: meterPhase)
+            face(markBreathe: markBreathe, live: live, meterLevel: meterLevel,
+                 systemMeterLevel: systemMeterLevel, meterPhase: meterPhase)
                 .frame(width: size.width, height: size.height, alignment: .bottom)
         }
         .frame(maxWidth: .infinity, alignment: .top)
@@ -95,9 +106,11 @@ struct SplayIslandIndicator: View {
 
     // MARK: Face content (left cluster · camera dead zone · right cluster)
 
-    private func face(markBreathe: (Double, Double), live: Bool, meterLevel: Double, meterPhase: Double?) -> some View {
+    private func face(markBreathe: (Double, Double), live: Bool, meterLevel: Double,
+                      systemMeterLevel: Double, meterPhase: Double?) -> some View {
         HStack(spacing: 0) {
-            leftCluster(markBreathe: markBreathe, live: live, meterLevel: meterLevel, meterPhase: meterPhase)
+            leftCluster(markBreathe: markBreathe, live: live, meterLevel: meterLevel,
+                        systemMeterLevel: systemMeterLevel, meterPhase: meterPhase)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if notchAttached {
                 Spacer(minLength: SplayGeometry.cameraDeadZone.width)
@@ -109,8 +122,8 @@ struct SplayIslandIndicator: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .frame(height: 26)
-        // Horizontal breathing room so the mark clears the rounded corner.
-        .padding(.horizontal, 14)
+        // Horizontal breathing room so the slots clear the rounded corner.
+        .padding(.horizontal, SplayGeometry.facePadding)
         .padding(.bottom, 6)
     }
 
@@ -132,37 +145,45 @@ struct SplayIslandIndicator: View {
     private var markColor: Color { SplayLight.palette(for: lightState).fiber }
 
     @ViewBuilder private func leftCluster(markBreathe: (Double, Double), live: Bool,
-                                          meterLevel: Double, meterPhase: Double?) -> some View {
+                                          meterLevel: Double, systemMeterLevel: Double,
+                                          meterPhase: Double?) -> some View {
         switch state {
         case .recording:
-            // The voice meter sits where the mark was and keeps its job: clicking it
-            // opens the card. Red while frames arrive; flat motionless amber when dead.
-            hoverPop(SplayIslandMeter(level: meterLevel, phase: meterPhase, color: statusDotColor),
-                     control: .menu, scale: 1.12, glow: statusDotColor)
-                .transition(spawn)
-        case .ready, .transcribing, .dropped:
-            // The mark is the menu affordance (revealed on hover): clicking it opens
-            // the card (recents / settings / about). Kept off the dormant nub so idle
-            // stays a quiet, hidden bar.
-            hoverPop(mark(markBreathe: markBreathe, live: live), control: .menu, scale: 1.20, glow: markColor)
-                .transition(spawn)
+            // Your mic, in every capture: red while frames arrive, flat motionless
+            // amber when dead. A meeting adds a second, fainter meter for the
+            // system audio (tuner round 2026-09-26: "second meter").
+            HStack(spacing: SplayMeterTuning.twinGap) {
+                SplayIslandMeter(level: meterLevel, phase: meterPhase, color: statusDotColor)
+                if captureKind == .meeting {
+                    SplayIslandMeter(level: systemMeterLevel, phase: meterPhase.map { $0 + 0.7 },
+                                     color: SplayLight.systemAudio, bars: SplayMeterTuning.systemBarCount)
+                }
+            }
+            .transition(spawn)
+        case .dropped:
+            // A dropped file (menu bar icon drop) still shows the brand mark.
+            mark(markBreathe: markBreathe, live: live).transition(spawn)
         case .done:
             glyphCircle("checkmark", color: markColor).transition(spawn)
         case .copied:
             glyphCircle("doc.on.doc", color: markColor).transition(spawn)
         case .failed:
             glyphCircle("exclamationmark", color: markColor).transition(spawn)
-        case .dormant, .warning:
+        case .dormant, .ready, .transcribing, .warning:
+            // No mark (owner, tuner round 2026-09-26): the island is an indicator;
+            // Splay is opened from the menu bar icon (or a click on the idle pill).
             EmptyView()
         }
     }
 
     @ViewBuilder private var rightCluster: some View {
         switch state {
-        case .ready:
-            // The record dot (revealed on hover) — a small status LED, calm and
-            // glow-free at rest. Clicking it (or anywhere off the mark) records.
-            hoverPop(statusDot, control: .record).transition(spawn)
+        case .recording where captureKind == .dictation:
+            // Dictation writes into a text field, not a file: a blinking text
+            // cursor instead of the timer. Clicking it stops.
+            hoverPop(SplayIslandCaret(color: .white, blinking: !reduceMotion),
+                     control: .stop, scale: 1.08, glow: .white)
+                .transition(spawn)
         case .recording:
             // Elapsed time (Voice Memos layout). Clicking it stops.
             hoverPop(SplayIslandTimer(seconds: elapsedSeconds, color: statusDotColor),
@@ -188,7 +209,7 @@ struct SplayIslandIndicator: View {
                 .font(.system(size: 9, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.45))
                 .transition(spawn)
-        case .dormant, .copied, .dropped:
+        case .dormant, .ready, .copied, .dropped:
             EmptyView()
         }
     }
@@ -225,16 +246,7 @@ struct SplayIslandIndicator: View {
 
     // MARK: Pieces
 
-    /// The island's record LED (right cluster, ready state). A small, light
-    /// coral-red dot; clicking it records. The AppKit tracker owns the click.
-    private var statusDot: some View {
-        Circle()
-            .fill(statusDotColor)
-            .frame(width: 8, height: 8)   // small — a status light, not a button
-            .overlay(Circle().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
-    }
-
-    /// A vivid, light coral-red — "the red the button had before." (Dimming it to
+    /// The recording red — a vivid, light coral-red. (Dimming it to
     /// 50% over the near-black pill read as a muddy red.) Also the recording meter
     /// and timer colour; in the waiting register (recording, no frames arriving)
     /// they turn warning amber.
@@ -285,6 +297,25 @@ struct SplayIslandIndicator: View {
     }
 
     private var staticFiberOpacity: Double { state == .dormant ? 0.55 : 1 }
+}
+
+// MARK: - Dictation caret
+
+/// A text cursor: dictation's right slot (it types into a field, so no timer).
+private struct SplayIslandCaret: View {
+    let color: Color
+    let blinking: Bool
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 0.53)) { context in
+            let on = !blinking || Int(context.date.timeIntervalSinceReferenceDate / 0.53) % 2 == 0
+            RoundedRectangle(cornerRadius: 1)
+                .fill(color)
+                .frame(width: 2, height: 15)
+                .opacity(on ? 1 : 0.25)
+                .animation(.easeInOut(duration: 0.12), value: on)
+        }
+        .frame(width: 10, height: 15)
+    }
 }
 
 // MARK: - Transcribing spinner (2px ring, amber top edge = semantic "processing")

@@ -31,6 +31,9 @@ enum SplayLight {
     static let failedGlyph = rgb(0xF0, 0x83, 0x7A)
     /// The record dot (Voice-Memos-style) shown in the ready state.
     static let recordRed = rgb(0xFF, 0x5A, 0x52)
+    /// A meeting's system-audio meter (tuner round 2026-09-26): a pale blue,
+    /// fainter than the mic's red so "your voice" stays the loud signal.
+    static let systemAudio = rgba(0x9F, 0xD3, 0xFF, 0.6)
 
     struct Palette {
         let fiber: Color      // the state colour: fiber line, mark, glyphs
@@ -94,10 +97,18 @@ enum SplayGeometry {
 
     /// The single width the island grows to for any *active* state. Live feedback
     /// (2026-08-07): the old per-state widths (240/244/248/264/300) made the pill
-    /// wobble as it morphed recording → transcribing → done. There is now ONE
-    /// active width — the island's max — so the whole active lifecycle is a stable
-    /// bar that never re-sizes between states; only idle→ready→active step it up.
-    static let maxWidth: CGFloat = 280
+    /// wobble as it morphed recording → transcribing → done. There is ONE active
+    /// width per display so the lifecycle never re-sizes between states.
+    /// Tuner round 2026-09-26: the owner dialled 250. Off the notch that is the
+    /// width; beside the camera it cannot fit the slots (see `widestSlotContent`),
+    /// so notched displays keep 280.
+    static let activeWidth: CGFloat = 250
+    static let notchedActiveWidth: CGFloat = 280
+    /// Horizontal face padding (the face's leading/trailing inset).
+    static let facePadding: CGFloat = 14
+    /// The widest thing a side slot ever holds beside the camera: the timer at
+    /// 99:59 (≈34pt at 12pt); the meeting's twin meter is ≈29pt.
+    static let widestSlotContent: CGFloat = 34
 
     /// The compact resting nub — a quiet, hidden bar. The mark + record dot are
     /// revealed on hover (the ready step), not drawn here, so idle stays minimal.
@@ -109,7 +120,7 @@ enum SplayGeometry {
 
     /// Pill width / height per state. Three widths total (dormant → ready → active
     /// max) so the morph reads as deliberate growth, never a jittering re-size.
-    static func size(for state: SplayIslandState) -> CGSize {
+    static func size(for state: SplayIslandState, notchAttached: Bool) -> CGSize {
         switch state {
         case .dormant:      return CGSize(width: dormantWidth, height: 34)
         case .ready:        return CGSize(width: readyWidth, height: 38)
@@ -117,7 +128,7 @@ enum SplayGeometry {
         // lifecycle advances. Recording sits at the island's largest size.
         case .recording, .transcribing, .done, .copied,
              .warning, .failed, .dropped:
-            return CGSize(width: maxWidth, height: 38)
+            return CGSize(width: notchAttached ? notchedActiveWidth : activeWidth, height: 38)
         }
     }
 

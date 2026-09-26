@@ -130,6 +130,11 @@ final class AppEnvironmentConfigurer {
             runtimePreferences: env.runtimePreferences,
             permissionService: env.permissionService,
             mediaPauseCoordinator: mediaPauseCoordinator,
+            // The island carries dictation's states; upstream's overlay stays off screen.
+            overlayControllerFactory: { viewModel -> any DictationOverlayControlling in
+                if AppFeatures.islandReplacesDictationPill { return HiddenDictationOverlayController() }
+                return DictationOverlayController(viewModel: viewModel)
+            },
             shouldSuppressIdlePill: {
                 coordinatorRefs.meeting?.isMeetingRecordingActive == true
             },
@@ -232,15 +237,15 @@ final class AppEnvironmentConfigurer {
                 pillViewModel: meetingPillViewModel,
                 idleVisible: settingsViewModel.showIdlePill
             )
+            // A click on a running capture stops whichever one it is.
             controller.onStop = {
-                coordinatorRefs.meeting?.toggleRecording(trigger: .manual)
+                if coordinatorRefs.dictation?.isFnBusy == true {
+                    coordinatorRefs.dictation?.stopDictation()
+                } else {
+                    coordinatorRefs.meeting?.toggleRecording(trigger: .manual)
+                }
             }
-            // The status dot / idle-bar click mirrors fn (mic-only by default).
-            controller.onRecord = { mode in
-                guard !callbacks.isOnboardingVisible() else { return }
-                coordinatorRefs.meeting?.toggleRecording(trigger: .manual, sourceModeOverride: mode)
-            }
-            // The mark (and the done pill) opens the menu card (the second surface)
+            // The idle island (and the done pill) opens the menu card (the second surface)
             // — except when the island is holding a failed-recording state, where
             // the click opens a card carrying the failure's actual text (the
             // island's light is wordless; the card is where the app says *why* —
@@ -278,6 +283,22 @@ final class AppEnvironmentConfigurer {
         // IslandController.updateLiveAudioLevel → IslandChromeModel.liveLevel), so
         // the bars track your voice in real time instead of the 1 s pill cadence.
         meetingCoordinator.onLiveAudioLevel = { [weak island] level in
+            island?.updateLiveAudioLevel(level)
+        }
+        // A meeting's second meter: system audio, and whether this recording
+        // captures it at all (triple-tap) — a silent meeting still shows it.
+        meetingCoordinator.onLiveSystemAudioLevel = { [weak island] level in
+            island?.updateLiveSystemAudioLevel(level)
+        }
+        meetingCoordinator.onCaptureSourceResolved = { [weak island] mode in
+            island?.setMeetingCapturesSystem(mode.capturesSystemAudio)
+        }
+        // Dictation (fn double-tap) shows on the same island: its phase drives
+        // the pill, its mic level the meter.
+        dictationCoordinator.onIslandPhaseChange = { [weak island] phase in
+            island?.setDictationPhase(phase)
+        }
+        dictationCoordinator.onLiveAudioLevel = { [weak island] level in
             island?.updateLiveAudioLevel(level)
         }
 

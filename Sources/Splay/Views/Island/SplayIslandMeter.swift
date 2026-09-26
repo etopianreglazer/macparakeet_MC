@@ -11,7 +11,7 @@ enum SplayMeterTuning {
     static let barCount = 5
     static let barWidth: CGFloat = 2
     static let barGap: CGFloat = 1.5
-    static let maxHeight: CGFloat = 14
+    static let maxHeight: CGFloat = 15
     static let silentHeight: CGFloat = 2
     /// Input is `micLevel` (per-buffer RMS × 10, clamped). Below `gate` counts as
     /// room hiss and stays flat; above it `sqrt` lifts quiet speech, then `gain`.
@@ -25,7 +25,12 @@ enum SplayMeterTuning {
     /// Per-bar wobble depth so equal loudness still reads as a voice, not a block.
     static let wobble: Double = 0.25
 
-    static var width: CGFloat { CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barGap }
+    /// A meeting's second (system audio) meter: fewer bars, fainter colour.
+    static let systemBarCount = 3
+    /// Gap between the mic meter and a meeting's system meter.
+    static let twinGap: CGFloat = 4
+    static var width: CGFloat { width(bars: barCount) }
+    static func width(bars: Int) -> CGFloat { CGFloat(bars) * barWidth + CGFloat(bars - 1) * barGap }
 }
 
 enum SplayMeter {
@@ -40,8 +45,8 @@ enum SplayMeter {
 
     /// Heights for each bar at envelope `level` (0…1). `phase` (seconds) animates
     /// the per-bar wobble; pass nil for a still meter (Reduce Motion).
-    static func barHeights(level: Double, phase: Double?) -> [CGFloat] {
-        let n = SplayMeterTuning.barCount
+    static func barHeights(level: Double, phase: Double?, count: Int = SplayMeterTuning.barCount) -> [CGFloat] {
+        let n = count
         let centre = Double(n - 1) / 2
         let span = SplayMeterTuning.maxHeight - SplayMeterTuning.silentHeight
         return (0..<n).map { i -> CGFloat in
@@ -87,16 +92,17 @@ struct SplayIslandMeter: View {
     /// Wobble phase in seconds; nil draws a still meter.
     let phase: Double?
     let color: Color
+    var bars: Int = SplayMeterTuning.barCount
 
     var body: some View {
         HStack(alignment: .center, spacing: SplayMeterTuning.barGap) {
-            ForEach(Array(SplayMeter.barHeights(level: level, phase: phase).enumerated()), id: \.offset) { _, h in
+            ForEach(Array(SplayMeter.barHeights(level: level, phase: phase, count: bars).enumerated()), id: \.offset) { _, h in
                 Capsule()
                     .fill(color)
                     .frame(width: SplayMeterTuning.barWidth, height: h)
             }
         }
-        .frame(width: SplayMeterTuning.width, height: SplayMeterTuning.maxHeight)
+        .frame(width: SplayMeterTuning.width(bars: bars), height: SplayMeterTuning.maxHeight)
     }
 }
 

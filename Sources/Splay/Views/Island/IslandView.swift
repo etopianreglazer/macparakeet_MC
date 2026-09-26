@@ -30,10 +30,35 @@ enum IslandVisual: Equatable {
 /// the hovered control into the SwiftUI indicator, which lifts it slightly.
 enum IslandControl: Equatable {
     case none
-    case menu     // the mark (left) → open the card (recents / settings / about)
-    case record   // idle → start a recording
     case stop     // recording → stop
     case open     // done → open the menu card
+}
+
+/// What a click on the island does (`IslandLayout.clickAction`).
+enum IslandClickAction: Equatable {
+    case none
+    case openCard
+    case stop
+}
+
+/// Which capture the active island is showing — one pill, three faces.
+enum IslandCaptureKind: Equatable {
+    /// fn tap: mic-only recording — meter + timer.
+    case recording
+    /// fn triple-tap: mic + system — twin meter + timer.
+    case meeting
+    /// fn double-tap: dictation — meter + text cursor (no file, so no timer).
+    case dictation
+}
+
+/// Dictation's lifecycle as the island shows it (fed by
+/// `DictationFlowCoordinator.islandPhase(for:)`; nil = no dictation).
+enum IslandDictationPhase: Equatable {
+    case recording
+    case transcribing
+    case pasted
+    case copied
+    case failed
 }
 
 // MARK: - Shared layout (single source of truth for view + tracker)
@@ -58,14 +83,14 @@ enum IslandLayout {
     // Sizes mirror the design handoff's per-state geometry so the AppKit tracker's
     // hit-rects never drift from the drawn pill (`SplayGeometry.size` is the twin
     // used by the SwiftUI indicator).
-    static func pillSize(for visual: IslandVisual) -> CGSize {
+    static func pillSize(for visual: IslandVisual, notchAttached: Bool) -> CGSize {
         switch visual {
         case .hidden:        return .zero
-        case .idleCollapsed: return SplayGeometry.size(for: .dormant)
-        case .idleHover:     return SplayGeometry.size(for: .ready)
-        case .recording:     return SplayGeometry.size(for: .recording)
-        case .transcribing:  return SplayGeometry.size(for: .transcribing)
-        case .done:          return SplayGeometry.size(for: .done)
+        case .idleCollapsed: return SplayGeometry.size(for: .dormant, notchAttached: notchAttached)
+        case .idleHover:     return SplayGeometry.size(for: .ready, notchAttached: notchAttached)
+        case .recording:     return SplayGeometry.size(for: .recording, notchAttached: notchAttached)
+        case .transcribing:  return SplayGeometry.size(for: .transcribing, notchAttached: notchAttached)
+        case .done:          return SplayGeometry.size(for: .done, notchAttached: notchAttached)
         }
     }
 
@@ -119,18 +144,6 @@ enum IslandLayout {
         return CGRect(x: center - w / 2, y: pill.minY, width: w, height: pill.height)
     }
 
-    /// A compact hit target over the leading-aligned mark (drawn at ~x 14…30: a
-    /// 14pt leading pad + a 16pt glyph, identical in notch and non-notch layouts).
-    /// Deliberately narrow — a click on the empty middle of the bar must still
-    /// record / stop, not open the card — and clamped so it can never reach the
-    /// right-cluster control rect.
-    static let markHitWidth: CGFloat = 44
-    static func markRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
-        let pill = pillRect(for: visual, notchAttached: notchAttached)
-        let w = min(markHitWidth, pill.width - controlHitWidth - 8)
-        return CGRect(x: pill.minX, y: pill.minY, width: max(0, w), height: pill.height)
-    }
-
     /// Grace window after hover drops during which an idle click is still
     /// treated as aimed at the *revealed* pill (the hover race: `mouseDown`
     /// outrunning the tracker's hover flip, or the shallow stay-margin dropping
@@ -139,12 +152,11 @@ enum IslandLayout {
 
     /// The visual a *click* should be resolved against. During the hover race
     /// the model reads dormant while the user clicks the *revealed* pill they
-    /// saw drawn — which would swallow the mark region (it pokes outside the
-    /// narrower nub's hit rect) or misroute it to record. So while hover is (or
-    /// was just, within `hoverRaceGrace`) active, idle clicks inside the
-    /// revealed geometry resolve against the revealed visual. A cold dormant
-    /// click (`recentlyRevealed == false`) is never rerouted — the resting
-    /// nub's click-anywhere-records behavior stays intact.
+    /// saw drawn — whose edges poke outside the narrower nub's hit rect, so the
+    /// click would be swallowed. So while hover is (or was just, within
+    /// `hoverRaceGrace`) active, idle clicks inside the revealed geometry
+    /// resolve against the revealed visual. A cold dormant click
+    /// (`recentlyRevealed == false`) is never rerouted.
     static func clickVisual(
         for visual: IslandVisual, at point: CGPoint,
         notchAttached: Bool, recentlyRevealed: Bool
@@ -156,31 +168,52 @@ enum IslandLayout {
     }
 
     /// Which interactive control (if any) sits under `point` for the current
-    /// visual. Shared by the click router and the hover-feedback path so the two
-    /// never disagree about where a control is. The right-cluster control (record /
-    /// stop / open) wins its rect; the mark (menu) owns the left region.
+    /// visual — only for the hover/press feedback on a drawn glyph. The island
+    /// has no mark (owner, tuner round 2026-09-26): idle draws nothing to press.
     static func control(at point: CGPoint, visual: IslandVisual, notchAttached: Bool) -> IslandControl {
         switch visual {
-        case .idleHover:
-            if controlRect(for: .idleHover, notchAttached: notchAttached).contains(point) { return .record }
-            if markRect(for: .idleHover, notchAttached: notchAttached).contains(point) { return .menu }
-            return .none
-        case .idleCollapsed:
-            // The dormant nub draws no mark or dot — any click just records.
-            // (A click during the hover race never reaches this case: the
-            // router re-resolves it to `.idleHover` via `clickVisual` first.)
-            return .none
         case .recording:
-            if controlRect(for: .recording, notchAttached: notchAttached).contains(point) { return .stop }
-            if markRect(for: .recording, notchAttached: notchAttached).contains(point) { return .menu }
-            return .none
-        case .transcribing:
-            return markRect(for: .transcribing, notchAttached: notchAttached).contains(point) ? .menu : .none
+            return controlRect(for: .recording, notchAttached: notchAttached).contains(point) ? .stop : .none
         case .done:
             return controlRect(for: .done, notchAttached: notchAttached).contains(point) ? .open : .none
-        default:
+        case .hidden, .idleCollapsed, .idleHover, .transcribing:
             return .none
         }
+    }
+
+    /// What a click inside the pill does. Idle: open the card — the fallback way
+    /// in when the menu bar icon is hidden behind the notch (fn is how you
+    /// record). Recording: the whole bar stops. Done: open the card.
+    static func clickAction(visual: IslandVisual, control: IslandControl) -> IslandClickAction {
+        switch visual {
+        case .idleCollapsed, .idleHover, .done: return .openCard
+        case .recording: return .stop
+        case .transcribing, .hidden: return .none
+        }
+    }
+
+    /// The pill state the island shows. The meeting flow wins whenever it is not
+    /// idle (fn never runs both); otherwise a dictation drives the same pill.
+    static func effectiveState(
+        pill: MeetingRecordingPillViewModel.PillState,
+        dictation: IslandDictationPhase?
+    ) -> MeetingRecordingPillViewModel.PillState {
+        guard pill == .idle, let dictation else { return pill }
+        switch dictation {
+        case .recording: return .recording
+        case .transcribing: return .transcribing
+        case .pasted, .copied: return .completed
+        case .failed: return .error("dictation")
+        }
+    }
+
+    static func captureKind(
+        pill: MeetingRecordingPillViewModel.PillState,
+        dictation: IslandDictationPhase?,
+        meetingCapturesSystem: Bool
+    ) -> IslandCaptureKind {
+        if pill == .idle, dictation != nil { return .dictation }
+        return meetingCapturesSystem ? .meeting : .recording
     }
 
     /// Map recording-flow state (+ idle chrome) onto a visual form. `heldOpen`
@@ -208,7 +241,7 @@ enum IslandLayout {
     /// The view is top-anchored, while AppKit coordinates grow upward, so the
     /// shared tracker uses the corresponding top-derived y value.
     static func pillRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
-        let size = pillSize(for: visual)
+        let size = pillSize(for: visual, notchAttached: notchAttached)
         let topBreathingRoom = notchAttached ? 0 : topInset
         return CGRect(
             x: (panelWidth - size.width) / 2,
@@ -253,6 +286,12 @@ final class IslandChromeModel {
     /// that delivers nothing is *shown*, the recording is never failed for it.
     /// Self-healing: flips back the moment frames flow.
     var audioAlive = true
+    /// Live **system audio** level (0…1) for a meeting's second meter.
+    var liveSystemLevel: Double = 0
+    /// The running meeting captures system audio (triple-tap) — twin meter.
+    var meetingCapturesSystem = false
+    /// The dictation the island is showing, if any (nil = none).
+    var dictation: IslandDictationPhase?
     init() {}
 }
 
@@ -267,9 +306,13 @@ struct IslandView: View {
     @Bindable var pill: MeetingRecordingPillViewModel
     @Bindable var chrome: IslandChromeModel
 
+    private var effectiveState: MeetingRecordingPillViewModel.PillState {
+        IslandLayout.effectiveState(pill: pill.state, dictation: chrome.dictation)
+    }
+
     private var visual: IslandVisual {
         IslandLayout.visual(
-            for: pill.state,
+            for: effectiveState,
             hovered: chrome.isHovered,
             idleVisible: chrome.idleVisible,
             heldOpen: chrome.heldOpen
@@ -290,7 +333,12 @@ struct IslandView: View {
             if let splayState = mappedState {
                 SplayIslandIndicator(
                     state: splayState,
+                    captureKind: IslandLayout.captureKind(
+                        pill: pill.state, dictation: chrome.dictation,
+                        meetingCapturesSystem: chrome.meetingCapturesSystem
+                    ),
                     level: chrome.liveLevel,
+                    systemLevel: chrome.liveSystemLevel,
                     elapsedSeconds: pill.elapsedSeconds,
                     audioAlive: chrome.audioAlive,
                     notchAttached: chrome.isNotchResting,
@@ -326,7 +374,8 @@ struct IslandView: View {
         case .recording:     return .recording
         case .transcribing:  return .transcribing
         case .done:
-            if case .error = pill.state { return .failed }
+            if case .error = effectiveState { return .failed }
+            if chrome.dictation == .copied, pill.state == .idle { return .copied }
             return .done
         }
     }

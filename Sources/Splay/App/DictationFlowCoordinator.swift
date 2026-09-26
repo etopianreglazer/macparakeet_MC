@@ -86,6 +86,29 @@ final class DictationFlowCoordinator {
         }
     }
 
+    /// The dictation phase the island shows, pushed on every flow transition
+    /// (nil = nothing to show). Wired to `IslandController.setDictationPhase`.
+    var onIslandPhaseChange: ((IslandDictationPhase?) -> Void)?
+    /// The live mic level while dictating (~20 Hz), for the island's meter.
+    var onLiveAudioLevel: ((Float) -> Void)?
+
+    nonisolated static func islandPhase(for state: DictationFlowState) -> IslandDictationPhase? {
+        switch state {
+        case .checkingEntitlements, .startingService, .recording, .pendingStop:
+            return .recording
+        case .processing:
+            return .transcribing
+        case .finishing(.success):
+            return .pasted
+        case .finishing(.pasteFailedCopied):
+            return .copied
+        case .finishing(.noSpeech), .finishing(.error):
+            return .failed
+        case .idle, .ready, .cancelCountdown:
+            return nil
+        }
+    }
+
     /// True while a bare-`fn` tap must mean "stop" rather than start a new
     /// gesture: capturing, transcribing, or in the cancel countdown. The
     /// `.finishing` display states time out on their own and accept a new start.
@@ -331,6 +354,7 @@ final class DictationFlowCoordinator {
         }
 
         executeEffects(effects)
+        onIslandPhaseChange?(Self.islandPhase(for: stateMachine.state))
 
         if Self.mediaPauseCaptureActive(for: oldState),
            !Self.mediaPauseCaptureActive(for: stateMachine.state) {
@@ -1017,6 +1041,7 @@ final class DictationFlowCoordinator {
 
             let level = snapshot.audioLevel
             overlayViewModel?.audioLevel = level
+            onLiveAudioLevel?(level)
 
             if autoStopEnabled {
                 let now = Date()

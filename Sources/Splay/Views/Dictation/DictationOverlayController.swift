@@ -54,6 +54,16 @@ protocol DictationOverlayControlling: AnyObject {
     func resignKeyWindow()
 }
 
+/// Splay: the island carries dictation's states (`IslandDictationPhase`), so
+/// upstream's floating overlay is never put on screen. The flow still owns an
+/// overlay controller — its presence is what `isDictationActive` means.
+@MainActor
+final class HiddenDictationOverlayController: DictationOverlayControlling {
+    func show() {}
+    func hide() {}
+    func resignKeyWindow() {}
+}
+
 // MARK: - Overlay Controller
 
 /// Manages the floating dictation overlay panel.

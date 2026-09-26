@@ -67,6 +67,12 @@ final class MeetingRecordingFlowCoordinator {
     /// for silence. Wired to `IslandController.updateAudioAlive` in
     /// `AppEnvironmentConfigurer`.
     var onAudioAlive: ((Bool) -> Void)?
+    /// Pushes the fast live **system audio** level alongside `onLiveAudioLevel`
+    /// (a meeting's second meter on the island).
+    var onLiveSystemAudioLevel: ((Float) -> Void)?
+    /// The audio source this recording resolved to (fn tap = mic only, triple
+    /// = mic + system), fired as it starts.
+    var onCaptureSourceResolved: ((MeetingAudioSourceMode) -> Void)?
     /// Long-lived view model shared with the Transcribe-tab tile so the tile
     /// can render live recording state. Owned by `AppEnvironmentConfigurer`,
     /// passed in via init. Reset to `.idle` (not nilled) on flow teardown.
@@ -404,6 +410,7 @@ final class MeetingRecordingFlowCoordinator {
                 let sourceMode = self.pendingAudioSourceModeOverride ?? meetingAudioSourceModeProvider()
                 self.pendingAudioSourceModeOverride = nil
                 self.pendingAudioSourceMode = sourceMode
+                self.onCaptureSourceResolved?(sourceMode)
                 let microphoneGranted: Bool
                 let microphonePrompted: Bool
                 if sourceMode.capturesMicrophone {
@@ -1036,6 +1043,7 @@ final class MeetingRecordingFlowCoordinator {
                     // so the recording meter shows *your voice* — on a double-tap the
                     // meeting audio must not read as "I hear you".
                     onLiveAudioLevel?(mic)
+                    onLiveSystemAudioLevel?(system)
                     // Panel orbs: quantized + change-gated, so a write (and the
                     // leaf re-render it triggers) fires only on a visible step.
                     if let panelViewModel {

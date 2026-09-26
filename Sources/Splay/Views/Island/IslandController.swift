@@ -17,11 +17,9 @@ private final class IslandTrackingView: NSView {
 
     var onHoverEnter: (() -> Void)?
     var onHoverExit: (() -> Void)?
-    /// The mark (left cluster) was clicked — open the menu card. A click anywhere
-    /// else on the pill records or stops instead.
+    /// An idle click, or a click on the done pill — open the menu card.
     var onOpenCard: (() -> Void)?
-    /// An idle click off the mark (the status dot, or the bar) — start a recording.
-    var onRecordClick: (() -> Void)?
+    /// A click on a running capture — stop it.
     var onStopClick: (() -> Void)?
     /// The control under the cursor changed (record / stop / open / none) — drives
     /// the SwiftUI hover pop. Distinct from `onHoverEnter/Exit`, which only govern
@@ -151,37 +149,21 @@ private final class IslandTrackingView: NSView {
         }
         let control = IslandLayout.control(at: point, visual: visual, notchAttached: notchProvider())
 
-        // Depress the touched control like a physical key (a short pulse), before
-        // running its action. Only a real glyph (mark / dot / open) depresses; a
-        // click on the empty bar records but has nothing to push down.
+        // Depress the touched glyph like a physical key (a short pulse), before
+        // running its action. A click on the empty bar has nothing to push down.
         pressPulse(control)
 
-        // The mark (left cluster) opens the card in every state where it's shown —
-        // this is the "click the splay icon to reach the menu" affordance. It takes
-        // precedence over the pill-body actions below.
+        let action = IslandLayout.clickAction(visual: visual, control: control)
         AudioCaptureDiagnostics.append(
-            "splay_island click src=\(source) control=\(control) visual=\(visual) has_open=\(onOpenCard != nil)"
+            "splay_island click src=\(source) control=\(control) visual=\(visual) action=\(action)"
         )
-        if control == .menu {
+        switch action {
+        case .openCard:
             hovering = false
             onOpenCard?()
-            return
-        }
-
-        switch visual {
-        case .idleCollapsed, .idleHover:
-            // Recording is the primary action, so a click anywhere on the idle
-            // island *other than the mark* records — no hover required. The mark
-            // (handled above) is the one spot that opens the menu instead.
-            hovering = false
-            onRecordClick?()
-        case .recording:
-            // A click anywhere on the recording bar (off the mark) stops it — the
-            // glowing dot is the affordance but the whole bar is forgiving.
+        case .stop:
             onStopClick?()
-        case .done:
-            onOpenCard?()                                 // after a recording, the done pill opens the card
-        case .transcribing, .hidden:
+        case .none:
             break
         }
     }
@@ -280,12 +262,9 @@ final class IslandController: NSObject {
         return IslandPlacementPreference.resolved(placementPreference, safeAreaTop: screen.safeAreaInsets.top, hasAuxiliaryTopArea: auxiliary, isBuiltIn: builtIn) == .notch
     }
 
-    /// The recording bar was clicked off the mark — stop the recording.
+    /// A running capture (recording, meeting or dictation) was clicked — stop it.
     var onStop: (() -> Void)?
-    /// Start a recording with the chosen source mode (the status dot, or any idle
-    /// click off the mark).
-    var onRecord: ((MeetingAudioSourceMode) -> Void)?
-    /// The mark was clicked (any state), or the done pill — open the menu card.
+    /// The idle island or the done pill was clicked — open the menu card.
     var onOpenCard: (() -> Void)?
 
     init(pillViewModel: MeetingRecordingPillViewModel, idleVisible: Bool) {
@@ -307,7 +286,10 @@ final class IslandController: NSObject {
 
         let tracker = IslandTrackingView(frame: bounds)
         tracker.autoresizingMask = [.width, .height]
-        tracker.stateProvider = { [weak self] in self?.pillViewModel.state ?? .idle }
+        tracker.stateProvider = { [weak self] in
+            guard let self else { return .idle }
+            return IslandLayout.effectiveState(pill: self.pillViewModel.state, dictation: self.chrome.dictation)
+        }
         tracker.idleVisibleProvider = { [weak self] in self?.chrome.idleVisible ?? true }
         tracker.heldOpenProvider = { [weak self] in self?.chrome.heldOpen ?? false }
         tracker.notchProvider = { [weak self] in self?.chrome.isNotchResting ?? false }
@@ -316,15 +298,6 @@ final class IslandController: NSObject {
         tracker.onOpenCard = { [weak self] in
             self?.chrome.isHovered = false
             self?.onOpenCard?()
-        }
-        tracker.onRecordClick = { [weak self] in
-            // A click anywhere on the idle island starts a mic recording (mirrors
-            // fn; solo voice notes are the common case, hardware fn keeps its
-            // single=mic / double=mic+system behaviour).
-            guard let self else { return }
-            self.chrome.isHovered = false
-            self.chrome.hoveredControl = .none
-            self.onRecord?(.microphoneOnly)
         }
         tracker.onStopClick = { [weak self] in
             guard let self else { return }
@@ -591,6 +564,26 @@ final class IslandController: NSObject {
     /// Push whether audio frames are actually arriving (1 Hz, from the
     /// coordinator's writer-health poll). While recording, false turns the
     /// island's meter + timer a motionless warning amber (dead ≠ silent).
+    /// Push the live system-audio level (0…1) for a meeting's second meter.
+    func updateLiveSystemAudioLevel(_ level: Float) {
+        let v = Double(max(0, min(1, level)))
+        guard chrome.liveSystemLevel != v else { return }
+        chrome.liveSystemLevel = v
+    }
+
+    /// The meeting flow settled its audio source for this recording.
+    func setMeetingCapturesSystem(_ captures: Bool) {
+        guard chrome.meetingCapturesSystem != captures else { return }
+        chrome.meetingCapturesSystem = captures
+    }
+
+    /// The dictation flow's phase changed (nil = no dictation showing).
+    func setDictationPhase(_ phase: IslandDictationPhase?) {
+        guard chrome.dictation != phase else { return }
+        if phase == nil { chrome.liveLevel = 0 }
+        chrome.dictation = phase
+    }
+
     func updateAudioAlive(_ alive: Bool) {
         guard chrome.audioAlive != alive else { return }
         chrome.audioAlive = alive
