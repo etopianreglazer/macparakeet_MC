@@ -108,8 +108,11 @@ fan-out. There is exactly one instance per process, owned by
   **log-only and forgiving**: silence is never a failure (a cold Bluetooth
   route still waking, a quiet room, a user who walked away all just keep
   recording — no guillotine, no restart). The `stallObserver` still fires,
-  but only for a *genuine* engine death (`deathDispatch`), not for a slow
-  or silent start.
+  but only for a *genuine* engine death (`makeEngineDeathDispatch`), not for
+  a slow or silent start. Lifecycle is upstream's (v0.8.7): each start has an
+  attempt ID, `stop()` is `async` and returns only once the shared
+  subscription is removed, and buffer/death handlers carry a generation so a
+  retired session's callbacks never reach a newer one.
 
 **Meeting-side audio (independent of the mic stream)**
 - `SystemAudioStream.swift` — meeting system audio via

@@ -474,7 +474,7 @@ private final class MockMeetingMicrophoneCapture: MeetingMicrophoneCapturing, @u
         return try startHandler(processingMode)
     }
 
-    func stop() {
+    func stop() async {
         handler = nil
         stallObserver = nil
     }

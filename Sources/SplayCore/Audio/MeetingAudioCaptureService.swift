@@ -29,7 +29,7 @@ protocol MeetingMicrophoneCapturing: Sendable {
         handler: @escaping AudioBufferHandler,
         onStall: StallObserver?
     ) async throws -> MeetingMicrophoneCaptureStartReport
-    func stop()
+    func stop() async
 }
 
 extension MicrophoneCapture: MeetingMicrophoneCapturing {}
@@ -207,7 +207,7 @@ public actor MeetingAudioCaptureService {
             }
         } catch {
             if attemptedMicrophoneStart {
-                microphoneCapture.stop()
+                await microphoneCapture.stop()
             }
             await systemCapture?.stop()
             finishEventStream()
@@ -229,7 +229,7 @@ public actor MeetingAudioCaptureService {
     public func stop() async {
         guard isCapturing else { return }
 
-        microphoneCapture.stop()
+        await microphoneCapture.stop()
         await systemAudioCapture?.stop()
         systemAudioCapture = nil
         isCapturing = false
