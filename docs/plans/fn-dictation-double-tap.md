@@ -1,7 +1,9 @@
 # Fn dictation — double-tap dictates into the focused field, triple-tap is the meeting
 
 > Status: **IN PROGRESS** (thread 19, 2026-09-27). Slices 1, 2, 4 built and installed (`1177b603`, `23bc6d7d`,
-> island `edcef30b`…`a018b133`); slice 3 and 5 open — see `docs/thread-state.md` §2. Mac only.
+> island `edcef30b`…`a018b133`); slice 3 built `a912ac48` (thread 21: focused-field check via
+> `AccessibilityService.focusedPasteTarget`, dictations in the card's Recordings) — owner press + the Escape
+> decision still open; slice 5 open. Mac only.
 > Slice 4 landed differently from the text below: the island is click-through, dictation shows the voice bars
 > only (no caret, no timer), meetings add a second system-audio meter; tuned live by the owner.
 
