@@ -207,13 +207,6 @@ enum IslandLayout {
         return meetingCapturesSystem ? .meeting : .recording
     }
 
-    /// Whether the idle nub shows at all. It exists to be hovered and clicked, so a
-    /// click-through island hides at idle (owner, 2026-09-27): the island appears
-    /// only while something is captured, and the notch itself is the resting state.
-    static func showsIdle(preference: Bool, takesMouse: Bool = AppFeatures.islandTakesMouse) -> Bool {
-        preference && takesMouse
-    }
-
     /// Map recording-flow state (+ idle chrome) onto a visual form. `heldOpen`
     /// keeps the idle island in its ready ("open") form while a card is showing.
     static func visual(
@@ -268,6 +261,9 @@ final class IslandChromeModel {
     /// A card (the second surface) is open — hold the idle island in its ready
     /// ("open") form until the card closes, so the two surfaces move together.
     var heldOpen = false
+    /// The cursor is over a running capture's pill (fed by the AppKit tracker).
+    /// The view lifts the pill slightly; cleared whenever the pill stops recording.
+    var captureHovered = false
     /// Distance from the panel's physically hidden top to the housing's lower edge.
     var notchCueInset: CGFloat = 0
     /// Live **mic** level (0…1), pushed at ~30 fps while recording via
@@ -293,9 +289,10 @@ final class IslandChromeModel {
 // MARK: - Island view
 
 /// The ambient island hanging from the notch. Pure **indicator**: it renders the
-/// lifecycle (meters, timer, glyphs) and nothing else — no controls, no
-/// expansion, no mouse input (`AppFeatures.islandTakesMouse`). Anything the app
-/// needs to *say* is a card, opened from the menu bar icon.
+/// lifecycle (meters, timer, glyphs) and nothing else — no controls and no clicks
+/// (`AppFeatures.islandTakesMouse`); its only reaction to the cursor is a slight
+/// lift while a capture runs. Anything the app needs to *say* is a card, opened
+/// from the menu bar icon.
 struct IslandView: View {
     @Bindable var pill: MeetingRecordingPillViewModel
     @Bindable var chrome: IslandChromeModel
@@ -341,6 +338,9 @@ struct IslandView: View {
                 // pill and its hit-rect stay aligned: flush to the physical top in
                 // Notch mode, the menu-safe inset otherwise.
                 .padding(.top, chrome.isNotchResting ? 0 : IslandLayout.topInset)
+                // A running capture lifts slightly under the cursor, anchored at
+                // the notch so it grows downward and outward, never off-axis.
+                .scaleEffect(liftsForHover ? SplayGeometry.captureHoverScale : 1, anchor: .top)
                 // Pop the whole island in from slightly small, anchored at the
                 // notch, so it reads as spawning rather than fading. The blur layer
                 // (harvested from DynamicNotchKit) softens the show/hide so the pill
@@ -352,9 +352,16 @@ struct IslandView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .animation(motion, value: visual)
+        .animation(motion, value: liftsForHover)
+        // A stale hover must not lift the next capture before the cursor moves.
+        .onChange(of: visual) { _, newVisual in
+            if newVisual != .recording { chrome.captureHovered = false }
+        }
         // Display-only: the AppKit tracker owns all hover/click.
         .allowsHitTesting(false)
     }
+
+    private var liftsForHover: Bool { visual == .recording && chrome.captureHovered }
 
     /// Map the tracker's `IslandVisual` (+ recording-flow state) onto the design's
     /// indicator forms.

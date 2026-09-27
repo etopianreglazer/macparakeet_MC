@@ -93,6 +93,9 @@ enum SplayGeometry {
     /// The "open" step: reached while the card is open (`heldOpen`), and on hover
     /// when `AppFeatures.islandTakesMouse` is on.
     static let readyWidth: CGFloat = 248
+    /// How much a running capture grows under the cursor (owner, 2026-09-27:
+    /// "a bit bigger, a bit more interactive", not the old hover growth).
+    static let captureHoverScale: CGFloat = 1.08
 
     // Active states (owner, 2026-09-27): the voice bars sit LEFT of the camera
     // (a meeting adds the fainter system-audio bars), the timer RIGHT of it.

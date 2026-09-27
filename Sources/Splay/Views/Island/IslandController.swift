@@ -24,6 +24,10 @@ private final class IslandTrackingView: NSView {
     var onOpenCard: (() -> Void)?
     /// A click on a running capture — stop it.
     var onStopClick: (() -> Void)?
+    /// Whether the cursor is over a *running* capture's pill — the one thing a
+    /// click-through island reacts to (a slight lift, `SplayGeometry.captureHoverScale`).
+    /// Sent on every move; the receiver dedupes.
+    var onCaptureHover: ((Bool) -> Void)?
 
     /// Cursor is over the idle nub's hover zone (grows the pill to the hint).
     private var hovering = false {
@@ -49,10 +53,9 @@ private final class IslandTrackingView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach { removeTrackingArea($0) }
-        // `ignoresMouseEvents` does not stop a tracking area's enter/moved events
-        // (the click-through island still grew under the cursor), so a
-        // click-through island installs none.
-        guard AppFeatures.islandTakesMouse else { return }
+        // `ignoresMouseEvents` does not stop a tracking area's enter/moved events,
+        // so a click-through island still sees the cursor: it uses that only for
+        // the capture-hover lift, never for the idle nub.
         addTrackingArea(NSTrackingArea(
             rect: bounds,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -84,13 +87,22 @@ private final class IslandTrackingView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         if hovering { hovering = false; onHoverExit?() }
+        onCaptureHover?(false)
     }
 
     override func mouseMoved(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
 
-        // Idle nub → ready growth (hysteresis) lives only in the idle form.
-        if stateProvider() == .idle {
+        // A running capture lifts slightly under the cursor — the only hover a
+        // click-through island has.
+        let visual = currentVisual()
+        onCaptureHover?(visual == .recording
+            && IslandLayout.hitRect(for: visual, kind: kindProvider(), notchAttached: notchProvider()).contains(point))
+
+        // Idle nub → ready growth (hysteresis) lives only in the idle form, and
+        // only when the island takes the mouse (owner, 2026-09-27: the idle nub
+        // must not react to the cursor).
+        if stateProvider() == .idle, AppFeatures.islandTakesMouse {
             // Hysteresis: a "reach the notch/back" zone activates the ready pill; a
             // larger "stay while on the tile" zone keeps it active so crossing onto
             // the pill no longer snaps it back to idle.
@@ -239,7 +251,7 @@ final class IslandController: NSObject {
 
     init(pillViewModel: MeetingRecordingPillViewModel, idleVisible: Bool) {
         self.pillViewModel = pillViewModel
-        self.chrome.idleVisible = IslandLayout.showsIdle(preference: idleVisible)
+        self.chrome.idleVisible = idleVisible
         super.init()
     }
 
@@ -269,6 +281,10 @@ final class IslandController: NSObject {
                 pill: self.pillViewModel.state, dictation: self.chrome.dictation,
                 meetingCapturesSystem: self.chrome.meetingCapturesSystem
             )
+        }
+        tracker.onCaptureHover = { [weak self] over in
+            guard let self, self.chrome.captureHovered != over else { return }
+            self.chrome.captureHovered = over
         }
         tracker.onHoverEnter = { [weak self] in self?.chrome.isHovered = true }
         tracker.onHoverExit = { [weak self] in self?.chrome.isHovered = false }
@@ -302,9 +318,9 @@ final class IslandController: NSObject {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        // Hover-enter lives entirely in the tracker's `mouseMoved`; an NSPanel does
-        // NOT post mouseMoved to its views unless this is enabled.
-        panel.acceptsMouseMovedEvents = AppFeatures.islandTakesMouse
+        // Hover lives entirely in the tracker's `mouseMoved`; an NSPanel does NOT
+        // post mouseMoved to its views unless this is enabled.
+        panel.acceptsMouseMovedEvents = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
         // Splay is an ambient global control, not a document window. Joining
@@ -505,12 +521,13 @@ final class IslandController: NSObject {
     /// Reflect the user's "show idle pill" preference. Recording-flow states are
     /// shown regardless; this only governs the idle nub/hover.
     func setIdleVisible(_ visible: Bool) {
-        chrome.idleVisible = IslandLayout.showsIdle(preference: visible)
+        chrome.idleVisible = visible
     }
 
     /// Clear hover (e.g. when a recording starts via the Fn key, not a click).
     func resetHover() {
         chrome.isHovered = false
+        chrome.captureHovered = false
     }
 
     /// Hold the idle island in its ready ("open") form while a card is showing, so

@@ -37,7 +37,8 @@ public enum AppFeatures {
     /// it sits over the top-centre of the screen, and its click monitors caught
     /// clicks meant for the app beneath — address bars and tabs opened the card
     /// or stopped a dictation mid-sentence. The island is a pure indicator: no
-    /// clicks and no hover (the idle nub no longer grows under the cursor); fn
+    /// clicks, and the idle nub ignores the cursor (a running capture only lifts
+    /// slightly under it — the panel never takes the event); fn
     /// starts and stops, the menu bar icon opens the card. The island's tracker
     /// and click routing are kept so `true` restores clicks (idle/done → card,
     /// recording → stop) and the idle nub's hover growth; there is no per-control
