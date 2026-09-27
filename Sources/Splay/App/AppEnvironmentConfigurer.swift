@@ -92,14 +92,6 @@ final class AppEnvironmentConfigurer {
             sharedMicStream: env.sharedMicStream
         )
         settingsViewModel.onRecoverPendingMeetingRecordings = callbacks.onRecoverPendingMeetingRecordings
-        transcriptionViewModel.onTranscriptionCompleted = { content in
-            // Invoked synchronously from the ViewModel's @MainActor completion
-            // funnel, so the chime/banner fire immediately (no run-loop hop).
-            MainActor.assumeIsolated {
-                TranscriptionCompletionPresenter.present(content)
-            }
-        }
-
         let coordinatorRefs = CoordinatorRefs()
         let mediaPauseCoordinator = DictationMediaPauseCoordinator(
             settingsViewModel: settingsViewModel,
@@ -294,6 +286,12 @@ final class AppEnvironmentConfigurer {
         }
         transcriptionViewModel.onFileJobFinished = { outcome in
             fileJobPresenter.finished(outcome)
+            // The banner says where the transcript went, or why it failed.
+            let notify = UserDefaults.standard.object(
+                forKey: UserDefaultsAppRuntimePreferences.notifyOnTranscriptionCompleteKey
+            ) as? Bool ?? true
+            guard let content = TranscriptionCompletionNotifier.content(for: outcome, settingEnabled: notify) else { return }
+            TranscriptionCompletionPresenter.present(content, sound: outcome.isFailure ? .failure : .success)
         }
         // The dictation recorder reports RMS × 5 (`AudioRecorder`); the meter is
         // tuned on the recording flow's RMS × 10 (`MeetingAudioCaptureService`),

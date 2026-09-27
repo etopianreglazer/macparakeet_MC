@@ -28,6 +28,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     private var recentDictationsMenuItem: NSMenuItem?
     private var recordMeetingMenuItems: [NSMenuItem] = []
     private var transcribeFileMenuItems: [NSMenuItem] = []
+    private var cancelTranscriptionMenuItem: NSMenuItem?
     private var hotkeyMenuItem: NSMenuItem?
 
     init(
@@ -340,6 +341,19 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
         menu.addItem(transcribeFileItem)
         transcribeFileMenuItems.append(transcribeFileItem)
 
+        // Only while a file job runs (the item above then shows its progress).
+        let cancelItem = NSMenuItem(
+            title: "Cancel Transcription",
+            action: #selector(cancelTranscriptionFromMenu),
+            keyEquivalent: ""
+        )
+        cancelItem.target = self
+        cancelItem.image = Self.symbol("xmark.circle")
+        cancelItem.isHidden = true
+        menu.addItem(cancelItem)
+        cancelTranscriptionMenuItem = cancelItem
+        observeFileJob()
+
         menu.addItem(NSMenuItem.separator())
 
         let hotkeyItem = NSMenuItem(
@@ -475,20 +489,139 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
 
     private func transcribeFileFlow() {
         guard environmentProvider() != nil else { return }
+        // The menu item is disabled while a job runs; the hotkey is not.
+        guard !transcriptionViewModel.isFileJobActive else {
+            presentBusy()
+            return
+        }
 
         NSApp.activate(ignoringOtherApps: true)
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true
-        panel.message = "Choose one or more audio/video files, or a folder, to transcribe."
+        panel.message = Self.openPanelMessage(
+            folder: AutoSaveService.resolveFolder(scope: .transcription)
+        )
+        panel.prompt = "Transcribe"
         panel.allowedContentTypes = AudioFileConverter.supportedExtensions.compactMap {
             UTType(filenameExtension: $0)
         }
 
         if panel.runModal() == .OK, !panel.urls.isEmpty {
-            transcriptionViewModel.transcribeFiles(urls: panel.urls)
-            SoundManager.shared.play(.fileDropped)
+            startFileJob(panel.urls)
         }
+    }
+
+    /// Start a file job, or say why nothing started (busy, nothing supported).
+    private func startFileJob(_ urls: [URL]) {
+        if transcriptionViewModel.isFileJobActive {
+            presentBusy()
+        } else if transcriptionViewModel.transcribeFiles(urls: urls) {
+            SoundManager.shared.play(.fileDropped)
+        } else {
+            TranscriptionCompletionPresenter.present(
+                TranscriptionCompletionNotifier.Content(
+                    title: "Nothing to transcribe",
+                    body: transcriptionViewModel.errorMessage ?? "Splay can't read those files."
+                ),
+                sound: .failure
+            )
+        }
+    }
+
+    private func presentBusy() {
+        TranscriptionCompletionPresenter.present(
+            TranscriptionCompletionNotifier.busyContent(
+                runningFileName: transcriptionViewModel.transcribingFileName
+            ),
+            sound: .failure
+        )
+    }
+
+    /// The open panel says up front where the transcripts will go.
+    static func openPanelMessage(folder: URL?) -> String {
+        let base = "Choose audio or video files, or a folder, to transcribe."
+        guard let folder else { return base }
+        let path = (folder.path as NSString).abbreviatingWithTildeInPath
+        return base + " Transcripts are saved to \(path)."
+    }
+
+    @objc private func cancelTranscriptionFromMenu() {
+        transcriptionViewModel.cancelFileJob()
+    }
+
+    // MARK: - File job progress in the menu
+
+    /// Re-arming observation: the Transcribe File item shows the running job's
+    /// progress, live even while the menu is open.
+    private func observeFileJob() {
+        withObservationTracking {
+            refreshFileJobItems()
+        } onChange: { [weak self] in
+            Task { @MainActor [weak self] in self?.observeFileJob() }
+        }
+    }
+
+    private func refreshFileJobItems() {
+        let vm = transcriptionViewModel
+        let active = vm.isFileJobActive
+        let title = Self.transcribeFileItemTitle(
+            active: active,
+            fileName: vm.transcribingFileName,
+            fraction: vm.transcriptionProgress,
+            batchCurrent: vm.batchCompletedCount + vm.batchFailedCount + 1,
+            batchTotal: vm.isBatchActive ? vm.batchTotalCount : 0
+        )
+        let image = active
+            ? Self.progressSymbol(fraction: vm.isBatchActive
+                ? Double(vm.batchCompletedCount + vm.batchFailedCount) / Double(max(vm.batchTotalCount, 1))
+                : vm.transcriptionProgress)
+            : Self.symbol("doc.badge.plus")
+        let environmentReady = environmentProvider() != nil
+        for item in transcribeFileMenuItems {
+            item.title = title
+            item.isEnabled = environmentReady && !active
+            // The status menu's item carries a glyph; the app menu's does not.
+            if item.image != nil { item.image = image }
+        }
+        cancelTranscriptionMenuItem?.isHidden = !active
+    }
+
+    /// "Transcribe File…" when idle; while running, what runs and how far.
+    static func transcribeFileItemTitle(
+        active: Bool,
+        fileName: String,
+        fraction: Double?,
+        batchCurrent: Int,
+        batchTotal: Int
+    ) -> String {
+        guard active else { return "Transcribe File\u{2026}" }
+        if batchTotal > 1 {
+            return "Transcribing \(min(batchCurrent, batchTotal)) of \(batchTotal)\u{2026}"
+        }
+        let name = middleTruncated(fileName, limit: 28)
+        let head = name.isEmpty ? "Transcribing\u{2026}" : "Transcribing \(name)\u{2026}"
+        guard let fraction, fraction > 0 else { return head }
+        return head + " \(Int((min(fraction, 1) * 100).rounded()))%"
+    }
+
+    static func middleTruncated(_ text: String, limit: Int) -> String {
+        guard text.count > limit, limit > 3 else { return text }
+        let keep = limit - 1
+        let head = text.prefix(keep / 2 + keep % 2)
+        let tail = text.suffix(keep / 2)
+        return head + "\u{2026}" + tail
+    }
+
+    /// A small progress ring; falls back to an hourglass if the symbol is missing.
+    private static func progressSymbol(fraction: Double?) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        if let fraction,
+           let ring = NSImage(systemSymbolName: "progress.indicator", variableValue: min(max(fraction, 0.05), 1),
+                              accessibilityDescription: "Transcribing") {
+            return ring.withSymbolConfiguration(config)
+        }
+        return symbol("hourglass")
     }
 
     @objc private func toggleMeetingRecordingFromMenu() {
@@ -498,7 +631,7 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         let environmentReady = environmentProvider() != nil
         startDictationMenuItem?.isEnabled = environmentReady && !dictationCaptureActiveProvider()
-        transcribeFileMenuItems.forEach { $0.isEnabled = environmentReady }
+        refreshFileJobItems()
         recordMeetingMenuItems.forEach {
             $0.isEnabled = environmentReady
             let active = meetingRecordingActiveProvider()
@@ -518,12 +651,9 @@ final class MenuBarCoordinator: NSObject, NSMenuDelegate {
     }
 
     private func handleDroppedFiles(_ urls: [URL]) {
-        // Route through the guarded batch entry point: it expands folders,
-        // chooses single vs. batch, and no-ops while a transcription/batch is
-        // already running (so an icon drop can't corrupt an active batch).
-        if transcriptionViewModel.transcribeFiles(urls: urls) {
-            SoundManager.shared.play(.fileDropped)
-        }
+        // The guarded batch entry point expands folders, chooses single vs.
+        // batch, and refuses while a job runs — now said out loud.
+        startFileJob(urls)
     }
 
     /// Resign menu-bar focus, wait for the target app to regain focus, then paste.
