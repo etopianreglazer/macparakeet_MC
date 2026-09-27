@@ -11,14 +11,14 @@
 > state fixed; dictation plan HISTORICAL. Accent/app-icon colours parked for iOS. Then FILE TRANSCRIPTION FEEDBACK
 > (owner: "no indication of where something is saved … and if it works"): island spinner → ✓ / failure light, menu
 > item disabled with live progress + Cancel, banners say where it went (click reveals), failed rows marked.
-> INSTALLED db8b7afe — not yet pressed.**
+> INSTALLED 7afd2572 (after Vet fixes) — not yet pressed.**
 > Thread 21's block is in `docs/thread-log.md`.
 
 ## 1. Live state
 
 - **Branches:** `main` = releases only (`18524b40`). **`mac/dev`** = all Mac work, **not pushed** since thread 20
   (push when the owner asks). `ios/dev` does not exist yet — cut it from `mac/dev` when iOS starts.
-- **Mac:** `/Applications/Splay.app` = `db8b7afe`. Suite: 2030 XCTest (same 5 known environmental cases,
+- **Mac:** `/Applications/Splay.app` = `7afd2572`. Suite: 2034 XCTest (same 5 known environmental cases,
   6 assertions) + 17 swift-testing. **Check both frameworks.**
 - **fn gestures:** tap = mic recording, double = dictation, triple = meeting (mic + system); esc during a
   dictation = 3·2·1 undo countdown. The gesture is the only source picker: both source-mode providers
