@@ -1,6 +1,7 @@
 # Plan: Fn rework (island foundation)
 
-> Status: **ACTIVE**. Started 2026-06. See docs/fork-product-model.md.
+> Status: **HISTORICAL** — single/double-tap routing shipped; the gesture map was redone as tap = recording,
+> double = dictation, triple = meeting in `fn-dictation-double-tap.md` (thread 19, 2026-09-27).
 
 ## Goal
 - **Single-tap Fn** = start/stop a **mic-only recording → saved transcript document**

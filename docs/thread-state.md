@@ -13,7 +13,9 @@
 
 ## 1. Live state
 
-- Branch `ios/utility-layer`, 10 commits this thread (`1177b603` … `a018b133`). **Nothing pushed.** Tree clean.
+- Branch **`mac/dev`** (thread 20 renamed `ios/utility-layer`, which was never pushed; `main` = releases only,
+  `ios/dev` to be cut from `mac/dev` when iOS resumes). **Pushed 2026-09-27:** `origin/main` = `18524b40`,
+  `origin/mac/dev` = `2a835a9a`. Old worktree `upbeat-mccarthy` removed; `upstream` now tracks `main` only.
 - **Mac:** `/Applications/Splay.app` = `a018b133`, running. Suite: 1989 XCTest (same 5 known environmental
   cases, 6 assertions) + 17 swift-testing, green otherwise. **Check both frameworks.**
 - **fn gestures** (`HotkeyGestureController.tapDoubleTripleToggle` → `FnCaptureRouter`): tap = mic recording,

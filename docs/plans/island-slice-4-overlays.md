@@ -1,6 +1,6 @@
 # Plan: Island Slice 4 — Settings + Library overlays
 
-> Status: **IMPLEMENTED — awaiting live test and commit**. Started 2026-06. Fork (MacParakeet-MC). See `docs/fork-product-model.md`,
+> Status: **HISTORICAL** — superseded; the overlays were replaced by the card (`splay-two-surface-rebuild.md`). Started 2026-06. Fork (MacParakeet-MC). See `docs/fork-product-model.md`,
 > `docs/thread-state.md`, `docs/design/final-lookbook.html`.
 
 ## Goal

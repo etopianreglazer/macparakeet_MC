@@ -298,7 +298,7 @@ lines are kept (no longer deleted).
 - `swift test` — full suite (~100 s). Audio changes ripple into
   dictation, meeting, and STT scheduler tests.
 - Dev-app smoke (the canonical happy-path check):
-  1. `scripts/dev/run_app.sh`.
+  1. `scripts/dev/install_local.sh`, then `open /Applications/Splay.app`.
   2. Dictate three times in sequence.
   3. Start a meeting recording.
   4. Dictate during the meeting.

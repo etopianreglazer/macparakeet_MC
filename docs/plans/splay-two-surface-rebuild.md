@@ -1,6 +1,6 @@
 # Plan: Splay — two-surface rebuild (island indicator + card)
 
-> Status: **ACTIVE — awaiting user review before execution.** Written 2026-08-07.
+> Status: **HISTORICAL** — carried out; the island + card are the app as it stands. Written 2026-08-07.
 > This supersedes `island-only-lean-roadmap.md`, whose "Library/Settings/detail are
 > substates *inside* the island" model is **rejected** by the final design. The island is an
 > **indicator only**; everything else is a **card**.

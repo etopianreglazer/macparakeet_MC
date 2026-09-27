@@ -77,7 +77,7 @@ Download the latest `.dmg` from [Releases](https://github.com/etopianreglazer/sp
 drag Splay to Applications, and launch it.
 
 On first launch Splay asks for **Microphone** access. It asks for **Screen & System Audio
-Recording** only the first time you double-tap `fn` — if you only ever record yourself, it
+Recording** only the first time you triple-tap `fn` — if you only ever record yourself, it
 never asks.
 
 ## Status

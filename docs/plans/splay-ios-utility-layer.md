@@ -1,6 +1,7 @@
 # Plan: Splay for iPhone — a utility layer, not an app
 
-> Status: **ACTIVE**. Drafted 2026-09-13 from a design conversation; slice 1 started the same day.
+> Status: **PAUSED** (2026-09-27, owner: Mac first, iPhone later "in depth"). Slices 1–2 built; resumes on
+> an `ios/dev` branch cut from `mac/dev` (see CLAUDE.md § Branches). Drafted 2026-09-13.
 > Product north star still `docs/fork-product-model.md`; this plan extends it to iOS.
 
 ## Why

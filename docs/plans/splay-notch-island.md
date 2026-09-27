@@ -1,5 +1,7 @@
 # Splay notch island
 
+> Status: **HISTORICAL** — the lavender single-island direction, superseded by `splay-two-surface-rebuild.md`.
+
 ## Goal
 
 Adopt Claude's dark, lavender, single-island direction without creating a second

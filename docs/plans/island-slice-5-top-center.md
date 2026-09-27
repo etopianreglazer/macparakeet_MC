@@ -1,6 +1,6 @@
 # Plan: Island Slice 5 — Top-center placement + adaptive black chrome
 
-> Status: **IMPLEMENTED — awaiting user visual/interaction acceptance; uncommitted**. Fork
+> Status: **HISTORICAL** — superseded; the top-centre island has since been redesigned (thread 19, 2026-09-27). Fork
 > (MacParakeet-MC). This sits on top of, but does not replace, the Slice 4 overlay closeout.
 
 ## Goal
