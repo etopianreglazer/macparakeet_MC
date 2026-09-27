@@ -46,6 +46,21 @@ public final class TranscriptionViewModel {
 
     public var onTranscribingChanged: ((Bool) -> Void)?
 
+    /// A file job (one file, or a whole batch) is running. Unlike
+    /// `isTranscribing` it stays true between a batch's files.
+    public var isFileJobActive: Bool { isTranscribing || isBatchActive }
+
+    /// Fired only when `isFileJobActive` flips — no flicker between batch files.
+    /// Splay's menu bar icon, menu item and island follow this.
+    public var onFileJobActiveChanged: ((Bool) -> Void)?
+
+    /// Fired once per finished file job — a single file or a whole batch —
+    /// whatever the outcome, and regardless of the notification setting (a
+    /// failure must never be silent). Splay turns it into the island's
+    /// check / failure light and a banner that says where the file went.
+    public var onFileJobFinished: ((FileJobOutcome) -> Void)?
+    private var reportedFileJobActive = false
+
     /// Fired once when a single transcription, or a whole batch, finishes and
     /// the user's completion-notification setting is on. The app layer plays
     /// the chime and (when backgrounded) posts a banner. Nil-safe: the
@@ -62,6 +77,10 @@ public final class TranscriptionViewModel {
     public private(set) var batchTotalCount = 0
     public private(set) var batchCompletedCount = 0
     public private(set) var batchFailedCount = 0
+    /// Batch files that transcribed but whose transcript file was not written.
+    public private(set) var batchUnsavedCount = 0
+    /// The folder the batch's transcripts were written to (last one written).
+    private var batchSavedFolder: URL?
     private var batchQueue: [URL] = []
     private var batchSource: TelemetryTranscriptionSource = .file
 
@@ -407,6 +426,7 @@ public final class TranscriptionViewModel {
         endTranscription()
         errorMessage = nil
         loadTranscriptions()
+        onFileJobFinished?(.cancelled)
     }
 
     /// Submit the next queued file, or finish the batch when the queue drains.
@@ -429,8 +449,15 @@ public final class TranscriptionViewModel {
             completed: batchCompletedCount,
             failed: batchFailedCount
         )
+        let outcome = FileJobOutcome.batch(
+            completed: batchCompletedCount,
+            failed: batchFailedCount,
+            unsaved: batchUnsavedCount,
+            folder: batchSavedFolder
+        )
         resetBatchState()
         emitCompletionSignal(content)
+        onFileJobFinished?(outcome)
     }
 
     private func resetBatchState() {
@@ -438,7 +465,10 @@ public final class TranscriptionViewModel {
         batchTotalCount = 0
         batchCompletedCount = 0
         batchFailedCount = 0
+        batchUnsavedCount = 0
+        batchSavedFolder = nil
         batchQueue.removeAll()
+        reportFileJobActivity()
     }
 
     private func emitCompletionSignal(_ content: TranscriptionCompletionNotifier.Content?) {
@@ -532,12 +562,15 @@ public final class TranscriptionViewModel {
             // Export-to-folder still honors its own toggle, and Library
             // refreshes live so results appear as they land.
             batchCompletedCount += 1
-            autoSaveIfEnabled(result)
+            switch autoSave(result) {
+            case .saved(let url): if let url { batchSavedFolder = url.deletingLastPathComponent() }
+            case .failed: batchUnsavedCount += 1
+            }
             loadTranscriptions()
             advanceBatch()
         } else {
             presentCompletedTranscription(result, autoSave: false)
-            autoSaveIfEnabled(result)
+            let save = autoSave(result)
             emitCompletionSignal(
                 TranscriptionCompletionNotifier.singleContent(
                     settingEnabled: notifyOnCompletionEnabled,
@@ -545,13 +578,41 @@ public final class TranscriptionViewModel {
                     wordCount: Self.wordCount(of: result)
                 )
             )
+            let savedTo: URL?
+            let saveFailed: Bool
+            switch save {
+            case .saved(let url): savedTo = url; saveFailed = false
+            case .failed: savedTo = nil; saveFailed = true
+            }
+            onFileJobFinished?(.transcribed(
+                fileName: result.fileName,
+                wordCount: Self.wordCount(of: result),
+                savedTo: savedTo,
+                saveFailed: saveFailed
+            ))
+        }
+    }
+
+    private enum AutoSaveResult {
+        /// Written to this URL, or nil when auto-save is turned off.
+        case saved(URL?)
+        /// Auto-save is on but the file could not be written.
+        case failed
+    }
+
+    private func autoSave(_ transcription: Transcription) -> AutoSaveResult {
+        let service = AutoSaveService(defaults: defaults)
+        let scope: AutoSaveScope = transcription.sourceType == .meeting ? .meeting : .transcription
+        do {
+            return .saved(try service.save(transcription, scope: scope))
+        } catch {
+            logger.error("Auto-save failed error=\(error.localizedDescription, privacy: .public)")
+            return .failed
         }
     }
 
     private func autoSaveIfEnabled(_ transcription: Transcription) {
-        let service = AutoSaveService()
-        let scope: AutoSaveScope = transcription.sourceType == .meeting ? .meeting : .transcription
-        service.saveIfEnabled(transcription, scope: scope)
+        _ = autoSave(transcription)
     }
 
     public func presentCompletedTranscription(_ transcription: Transcription) {
@@ -573,6 +634,7 @@ public final class TranscriptionViewModel {
 
     private func completeFailedTranscription(taskID: UUID, error: Error) {
         guard activeTranscriptionTaskID == taskID else { return }
+        let fileName = transcribingFileName
         transcriptionTask = nil
         activeTranscriptionTaskID = nil
         endTranscription()
@@ -587,6 +649,7 @@ public final class TranscriptionViewModel {
         } else {
             errorMessage = error.localizedDescription
             loadTranscriptions()
+            onFileJobFinished?(.failed(fileName: fileName, reason: error.localizedDescription))
         }
     }
 
@@ -602,12 +665,14 @@ public final class TranscriptionViewModel {
             resetBatchState()
         }
         loadTranscriptions()
+        onFileJobFinished?(.cancelled)
     }
 
     private func beginTranscription(source: SourceKind) {
         sourceKind = source
         isTranscribing = true
         onTranscribingChanged?(true)
+        reportFileJobActivity()
         progress = "Preparing..."
         transcriptionProgress = nil
         progressPhase = .preparing
@@ -619,6 +684,7 @@ public final class TranscriptionViewModel {
     private func endTranscription() {
         isTranscribing = false
         onTranscribingChanged?(false)
+        reportFileJobActivity()
         progress = ""
         transcriptionProgress = nil
         transcribingFileName = ""
@@ -627,6 +693,31 @@ public final class TranscriptionViewModel {
         progressPhase = .preparing
         progressHeadline = Self.headline(for: .preparing)
         progressSubline = nil
+    }
+
+    /// Cancel whatever file job runs: the whole batch, or the single file.
+    /// Like `cancelBatch`, the single file ends *now*: the task ID is dropped
+    /// so a late completion from inference that ignores cancellation no-ops.
+    public func cancelFileJob() {
+        if isBatchActive {
+            cancelBatch()
+            return
+        }
+        guard isTranscribing else { return }
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        activeTranscriptionTaskID = nil
+        errorMessage = nil
+        endTranscription()
+        loadTranscriptions()
+        onFileJobFinished?(.cancelled)
+    }
+
+    private func reportFileJobActivity() {
+        let active = isFileJobActive
+        guard active != reportedFileJobActive else { return }
+        reportedFileJobActive = active
+        onFileJobActiveChanged?(active)
     }
 
     private func updateProgress(with progress: TranscriptionProgress, taskID: UUID? = nil) {
