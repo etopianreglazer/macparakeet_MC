@@ -8,7 +8,8 @@
 
 Splay is a one-gesture, on-device voice recorder for Apple Silicon Macs (macOS 14.2+,
 GPL-3.0, derived from MacParakeet). Tap `fn` → mic recording; double-tap `fn` → dictation
-(verbatim text pasted into the focused field); triple-tap `fn` → mic + system audio; drop a
+(verbatim text pasted into the focused field; Escape → 3·2·1 undo countdown, `fn` keeps it);
+triple-tap `fn` → mic + system audio; drop a
 file on the menu bar icon → file transcription. Recordings write a verbatim transcript `.md`
 (+ paired audio) to a folder. Two UI surfaces only: the **island**
 (notch-anchored indicator light) and the **card** (Recents · Settings · About).

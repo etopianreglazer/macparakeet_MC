@@ -41,7 +41,7 @@
    - ~~Delete dead scripts~~ — done thread 21 (4 scripts + BRANDING.md line).
 2. **Press the pinned island** over Mission Control, a full-screen app, and the lock screen (boring.notch had
    it drawing over Mission Control's space labels). If it misbehaves: hide/unpin around those, or flag off.
-3. **Fn dictation slice 3 built (thread 21) — owner press owed:** no-text-field → clipboard + "copied";
+3. **Fn dictation slice 3 built (thread 21) — owner pressed Escape + paste ("works"); still press "copied" + Recordings:** no-text-field → clipboard + "copied";
    dictations in the card's Recordings; Escape → 3·2·1 countdown (fn = keep). See the plan's status line.
    Then slice 5 (product-model capture table + Settings gesture text) and mark the plan HISTORICAL.
 
