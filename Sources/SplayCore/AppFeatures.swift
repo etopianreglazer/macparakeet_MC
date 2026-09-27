@@ -44,4 +44,10 @@ public enum AppFeatures {
     /// recording → stop) and the idle nub's hover growth; there is no per-control
     /// hover or press feedback any more.
     public static let islandTakesMouse: Bool = false
+
+    /// Keep the island fixed behind the camera during desktop (Space) swipes by
+    /// putting its panel in a private, always-on-top WindowServer space
+    /// (`IslandSpacePin`, private API looked up at runtime). `false` = a normal
+    /// all-Spaces window, which slides along with a three-finger swipe.
+    public static let islandPinnedAcrossSpaces: Bool = true
 }

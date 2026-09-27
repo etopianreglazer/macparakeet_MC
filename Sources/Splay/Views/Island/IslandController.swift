@@ -5,9 +5,10 @@ import SplayViewModels
 
 // MARK: - Tracking layer
 
-/// Routes hover + clicks for the pill — **dormant** while
-/// `AppFeatures.islandTakesMouse` is false (the panel ignores the mouse, so none
-/// of this runs; kept so the flag can restore clicks). The SwiftUI content is
+/// Routes hover + clicks for the pill. While `AppFeatures.islandTakesMouse` is
+/// false the panel ignores clicks, so only the tracking area runs: it drives the
+/// capture-hover lift and nothing else (click routing is kept so the flag can
+/// restore clicks). The SwiftUI content is
 /// display-only, so this AppKit view owns interaction (hover/click on a non-key
 /// floating panel can't go through SwiftUI). With the flag on: an idle click or
 /// the done pill opens the card, a click on a running capture stops it.
@@ -221,6 +222,8 @@ final class IslandController: NSObject {
     private var hostingView: NSHostingView<IslandView>?
     private var trackingView: IslandTrackingView?
     private var notchCue: IslandNotchCueView?
+    /// Holds the island still during desktop swipes (`AppFeatures.islandPinnedAcrossSpaces`).
+    private var spacePin: IslandSpacePin?
     /// Click monitors — only installed when `AppFeatures.islandTakesMouse`.
     private var localClickMonitor: Any?
     private var globalClickMonitor: Any?
@@ -350,6 +353,9 @@ final class IslandController: NSObject {
         }
 
         panel.orderFrontRegardless()
+        let pin = IslandSpacePin()
+        pin.pin(panel)
+        spacePin = pin
         AudioCaptureDiagnostics.append("splay_island ordered visible=\(panel.isVisible) frame=\(NSStringFromRect(panel.frame)) level=\(panel.level.rawValue) idle=\(chrome.idleVisible) notch=\(chrome.isNotchResting)")
         self.panel = panel
         self.hostingView = hosting
@@ -397,6 +403,8 @@ final class IslandController: NSObject {
             if NSApp.isHidden { NSApp.unhide(nil) }
             if self.chrome.isNotchResting { self.anchorPanel?.orderFrontRegardless() }
             panel.orderFrontRegardless()
+            // Re-ordering can drop the panel from the pinned space; re-add it.
+            self.spacePin?.pin(panel)
         }
     }
 
@@ -509,6 +517,9 @@ final class IslandController: NSObject {
         appResignActiveObserver = nil
         ambientVisibilityTimer?.invalidate()
         ambientVisibilityTimer = nil
+        if let panel { spacePin?.unpin(panel) }
+        spacePin?.destroy()
+        spacePin = nil
         panel?.orderOut(nil)
         anchorPanel?.orderOut(nil)
         anchorPanel = nil
