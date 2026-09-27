@@ -8,6 +8,19 @@ import SplayViewModels
 /// fallback when the menu bar icon is hidden), a click on a running capture
 /// stops it, the done pill opens the card.
 final class IslandClickRoutingTests: XCTestCase {
+    /// A click-through island hides at idle whatever the preference says; the
+    /// preference only matters when the island takes the mouse.
+    func testIdleHiddenWhenIslandIsClickThrough() {
+        XCTAssertFalse(IslandLayout.showsIdle(preference: true, takesMouse: false))
+        XCTAssertFalse(IslandLayout.showsIdle(preference: false, takesMouse: false))
+        XCTAssertTrue(IslandLayout.showsIdle(preference: true, takesMouse: true))
+        XCTAssertFalse(IslandLayout.showsIdle(preference: false, takesMouse: true))
+        let idle = IslandLayout.visual(for: .idle, hovered: true,
+                                       idleVisible: IslandLayout.showsIdle(preference: true, takesMouse: false),
+                                       heldOpen: true)
+        XCTAssertEqual(idle, .hidden)
+    }
+
     /// The revealed pill is wider than the nub, so without the reveal-aware
     /// gate a click on the part the user saw grow would be swallowed.
     func testRevealedPillEscapesDormantHitRect() {

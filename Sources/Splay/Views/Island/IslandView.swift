@@ -207,6 +207,13 @@ enum IslandLayout {
         return meetingCapturesSystem ? .meeting : .recording
     }
 
+    /// Whether the idle nub shows at all. It exists to be hovered and clicked, so a
+    /// click-through island hides at idle (owner, 2026-09-27): the island appears
+    /// only while something is captured, and the notch itself is the resting state.
+    static func showsIdle(preference: Bool, takesMouse: Bool = AppFeatures.islandTakesMouse) -> Bool {
+        preference && takesMouse
+    }
+
     /// Map recording-flow state (+ idle chrome) onto a visual form. `heldOpen`
     /// keeps the idle island in its ready ("open") form while a card is showing.
     static func visual(

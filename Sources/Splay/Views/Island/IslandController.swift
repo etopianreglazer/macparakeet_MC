@@ -49,6 +49,10 @@ private final class IslandTrackingView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach { removeTrackingArea($0) }
+        // `ignoresMouseEvents` does not stop a tracking area's enter/moved events
+        // (the click-through island still grew under the cursor), so a
+        // click-through island installs none.
+        guard AppFeatures.islandTakesMouse else { return }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
             options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
@@ -235,7 +239,7 @@ final class IslandController: NSObject {
 
     init(pillViewModel: MeetingRecordingPillViewModel, idleVisible: Bool) {
         self.pillViewModel = pillViewModel
-        self.chrome.idleVisible = idleVisible
+        self.chrome.idleVisible = IslandLayout.showsIdle(preference: idleVisible)
         super.init()
     }
 
@@ -299,9 +303,8 @@ final class IslandController: NSObject {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         // Hover-enter lives entirely in the tracker's `mouseMoved`; an NSPanel does
-        // NOT post mouseMoved to its views unless this is enabled. Inert while
-        // `ignoresMouseEvents` is set below (no hover, so the nub never grows).
-        panel.acceptsMouseMovedEvents = true
+        // NOT post mouseMoved to its views unless this is enabled.
+        panel.acceptsMouseMovedEvents = AppFeatures.islandTakesMouse
         panel.level = .floating
         panel.hidesOnDeactivate = false
         // Splay is an ambient global control, not a document window. Joining
@@ -502,7 +505,7 @@ final class IslandController: NSObject {
     /// Reflect the user's "show idle pill" preference. Recording-flow states are
     /// shown regardless; this only governs the idle nub/hover.
     func setIdleVisible(_ visible: Bool) {
-        chrome.idleVisible = visible
+        chrome.idleVisible = IslandLayout.showsIdle(preference: visible)
     }
 
     /// Clear hover (e.g. when a recording starts via the Fn key, not a click).
