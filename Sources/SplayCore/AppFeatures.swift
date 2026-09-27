@@ -39,6 +39,8 @@ public enum AppFeatures {
     /// or stopped a dictation mid-sentence. The island is a pure indicator: no
     /// clicks and no hover (the idle nub no longer grows under the cursor); fn
     /// starts and stops, the menu bar icon opens the card. The island's tracker
-    /// and click routing are kept so `true` restores clicks and hover.
+    /// and click routing are kept so `true` restores clicks (idle/done → card,
+    /// recording → stop) and the idle nub's hover growth; there is no per-control
+    /// hover or press feedback any more.
     public static let islandTakesMouse: Bool = false
 }

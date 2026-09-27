@@ -44,7 +44,8 @@ enum IslandCaptureKind: Equatable {
     case recording
     /// fn triple-tap: mic + system — twin meter + timer.
     case meeting
-    /// fn double-tap: dictation — meter + text cursor (no file, so no timer).
+    /// fn double-tap: dictation — meter only, plus a short ear right of the camera
+    /// (no file, so no timer).
     case dictation
 }
 
@@ -78,8 +79,7 @@ enum IslandLayout {
     static let topInset: CGFloat = 32
 
     // Sizes mirror the design handoff's per-state geometry so the AppKit tracker's
-    // hit-rects never drift from the drawn pill (`SplayGeometry.size` is the twin
-    // used by the SwiftUI indicator).
+    // hit-rects never drift from the drawn pill (both read `SplayGeometry.layout`).
     static func pillSize(
         for visual: IslandVisual, kind: IslandCaptureKind = .recording, notchAttached: Bool
     ) -> CGSize {
@@ -157,8 +157,8 @@ enum IslandLayout {
     }
 
     /// Which interactive control (if any) sits under `point` for the current
-    /// visual — only for the hover/press feedback on a drawn glyph. The island
-    /// has no mark (owner, tuner round 2026-09-26): idle draws nothing to press.
+    /// visual — logged with each click; `clickAction` decides by visual alone.
+    /// The island has no mark (owner, tuner round 2026-09-26), so idle has none.
     static func control(
         at point: CGPoint, visual: IslandVisual, kind: IslandCaptureKind, notchAttached: Bool
     ) -> IslandControl {
@@ -261,13 +261,6 @@ final class IslandChromeModel {
     /// A card (the second surface) is open — hold the idle island in its ready
     /// ("open") form until the card closes, so the two surfaces move together.
     var heldOpen = false
-    /// Which control the cursor is over / pressed, fed by the AppKit tracker (only
-    /// with `AppFeatures.islandTakesMouse`; the face no longer draws a pop).
-    var hoveredControl: IslandControl = .none
-    /// Which control is momentarily *pressed* (a short pulse fired on click), so the
-    /// indicator can depress it like a physical key. Cleared automatically after the
-    /// pulse. Also fed by the tracker, since the click lives at the AppKit layer.
-    var pressedControl: IslandControl = .none
     /// Distance from the panel's physically hidden top to the housing's lower edge.
     var notchCueInset: CGFloat = 0
     /// Live **mic** level (0…1), pushed at ~30 fps while recording via

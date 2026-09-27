@@ -90,8 +90,8 @@ enum SplayGeometry {
 
     /// The compact resting nub — a quiet, hidden bar (symmetric under the notch).
     static let dormantWidth: CGFloat = 206
-    /// The old hover step (clicks are off, so it is no longer reached; kept so
-    /// `AppFeatures.islandTakesMouse` can bring it back).
+    /// The "open" step: reached while the card is open (`heldOpen`), and on hover
+    /// when `AppFeatures.islandTakesMouse` is on.
     static let readyWidth: CGFloat = 248
 
     // Active states (owner, 2026-09-27): the voice bars sit LEFT of the camera

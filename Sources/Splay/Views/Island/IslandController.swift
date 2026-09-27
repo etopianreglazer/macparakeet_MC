@@ -24,13 +24,6 @@ private final class IslandTrackingView: NSView {
     var onOpenCard: (() -> Void)?
     /// A click on a running capture — stop it.
     var onStopClick: (() -> Void)?
-    /// The control under the cursor changed (record / stop / open / none) — drives
-    /// the SwiftUI hover pop. Distinct from `onHoverEnter/Exit`, which only govern
-    /// the idle nub → ready growth.
-    var onControlHover: ((IslandControl) -> Void)?
-    /// A control was pressed (a click pulse: pressed → released) — drives the
-    /// SwiftUI "physical key" depress on the touched control.
-    var onControlPress: ((IslandControl) -> Void)?
 
     /// Cursor is over the idle nub's hover zone (grows the pill to the hint).
     private var hovering = false {
@@ -50,8 +43,6 @@ private final class IslandTrackingView: NSView {
     private var recentlyRevealed: Bool {
         hovering || hoverDroppedAt.map { Date().timeIntervalSince($0) < IslandLayout.hoverRaceGrace } ?? false
     }
-    /// Last control the cursor was over, so we only signal on change.
-    private var lastControl: IslandControl = .none
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -89,7 +80,6 @@ private final class IslandTrackingView: NSView {
 
     override func mouseExited(with event: NSEvent) {
         if hovering { hovering = false; onHoverExit?() }
-        setControlHover(.none)
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -113,17 +103,6 @@ private final class IslandTrackingView: NSView {
         } else if hovering {
             hovering = false; onHoverExit?()
         }
-
-        // Per-control hover (stop / open) for the pop
-        // feedback — computed for whatever the current visual is, in every state.
-        setControlHover(IslandLayout.control(at: point, visual: currentVisual(), kind: kindProvider(), notchAttached: notchProvider()))
-    }
-
-    /// Signal the hovered control only when it changes.
-    private func setControlHover(_ control: IslandControl) {
-        guard control != lastControl else { return }
-        lastControl = control
-        onControlHover?(control)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -151,11 +130,6 @@ private final class IslandTrackingView: NSView {
             return
         }
         let control = IslandLayout.control(at: point, visual: visual, kind: kindProvider(), notchAttached: notchProvider())
-
-        // Depress the touched glyph like a physical key (a short pulse), before
-        // running its action. A click on the empty bar has nothing to push down.
-        pressPulse(control)
-
         let action = IslandLayout.clickAction(visual: visual, control: control)
         AudioCaptureDiagnostics.append(
             "splay_island click src=\(source) control=\(control) visual=\(visual) action=\(action)"
@@ -168,17 +142,6 @@ private final class IslandTrackingView: NSView {
             onStopClick?()
         case .none:
             break
-        }
-    }
-
-    /// Fire a short "pressed" pulse on the touched control, then release it, so the
-    /// SwiftUI indicator can depress it like a physical key. Auto-releases (rather
-    /// than tracking mouse-up) so a fast tap is still visibly a down-then-up press.
-    private func pressPulse(_ control: IslandControl) {
-        guard control != .none else { return }
-        onControlPress?(control)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.13) { [weak self] in
-            self?.onControlPress?(.none)
         }
     }
 
@@ -312,12 +275,6 @@ final class IslandController: NSObject {
         tracker.onStopClick = { [weak self] in
             guard let self else { return }
             self.onStop?()
-        }
-        tracker.onControlHover = { [weak self] control in
-            self?.chrome.hoveredControl = control
-        }
-        tracker.onControlPress = { [weak self] control in
-            self?.chrome.pressedControl = control
         }
         trackingView = tracker
 
