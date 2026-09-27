@@ -16,8 +16,8 @@
 
 ## 1. Live state
 
-- **Branches:** `main` = releases only (`18524b40`). **`mac/dev`** = all Mac work, **not pushed** since thread 20
-  (push when the owner asks). `ios/dev` does not exist yet — cut it from `mac/dev` when iOS starts.
+- **Branches:** `main` = releases only (`18524b40`). **`mac/dev`** = all Mac work, **pushed** at the end of thread 22
+  (owner asked; push again only when asked). `ios/dev` does not exist yet — cut it from `mac/dev` when iOS starts.
 - **Mac:** `/Applications/Splay.app` = `7afd2572`. Suite: 2034 XCTest (same 5 known environmental cases,
   6 assertions) + 17 swift-testing. **Check both frameworks.**
 - **fn gestures:** tap = mic recording, double = dictation, triple = meeting (mic + system); esc during a
