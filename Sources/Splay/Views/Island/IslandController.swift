@@ -345,6 +345,8 @@ final class IslandController: NSObject {
         // transparent hit testing still prevents a broad interaction overlay.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = container
+        // Indicator only: every click goes straight through to the app beneath.
+        panel.ignoresMouseEvents = !SplayIslandInteraction.enabled
 
         if let screen = NSScreen.main {
             chrome.isNotchResting = resolvesNotch(for: screen)
@@ -392,7 +394,7 @@ final class IslandController: NSObject {
                 self.restoreAmbientVisibility()
             }
         }
-        installClickMonitors()
+        if SplayIslandInteraction.enabled { installClickMonitors() }
     }
 
     /// Re-order the existing ambient panels after an activation-policy change

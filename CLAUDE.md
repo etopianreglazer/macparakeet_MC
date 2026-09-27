@@ -95,10 +95,13 @@ ios/SplayBench/          XcodeGen spec + harness that benchmarks Parakeet v3 on 
   keys, and the shared log dir `~/Library/Logs/MacParakeet/`. Renaming moves the user's
   data and revokes TCC grants. See `docs/BRANDING.md`.
 - **Dead ≠ silent.** Silence never fails a recording. Only genuine engine death does.
-- **The island must never become key.** `IslandPanel` is `.nonactivatingPanel`; clicks
-  are delivered by local *and* global monitors (AppKit never reports own-app events to a
-  global monitor). `SplayCardController.yieldActivationIfIdle` hands focus back after
-  the card closes. Tooltips on these panels need `NSTrackingArea(.activeAlways)`.
+- **The island must never become key — and takes no clicks.** It sits over the top-centre
+  of the screen, so its click monitors stole clicks meant for apps beneath (address bars,
+  tabs). It is click-through (`SplayIslandInteraction.enabled = false`); fn starts/stops,
+  the menu bar icon opens the card (a held failure's card too). If clicks ever return:
+  local *and* global monitors are needed (AppKit never reports own-app events to a global
+  monitor). `SplayCardController.yieldActivationIfIdle` hands focus back after the card
+  closes. Tooltips on these panels need `NSTrackingArea(.activeAlways)`.
 - **STT goes through the scheduler.** Use `STTScheduler.transcribe(...)`; never create
   standalone `AsrManager`s in app code.
 - **Timers in `.common` run-loop mode**; heavy work off `@MainActor` via `Task.detached`.

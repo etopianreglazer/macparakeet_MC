@@ -27,14 +27,6 @@ final class AppEnvironmentConfigurer {
         /// The island mark click and the menu-bar "Open Splay" item present the
         /// menu card (the second surface), opened to its recents tab.
         let onOpenRecentCard: () -> Void
-        /// Clicking the failed island presents a card carrying the failure
-        /// message — the error text's one visible home. `onChoice` nil: a plain
-        /// OK card (the failure was already cleared). Non-nil: the card offers
-        /// Retry / Dismiss and reports the choice (`true` = Retry, `false` =
-        /// Dismiss or the card closed any other way); the failure stays held
-        /// until then. `fileWrite` picks the title for a transcript whose file
-        /// could not be written.
-        let onOpenErrorCard: (_ message: String, _ fileWrite: Bool, _ onChoice: ((Bool) -> Void)?) -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
         let onHotkeyBecameAvailable: () -> Void
@@ -208,7 +200,15 @@ final class AppEnvironmentConfigurer {
                 startRecording: { sourceMode in
                     coordinatorRefs.meeting?.startRecording(trigger: .hotkey, sourceModeOverride: sourceMode)
                 },
-                stopRecording: { coordinatorRefs.meeting?.toggleRecording(trigger: .hotkey) }
+                stopRecording: {
+                    // A held failure blocks fn; a tap then shows *why* (the
+                    // failure card) instead of doing nothing.
+                    if coordinatorRefs.meeting?.isAwaitingFailureDismissal == true {
+                        callbacks.onOpenRecentCard()
+                    } else {
+                        coordinatorRefs.meeting?.toggleRecording(trigger: .hotkey)
+                    }
+                }
             ),
             onTriggerFileTranscription: callbacks.onTriggerFileTranscriptionFromHotkey,
             onDictationHotkeyManagersChanged: { managers in
@@ -245,31 +245,10 @@ final class AppEnvironmentConfigurer {
                     coordinatorRefs.meeting?.toggleRecording(trigger: .manual)
                 }
             }
-            // The idle island (and the done pill) opens the menu card (the second surface)
-            // — except when the island is holding a failed-recording state, where
-            // the click opens a card carrying the failure's actual text (the
-            // island's light is wordless; the card is where the app says *why* —
-            // a failure must never be a silent vanish). A non-retryable failure is
-            // cleared back to idle on the click; a retryable one (the recording is
-            // on disk) stays held until the card's Retry or Dismiss.
-            controller.onOpenCard = {
-                if let meeting = coordinatorRefs.meeting, meeting.isAwaitingFailureDismissal {
-                    let message = meeting.heldFailureMessage
-                        ?? "The last recording failed. Check the selected microphone and try again."
-                    if meeting.canRetryFailure {
-                        // The recording is on disk: the card offers Retry, and the
-                        // failure stays held until the user picks one.
-                        callbacks.onOpenErrorCard(message, meeting.heldFailureIsFileWrite, { [weak meeting] retry in
-                            if retry { meeting?.retryFailure() } else { meeting?.dismissFailure() }
-                        })
-                    } else {
-                        meeting.dismissFailure()
-                        callbacks.onOpenErrorCard(message, false, nil)
-                    }
-                } else {
-                    callbacks.onOpenRecentCard()
-                }
-            }
+            // Only reached if island clicks are re-enabled
+            // (`SplayIslandInteraction.enabled`): the same failure-aware card
+            // every other "open Splay" path uses.
+            controller.onOpenCard = { callbacks.onOpenRecentCard() }
             controller.show()
             coordinatorRefs.island = controller
             island = controller

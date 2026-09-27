@@ -75,8 +75,8 @@ struct SplayIslandIndicator: View {
             let meterLevel = animated ? meter.advance(to: drive, at: t) : drive
             let systemDrive = (live && captureKind == .meeting) ? SplayMeter.shaped(systemLevel) : 0
             let systemMeterLevel = animated ? systemMeter.advance(to: systemDrive, at: t) : systemDrive
-            let m = (animated && !waiting) ? motion(at: t) : Motion(fiberOpacity: staticFiberOpacity, markBreathe: (1, 1))
-            pill(fiberOpacity: m.fiberOpacity, markBreathe: m.markBreathe, live: animated,
+            let markBreathe = (animated && !waiting) ? breathe(at: t) : (1, 1)
+            pill(markBreathe: markBreathe, live: animated,
                  meterLevel: meterLevel, systemMeterLevel: systemMeterLevel,
                  meterPhase: (animated && live) ? t : nil)
                 // Ease the red ↔ amber swap (dead-mic waiting register).
@@ -86,7 +86,7 @@ struct SplayIslandIndicator: View {
 
     // MARK: Pill
 
-    private func pill(fiberOpacity: Double, markBreathe: (Double, Double), live: Bool,
+    private func pill(markBreathe: (Double, Double), live: Bool,
                       meterLevel: Double, systemMeterLevel: Double, meterPhase: Double?) -> some View {
         let size = SplayGeometry.size(for: state, notchAttached: notchAttached)
         let radius = SplayGeometry.bottomRadius(for: state)
@@ -96,7 +96,6 @@ struct SplayIslandIndicator: View {
                                    style: .continuous)
                 .fill(SplayLight.surface)
                 .frame(width: size.width, height: size.height)
-                .overlay(SplayFiberStripe(state: lightState, opacity: fiberOpacity))
             face(markBreathe: markBreathe, live: live, meterLevel: meterLevel,
                  systemMeterLevel: systemMeterLevel, meterPhase: meterPhase)
                 .frame(width: size.width, height: size.height, alignment: .bottom)
@@ -279,24 +278,16 @@ struct SplayIslandIndicator: View {
             .overlay(Image(systemName: system).font(.system(size: 11)).foregroundStyle(glyph))
     }
 
-    // MARK: Active motion (per-frame: fiber pulse + mark breathe)
+    // MARK: Active motion (per-frame mark breathe)
 
-    private struct Motion { let fiberOpacity: Double; let markBreathe: (Double, Double) }
-
-    private func motion(at t: Double) -> Motion {
+    /// The mark breathes while a dropped file is working; everything else is still.
+    /// No rim (owner, 2026-09-27: the red halo is gone) — the glyphs carry state.
+    private func breathe(at t: Double) -> (Double, Double) {
         switch state {
-        case .recording:
-            // A steady rim: the meter carries the "I hear you" signal now.
-            return Motion(fiberOpacity: 1, markBreathe: (1, 1))
-        case .transcribing, .dropped:
-            let rimsoft = 0.4 + 0.4 * (0.5 - 0.5 * cos(t.truncatingRemainder(dividingBy: 2.2) / 2.2 * 2 * .pi))
-            return Motion(fiberOpacity: rimsoft, markBreathe: SplayMotion.breathe(t, period: 1.1))
-        default:
-            return Motion(fiberOpacity: 1, markBreathe: (1, 1))
+        case .transcribing, .dropped: return SplayMotion.breathe(t, period: 1.1)
+        default: return (1, 1)
         }
     }
-
-    private var staticFiberOpacity: Double { state == .dormant ? 0.55 : 1 }
 }
 
 // MARK: - Dictation caret

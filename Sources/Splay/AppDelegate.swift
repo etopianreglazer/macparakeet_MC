@@ -337,9 +337,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 onOpenRecentCard: { [weak self] in
                     self?.presentRecentCard()
                 },
-                onOpenErrorCard: { [weak self] message, fileWrite, onChoice in
-                    self?.presentErrorCard(message: message, fileWrite: fileWrite, onChoice: onChoice)
-                },
                 onToggleMeetingRecordingFromHotkey: { [weak self] in
                     guard let self, !self.onboardingWindowController.isVisible else { return }
                     self.toggleMeetingRecording(trigger: .hotkey)
@@ -549,8 +546,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Card surface (two-surface design)
 
-    /// Present the menu card opened to the recents tab (the last five recordings).
-    private func presentRecentCard() { presentMenuCard(startingTab: .recents) }
+    /// Present the menu card opened to the recents tab (the last five recordings)
+    /// — or, while a failed recording is held, a card carrying the failure's
+    /// actual text instead (the island's failed light is wordless; the card is
+    /// where the app says *why*). Every "open Splay" path lands here: the menu
+    /// bar's Recordings item, a Dock click, and an fn tap on a held failure. A
+    /// non-retryable failure is cleared on open; a retryable one (the recording
+    /// is on disk) stays held until the card's Retry or Dismiss.
+    private func presentRecentCard() {
+        guard let meeting = meetingRecordingFlowCoordinator, meeting.isAwaitingFailureDismissal else {
+            presentMenuCard(startingTab: .recents)
+            return
+        }
+        let message = meeting.heldFailureMessage
+            ?? "The last recording failed. Check the selected microphone and try again."
+        if meeting.canRetryFailure {
+            presentErrorCard(message: message, fileWrite: meeting.heldFailureIsFileWrite) { [weak meeting] retry in
+                if retry { meeting?.retryFailure() } else { meeting?.dismissFailure() }
+            }
+        } else {
+            meeting.dismissFailure()
+            presentErrorCard(message: message)
+        }
+    }
 
     /// Present a small card carrying a recording failure's actual message. The
     /// island's failed light is wordless, so this card is the one place the app

@@ -81,13 +81,6 @@ enum SplayLight {
     }
 }
 
-// MARK: - Rim
-
-enum SplayRimTuning {
-    /// The fiber line's alpha — a soft coloured edge, not a neon stroke.
-    static let opacity: Double = 0.40
-}
-
 // MARK: - Geometry (handoff tables)
 
 enum SplayGeometry {
@@ -137,41 +130,6 @@ enum SplayGeometry {
     /// two heights above, so the corner never wobbles across the active lifecycle.
     static func bottomRadius(for state: SplayIslandState) -> CGFloat {
         state == .dormant ? 17 : 19
-    }
-}
-
-// MARK: - Fiber stripe (the car-interior LED tracing the pill silhouette)
-
-/// A thin line tracing the pill, running down both sides and around the bottom
-/// curve only (never across the top). No glow.
-struct FiberStripeShape: Shape {
-    let bottomRadius: CGFloat
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        let r = min(bottomRadius, rect.height, rect.width / 2)
-        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - r))
-        p.addQuadCurve(to: CGPoint(x: rect.minX + r, y: rect.maxY),
-                       control: CGPoint(x: rect.minX, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.maxX - r, y: rect.maxY))
-        p.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.maxY - r),
-                       control: CGPoint(x: rect.maxX, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        return p
-    }
-}
-
-struct SplayFiberStripe: View {
-    let state: SplayIslandState
-    var opacity: Double = 1
-
-    var body: some View {
-        let palette = SplayLight.palette(for: state)
-        // Trace the pill's exact edge (no inset) so the rim hugs the island.
-        FiberStripeShape(bottomRadius: SplayGeometry.bottomRadius(for: state))
-            .stroke(palette.fiber.opacity(SplayRimTuning.opacity), style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
-            .opacity(opacity)
-            .allowsHitTesting(false)
     }
 }
 

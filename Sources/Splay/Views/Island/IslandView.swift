@@ -61,6 +61,16 @@ enum IslandDictationPhase: Equatable {
     case failed
 }
 
+/// Whether the island takes the mouse at all. Off (owner, 2026-09-27): the
+/// island sits over the top-centre of the screen, and its click watchers caught
+/// clicks meant for the app beneath — address bars and tabs opened the card or
+/// stopped a dictation mid-sentence. It is a pure indicator now: fn starts and
+/// stops, the menu bar icon opens the card (a held failure's card included).
+/// The tracker below stays intact so turning this back on restores clicks.
+enum SplayIslandInteraction {
+    static let enabled = false
+}
+
 // MARK: - Shared layout (single source of truth for view + tracker)
 
 enum IslandLayout {
