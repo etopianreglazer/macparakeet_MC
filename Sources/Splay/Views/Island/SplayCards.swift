@@ -38,7 +38,7 @@ enum SplayCardTab: String, CaseIterable, Identifiable {
     var message: String {
         switch self {
         case .recents:  return "The last five — Splay keeps no library, these are just the newest files."
-        case .settings: return "A few switches. Everything else Splay has already decided for you."
+        case .settings: return "One key, a few switches. Everything else Splay has already decided for you."
         case .about:    return "A fast, private voice recorder that runs entirely on your Mac."
         }
     }
@@ -99,12 +99,6 @@ struct SplayMenuCard: View {
         self.resize = resize
     }
 
-    private var recordSystemAudio: Binding<Bool> {
-        Binding(
-            get: { settings.meetingAudioSourceMode == .microphoneAndSystem },
-            set: { settings.meetingAudioSourceMode = $0 ? .microphoneAndSystem : .microphoneOnly }
-        )
-    }
     private var launchAtLogin: Binding<Bool> {
         Binding(get: { settings.launchAtLogin }, set: { settings.launchAtLogin = $0 })
     }
@@ -168,7 +162,7 @@ struct SplayMenuCard: View {
         case .recents:
             if rows.isEmpty {
                 return AnyView(
-                    Text("Nothing recorded yet. Hold your shortcut and start talking — the file appears here when it goes quiet.")
+                    Text("Nothing recorded yet. Tap fn and start talking; tap it again to stop, and the transcript appears here.")
                         .font(.system(size: 12))
                         .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.5))
                         .multilineTextAlignment(.center)
@@ -187,8 +181,8 @@ struct SplayMenuCard: View {
         case .settings:
             return AnyView(
                 VStack(alignment: .leading, spacing: 14) {
+                    SplayGestureLegend()
                     SplayToggleList(toggles: [
-                        SplayToggle(label: "Record system audio too", isOn: recordSystemAudio),
                         SplayToggle(label: "Launch at login", isOn: launchAtLogin),
                         SplayToggle(label: "Play a sound when it starts", isOn: $playSoundOnStart)
                     ])

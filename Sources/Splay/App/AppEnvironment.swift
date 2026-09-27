@@ -52,9 +52,9 @@ final class AppEnvironment {
         let selectedInputDeviceUIDProvider: @Sendable () -> String? = { [runtimePreferences] in
             runtimePreferences.selectedMicrophoneDeviceUID
         }
-        let meetingAudioSourceModeProvider: @Sendable () -> MeetingAudioSourceMode = { [runtimePreferences] in
-            runtimePreferences.meetingAudioSourceMode
-        }
+        // Fallback only: every start passes its own source (fn gesture, or
+        // mic-only from the menu). The stored preference is dormant.
+        let meetingAudioSourceModeProvider: @Sendable () -> MeetingAudioSourceMode = { .microphoneOnly }
 
         sttRuntime = STTRuntime(
             modelVersion: SpeechEnginePreference.parakeetModelVariant().asrModelVersion,

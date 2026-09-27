@@ -16,36 +16,41 @@ mine** (green, not coral).
 
 ## The owner's real workflow
 
-Everything is **capture → transcript document → export**. Nothing pastes into other apps.
+Everything is **capture → transcript document → export**, plus one exception: a dictation
+(double-tap Fn) pastes its verbatim text into the field you are in.
 
 - **Face-to-face conversations** — laptop open, mic only.
 - **Video calls / meetings** — mic + system audio.
 - **Phone voice memos** — recorded on iPhone, AirDropped to Downloads, **imported** as a file.
-- Occasionally **interviews from YouTube** — pulled in to analyze (kept, but a side-piece).
-- **Not** dictation-as-paste (speak → text into the active app). Possible future use
-  ("talking to myself to take notes"), not a today need.
+- ~~Occasionally **interviews from YouTube**~~ — YouTube import was cut (thread 10); download
+  the audio yourself and import it as a file.
+- ~~**Not** dictation-as-paste~~ — reversed thread 19: owner missed it, now double-tap Fn
+  (`docs/plans/fn-dictation-double-tap.md`).
 
 The upstream split between "dictation" and "meeting recording" is artificial for this
 owner — they are the *same intent* (record a conversation) with a different **audio source**.
 
 ## Capture model (the spine)
 
-One key — **Fn** — two gestures, distinguished by audio source. Both produce a transcript
-document in the Library. No push-to-talk.
+One key — **Fn** — three gestures. Tap and triple-tap produce a transcript document and
+differ only in **audio source**; double-tap is dictation (added thread 19, reversing the
+earlier "not dictation-as-paste" line). No push-to-talk.
 
 | Gesture | Audio source | Pipeline | Result |
 |---------|-------------|----------|--------|
-| **Single tap Fn** | Mic only | recording → document | transcript in Library |
-| **Double tap Fn** | Mic + system audio | recording → document | transcript in Library |
-| **Import file** | AirDropped phone memo, any audio/video | file transcription | transcript in Library |
-| **YouTube** (side-piece) | URL | file transcription | transcript in Library |
+| **Tap Fn** | Mic only | recording → document | transcript `.md` + audio |
+| **Double-tap Fn** | Mic only | dictation | verbatim text pasted into the field focused at stop (clipboard if none) |
+| **Triple-tap Fn** | Mic + system audio | recording → document | transcript `.md` + audio |
+| **Import file** | AirDropped phone memo, any audio/video | file transcription | transcript `.md` |
 
 Consequences:
-- **Single-tap is NOT the old paste-dictation.** It is mic-only recording-to-document
-  (the meeting pipeline with system audio off).
-- `⌘⇧M` (old meeting hotkey) **retires** — double-tap Fn replaces it.
-- Push-to-talk (hold Fn) is **removed**.
-- Paste-style dictation becomes a dormant/future opt-in, not a primary gesture.
+- Tap Fn again stops whatever runs. **Escape** during a dictation starts a 3·2·1 undo
+  countdown on the island (Fn keeps it); Escape never touches a recording or meeting.
+- The gesture picks the audio source; there is no "record system audio" setting. Menu ▸
+  Start Recording is mic-only, like a tap. Settings shows a read-only gesture legend.
+- `⌘⇧M` (old meeting hotkey) is retired. Push-to-talk (hold Fn) is **removed**.
+- Dictation is verbatim, same as transcripts (ADR-004): nothing polishes it.
+- YouTube import was cut entirely (thread 10).
 
 ## Transcript vs. summary — the layering principle
 

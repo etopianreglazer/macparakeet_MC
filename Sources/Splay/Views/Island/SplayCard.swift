@@ -628,6 +628,60 @@ struct SplayToggleList: View {
     }
 }
 
+// MARK: - Gesture legend
+
+/// What each `fn` gesture does (Settings). Read-only: the gestures are fixed,
+/// so this explains them rather than offering a switch. Rows match the toggle
+/// list's shape; the key column uses the key-cap fill.
+struct SplayGestureLegend: View {
+    struct Row: Identifiable {
+        var id: String { keys }
+        let keys: String
+        let meaning: String
+    }
+
+    static let rows: [Row] = [
+        Row(keys: "fn", meaning: "Record from your mic"),
+        Row(keys: "fn fn", meaning: "Dictate into the text field you're in"),
+        Row(keys: "fn fn fn", meaning: "Record a call — mic and system audio"),
+        Row(keys: "esc", meaning: "Throw a dictation away — fn within \(DictationFlowTiming.cancelCountdownSeconds) s keeps it")
+    ]
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(Self.rows) { row in
+                HStack(spacing: 12) {
+                    Text(row.keys)
+                        .font(.system(size: 11.5, design: .monospaced))
+                        .foregroundStyle(SplayCardPalette.secondaryInk)
+                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(SplayCardPalette.rgba(36, 31, 56, 0.07))
+                        )
+                        .frame(width: 78, alignment: .leading)
+                    Text(row.meaning)
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(SplayCardPalette.ink)
+                    Spacer(minLength: 0)
+                }
+                .padding(EdgeInsets(top: 8, leading: 13, bottom: 8, trailing: 13))
+                .background(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(SplayCardPalette.rgba(36, 31, 56, 0.035))
+                )
+                .accessibilityElement(children: .combine)
+            }
+            Text("Tap fn again to stop.")
+                .font(.system(size: 11.5))
+                .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.45))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 3)
+        }
+    }
+}
+
 /// The design's 38×22 pill switch (handoff §Toggle list) — a compact custom
 /// control so it matches the card exactly rather than the stock macOS toggle.
 struct SplaySwitch: View {

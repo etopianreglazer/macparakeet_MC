@@ -35,7 +35,8 @@ otherwise, it is dead weight from upstream, not a feature to keep alive.
 | Triple-tap `fn` | Mic + system audio (ScreenCaptureKit) | transcript `.md` + paired audio |
 | Drop a file on the menu bar icon / Menu ▸ Transcribe File | Any audio/video (FFmpeg demux) | transcript `.md` |
 
-Tap again to stop whatever runs. **Escape** during a dictation starts upstream's undo
+Tap again to stop whatever runs. The gesture picks the audio source — there is no system-audio
+setting (Settings shows a read-only gesture legend); Menu ▸ Start Recording is mic-only. **Escape** during a dictation starts upstream's undo
 countdown (3·2·1 on the island): tap `fn` to keep it, Escape again or wait to discard.
 Escape never touches a recording, a meeting, or a dictation that is already transcribing.
 `HotkeyGestureController.tapDoubleTripleToggle` resolves the

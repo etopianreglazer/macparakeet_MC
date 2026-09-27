@@ -149,7 +149,11 @@ final class AppEnvironmentConfigurer {
             permissionService: env.permissionService,
             transcriptionRepo: env.transcriptionRepo,
             sttManager: env.sttScheduler,
-            meetingAudioSourceModeProvider: { env.runtimePreferences.meetingAudioSourceMode },
+            // The fn gesture picks the source (tap = mic, triple-tap = mic +
+            // system) and passes it as an override; any other start (menu ▸
+            // Start Recording) is mic-only, like a tap. The stored
+            // `meetingAudioSourceMode` preference is dormant (thread 22).
+            meetingAudioSourceModeProvider: { .microphoneOnly },
             pillViewModel: meetingPillViewModel,
             onMenuBarIconUpdate: { _ in callbacks.onMenuBarIconUpdate() },
             onTranscriptionReady: { [weak self] transcription in

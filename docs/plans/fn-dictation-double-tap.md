@@ -1,10 +1,9 @@
 # Fn dictation — double-tap dictates into the focused field, triple-tap is the meeting
 
-> Status: **IN PROGRESS** (thread 19, 2026-09-27). Slices 1, 2, 4 built and installed (`1177b603`, `23bc6d7d`,
-> island `edcef30b`…`a018b133`); slice 3 built `a912ac48` (thread 21: focused-field check via
-> `AccessibilityService.focusedPasteTarget`, dictations in the card's Recordings) plus Escape (owner: keep
-> upstream's undo countdown, now 3·2·1 — Escape → countdown, fn tap = undo, Escape/expiry = discard;
-> `FnCaptureRouter.escape`, island `.cancelling` face). Owner pressed all of slice 3: works. Slice 5 open. Mac only.
+> Status: **HISTORICAL** (done thread 22, 2026-09-27). All five slices shipped: slices 1–4 in threads 19–21
+> (owner pressed each: works); slice 5 (thread 22) = card Settings gesture legend replacing the dead
+> "Record system audio too" toggle (menu ▸ Start Recording is now mic-only), the Recordings empty-state line,
+> and `fork-product-model.md`'s capture table. Escape = 3·2·1 undo countdown (`FnCaptureRouter.escape`).
 > Slice 4 landed differently from the text below: the island is click-through, dictation shows the voice bars
 > only (no caret, no timer), meetings add a second system-audio meter; tuned live by the owner.
 
