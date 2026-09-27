@@ -24,6 +24,7 @@ final class IslandCaptureFaceTests: XCTestCase {
         XCTAssertEqual(IslandLayout.effectiveState(pill: .idle, dictation: .transcribing), .transcribing)
         XCTAssertEqual(IslandLayout.effectiveState(pill: .idle, dictation: .pasted), .completed)
         XCTAssertEqual(IslandLayout.effectiveState(pill: .idle, dictation: .copied), .completed)
+        XCTAssertEqual(IslandLayout.effectiveState(pill: .idle, dictation: .cancelling(secondsLeft: 3)), .completed)
         if case .error = IslandLayout.effectiveState(pill: .idle, dictation: .failed) {} else {
             XCTFail("a failed dictation shows the failed face")
         }
@@ -48,12 +49,21 @@ final class IslandCaptureFaceTests: XCTestCase {
         XCTAssertEqual(DictationFlowCoordinator.islandPhase(for: .finishing(outcome: .pasteFailedCopied("x"))), .copied)
         XCTAssertEqual(DictationFlowCoordinator.islandPhase(for: .finishing(outcome: .noSpeech)), .failed)
         XCTAssertEqual(DictationFlowCoordinator.islandPhase(for: .finishing(outcome: .error("x"))), .failed)
-        for s: DictationFlowState in [.idle, .ready, .cancelCountdown] {
+        XCTAssertEqual(DictationFlowCoordinator.islandPhase(for: .cancelCountdown, cancelSecondsLeft: 2),
+                       .cancelling(secondsLeft: 2))
+        for s: DictationFlowState in [.idle, .ready] {
             XCTAssertNil(DictationFlowCoordinator.islandPhase(for: s), "\(s)")
         }
     }
 
     // MARK: Geometry (owner, 2026-09-27): bars left; timer right; dictation has no right side
+
+    func testCancelCountdownIsAOneGlyphFace() {
+        for notch in [false, true] {
+            XCTAssertEqual(SplayGeometry.layout(for: .cancelling, kind: .dictation, notchAttached: notch).size,
+                           SplayGeometry.layout(for: .copied, kind: .dictation, notchAttached: notch).size)
+        }
+    }
 
     func testDictationIsTheShortestAndAMeetingTheLongest() {
         for notch in [false, true] {

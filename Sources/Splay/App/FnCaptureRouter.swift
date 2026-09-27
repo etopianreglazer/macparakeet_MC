@@ -16,6 +16,11 @@ struct FnCaptureRouter {
     /// result; on a held failure, opens the failure's card (the app's wiring
     /// decides).
     let stopRecording: () -> Void
+    /// Escape during a dictation: upstream's 3-2-1 undo countdown.
+    let cancelDictation: () -> Void
+    /// Whether Escape may cancel the dictation now (capturing or counting down;
+    /// never while it transcribes).
+    let isDictationCancellable: () -> Bool
 
     static let inert = FnCaptureRouter(
         isDictationBusy: { false },
@@ -23,7 +28,9 @@ struct FnCaptureRouter {
         startDictation: {},
         stopDictation: {},
         startRecording: { _ in },
-        stopRecording: {}
+        stopRecording: {},
+        cancelDictation: {},
+        isDictationCancellable: { false }
     )
 
     var isCaptureActive: Bool { isDictationBusy() || isMeetingBusy() }
@@ -37,6 +44,18 @@ struct FnCaptureRouter {
         case .dictation: startDictation()
         case .meeting: startRecording(.microphoneAndSystem)
         }
+    }
+
+    /// Escape with no fn gesture pending. Cancels a capturing (or counting-down)
+    /// dictation; a transcribing dictation, a recording or a meeting ignores it
+    /// (a stray Escape must never throw one away). Returns false when nothing
+    /// runs, so the app's idle-Escape handling can apply.
+    func escape() -> Bool {
+        if isDictationCancellable() {
+            cancelDictation()
+            return true
+        }
+        return isCaptureActive
     }
 
     func stop() {

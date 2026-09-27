@@ -13,8 +13,9 @@ has since been cut down to exactly **two surfaces**:
    rim, takes no clicks. Five red bars follow *your mic* left of the camera (a meeting adds
    fainter blue system-audio bars), a timer counts up right of it; dictation is the bars
    alone, with only a short ear past the camera. An amber spinner while
-   transcribing, a green check when done. Flat, motionless amber bars mean the input is
-   *dead* (not merely silent).
+   transcribing, a green check when done (a copy glyph when a dictation had no text field
+   to paste into, a 3·2·1 ring while an Escaped dictation counts down). Flat, motionless
+   amber bars mean the input is *dead* (not merely silent).
 2. **The card** — one centred modal (Recordings · Settings · About) opened from the menu
    bar icon (Splay's status item). Everything that isn't capture lives here.
 
@@ -34,7 +35,10 @@ otherwise, it is dead weight from upstream, not a feature to keep alive.
 | Triple-tap `fn` | Mic + system audio (ScreenCaptureKit) | transcript `.md` + paired audio |
 | Drop a file on the menu bar icon / Menu ▸ Transcribe File | Any audio/video (FFmpeg demux) | transcript `.md` |
 
-Tap again to stop whatever runs. `HotkeyGestureController.tapDoubleTripleToggle` resolves the
+Tap again to stop whatever runs. **Escape** during a dictation starts upstream's undo
+countdown (3·2·1 on the island): tap `fn` to keep it, Escape again or wait to discard.
+Escape never touches a recording, a meeting, or a dictation that is already transcribing.
+`HotkeyGestureController.tapDoubleTripleToggle` resolves the
 gesture; `FnCaptureRouter` routes it. Tap and triple-tap run the *same* meeting-recording
 pipeline with a different audio source; double-tap runs upstream's `DictationFlowCoordinator`
 (plan: `docs/plans/fn-dictation-double-tap.md`).

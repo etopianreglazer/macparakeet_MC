@@ -315,7 +315,9 @@ public final class HotkeyGestureController {
                 tapCountState = .idle
                 return [.cancelHoldWindow]
             }
-            return []
+            // No gesture pending: the app decides (a dictation starts its undo
+            // countdown; a recording ignores it; idle dismisses a lingering face).
+            return [.cancelRecording]
         }
 
         let wasWaitingForSecondTap = stateMachine.state == .waitingForSecondTap

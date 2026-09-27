@@ -25,6 +25,40 @@ final class DictationFlowCoordinatorTests: XCTestCase {
         harness.coordinator.cancelDictation()
     }
 
+    func testEscapeCountsDownThreeTwoOneOnTheIslandThenDiscards() async throws {
+        let harness = try await makeRecordingHarness()
+        var phases: [IslandDictationPhase?] = []
+        harness.coordinator.onIslandPhaseChange = { phases.append($0) }
+        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        let started = await waitUntil { self.isRecording(harness.coordinator.overlayStateForTesting) }
+        XCTAssertTrue(started)
+
+        phases.removeAll()
+        harness.coordinator.cancelDictation(reason: .escape)
+        let discarded = await waitUntil(timeoutMs: 4_500) { phases.last == .some(nil) }
+        XCTAssertTrue(discarded)
+
+        var shown: [IslandDictationPhase?] = []
+        for p in phases where shown.last != .some(p) { shown.append(p) }
+        XCTAssertEqual(shown, [.cancelling(secondsLeft: 3), .cancelling(secondsLeft: 2),
+                               .cancelling(secondsLeft: 1), nil])
+    }
+
+    func testFnTapDuringTheCountdownKeepsTheDictation() async throws {
+        let harness = try await makeRecordingHarness()
+        var phases: [IslandDictationPhase?] = []
+        harness.coordinator.onIslandPhaseChange = { phases.append($0) }
+        harness.coordinator.startDictation(mode: .persistent, trigger: .hotkey)
+        let started = await waitUntil { self.isRecording(harness.coordinator.overlayStateForTesting) }
+        XCTAssertTrue(started)
+
+        harness.coordinator.cancelDictation(reason: .escape)
+        XCTAssertEqual(phases.last, .cancelling(secondsLeft: 3))
+        harness.coordinator.stopDictation()   // the fn tap
+        XCTAssertEqual(phases.last, .transcribing)
+        XCTAssertFalse(harness.coordinator.isEscapeCancellable, "Escape can no longer drop it")
+    }
+
     func testSuccessfulMicPermissionRequestDismissesStaleStartFailure() async throws {
         let harness = try await makeMicPermissionHarness(
             microphonePermission: .notDetermined,
@@ -115,6 +149,23 @@ final class DictationFlowCoordinatorTests: XCTestCase {
 
         for state in states {
             XCTAssertFalse(DictationFlowCoordinator.mediaPauseCaptureActive(for: state), "Expected false for \(state)")
+        }
+    }
+
+    func testFnTapDuringTheCancelCountdownUndoesIt() {
+        // The island takes no clicks, so upstream's "Undo" button is the fn tap.
+        XCTAssertEqual(DictationFlowCoordinator.stopEvent(for: .cancelCountdown), .undoRequested)
+        XCTAssertEqual(DictationFlowCoordinator.stopEvent(for: .recording(mode: .persistent)), .stopRequested)
+    }
+
+    func testEscapeOnlyCancelsWhileCapturingOrCountingDown() {
+        XCTAssertTrue(DictationFlowCoordinator.isEscapeCancellable(for: .recording(mode: .persistent)))
+        XCTAssertTrue(DictationFlowCoordinator.isEscapeCancellable(for: .cancelCountdown))
+        // Cancelling these has no undo window — Escape must not lose the dictation.
+        for s: DictationFlowState in [.processing, .pendingStop(mode: .persistent),
+                                      .startingService(mode: .persistent), .checkingEntitlements(mode: .persistent),
+                                      .idle, .ready, .finishing(outcome: .success)] {
+            XCTAssertFalse(DictationFlowCoordinator.isEscapeCancellable(for: s), "\(s)")
         }
     }
 

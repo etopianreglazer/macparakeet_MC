@@ -6,6 +6,7 @@ import SplayCore
 final class FnCaptureRouterTests: XCTestCase {
     private var dictationBusy = false
     private var meetingBusy = false
+    private var dictationCancellable = false
     private var calls: [String] = []
 
     private func makeRouter() -> FnCaptureRouter {
@@ -15,7 +16,9 @@ final class FnCaptureRouterTests: XCTestCase {
             startDictation: { [unowned self] in calls.append("startDictation") },
             stopDictation: { [unowned self] in calls.append("stopDictation") },
             startRecording: { [unowned self] source in calls.append("startRecording(\(source.rawValue))") },
-            stopRecording: { [unowned self] in calls.append("stopRecording") }
+            stopRecording: { [unowned self] in calls.append("stopRecording") },
+            cancelDictation: { [unowned self] in calls.append("cancelDictation") },
+            isDictationCancellable: { [unowned self] in dictationCancellable }
         )
     }
 
@@ -49,6 +52,23 @@ final class FnCaptureRouterTests: XCTestCase {
         meetingBusy = true
         router.stop()
         XCTAssertEqual(calls, ["stopDictation", "stopRecording"])
+    }
+
+    func testEscapeCancelsADictationOnly() {
+        let router = makeRouter()
+        dictationBusy = true
+        dictationCancellable = true
+        XCTAssertTrue(router.escape())
+        // Transcribing: busy but not cancellable — Escape is swallowed, not a discard.
+        dictationCancellable = false
+        XCTAssertTrue(router.escape())
+        dictationBusy = false
+        meetingBusy = true
+        // A stray Escape must never throw away a meeting.
+        XCTAssertTrue(router.escape())
+        meetingBusy = false
+        XCTAssertFalse(router.escape(), "nothing running: the app's idle-Escape handler runs")
+        XCTAssertEqual(calls, ["cancelDictation"])
     }
 
     func testStopWithNothingBusyDoesNothing() {

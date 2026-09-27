@@ -57,6 +57,8 @@ enum IslandDictationPhase: Equatable {
     case pasted
     case copied
     case failed
+    /// Escape was pressed: discarding in `secondsLeft` unless fn is tapped.
+    case cancelling(secondsLeft: Int)
 }
 
 // MARK: - Shared layout (single source of truth for view + tracker)
@@ -193,7 +195,7 @@ enum IslandLayout {
         switch dictation {
         case .recording: return .recording
         case .transcribing: return .transcribing
-        case .pasted, .copied: return .completed
+        case .pasted, .copied, .cancelling: return .completed
         case .failed: return .error("dictation")
         }
     }
@@ -331,6 +333,7 @@ struct IslandView: View {
                     level: chrome.liveLevel,
                     systemLevel: chrome.liveSystemLevel,
                     elapsedSeconds: pill.elapsedSeconds,
+                    cancelSecondsLeft: cancelSecondsLeft,
                     audioAlive: chrome.audioAlive,
                     notchAttached: chrome.isNotchResting
                 )
@@ -361,6 +364,11 @@ struct IslandView: View {
         .allowsHitTesting(false)
     }
 
+    private var cancelSecondsLeft: Int? {
+        if case .cancelling(let left) = chrome.dictation { return left }
+        return nil
+    }
+
     private var liftsForHover: Bool { visual == .recording && chrome.captureHovered }
 
     /// Map the tracker's `IslandVisual` (+ recording-flow state) onto the design's
@@ -374,7 +382,10 @@ struct IslandView: View {
         case .transcribing:  return .transcribing
         case .done:
             if case .error = effectiveState { return .failed }
-            if chrome.dictation == .copied, pill.state == .idle { return .copied }
+            if pill.state == .idle {
+                if chrome.dictation == .copied { return .copied }
+                if cancelSecondsLeft != nil { return .cancelling }
+            }
             return .done
         }
     }

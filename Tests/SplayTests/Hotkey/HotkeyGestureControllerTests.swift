@@ -522,8 +522,9 @@ final class HotkeyGestureControllerTests: XCTestCase {
         XCTAssertEqual(controller.escapePressed(), [.cancelHoldWindow])
         XCTAssertEqual(controller.holdWindowElapsed(), [])
 
-        // Escape with nothing pending is not ours to handle.
-        XCTAssertEqual(controller.escapePressed(), [])
+        // Escape with no gesture pending goes to the app as a cancel: it cancels a
+        // running dictation (3-2-1 undo countdown) and is ignored by recordings.
+        XCTAssertEqual(controller.escapePressed(), [.cancelRecording])
     }
 
     func testTriple_resetAndSuppressClearAPendingGesture() {

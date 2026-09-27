@@ -212,7 +212,9 @@ final class AppEnvironmentConfigurer {
                     } else {
                         coordinatorRefs.meeting?.toggleRecording(trigger: .hotkey)
                     }
-                }
+                },
+                cancelDictation: { coordinatorRefs.dictation?.cancelDictation(reason: .escape) },
+                isDictationCancellable: { coordinatorRefs.dictation?.isEscapeCancellable ?? false }
             ),
             onTriggerFileTranscription: callbacks.onTriggerFileTranscriptionFromHotkey,
             onDictationHotkeyManagersChanged: { managers in

@@ -326,8 +326,8 @@ final class AppHotkeyCoordinator {
         manager.isCaptureActive = { router.isCaptureActive }
         manager.onStartCapture = { kind in router.start(kind) }
         manager.onStopCapture = { router.stop() }
-        manager.onEscapeWhileIdle = { [weak self] in
-            self?.onEscapeWhileIdle()
+        manager.onCancelRecording = { [weak self] in
+            if !router.escape() { self?.onEscapeWhileIdle() }
         }
 
         if manager.start() {

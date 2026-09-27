@@ -92,8 +92,13 @@ final class DictationFlowCoordinator {
     /// The live mic level while dictating (~20 Hz), for the island's meter.
     var onLiveAudioLevel: ((Float) -> Void)?
 
-    nonisolated static func islandPhase(for state: DictationFlowState) -> IslandDictationPhase? {
+    nonisolated static func islandPhase(
+        for state: DictationFlowState,
+        cancelSecondsLeft: Int = DictationFlowTiming.cancelCountdownSeconds
+    ) -> IslandDictationPhase? {
         switch state {
+        case .cancelCountdown:
+            return .cancelling(secondsLeft: cancelSecondsLeft)
         case .checkingEntitlements, .startingService, .recording, .pendingStop:
             return .recording
         case .processing:
@@ -104,7 +109,7 @@ final class DictationFlowCoordinator {
             return .copied
         case .finishing(.noSpeech), .finishing(.error):
             return .failed
-        case .idle, .ready, .cancelCountdown:
+        case .idle, .ready:
             return nil
         }
     }
@@ -113,6 +118,19 @@ final class DictationFlowCoordinator {
     /// gesture: capturing, transcribing, or in the cancel countdown. The
     /// `.finishing` display states time out on their own and accept a new start.
     var isFnBusy: Bool { Self.isFnBusy(for: stateMachine.state) }
+
+    /// Escape cancels only while capturing (→ the 3-2-1 countdown) or inside the
+    /// countdown (→ discard now). Elsewhere the state machine's cancel drops the
+    /// flow without an undo window, so Escape must not reach it: a stray Escape
+    /// during transcription would silently throw the transcript away.
+    var isEscapeCancellable: Bool { Self.isEscapeCancellable(for: stateMachine.state) }
+
+    static func isEscapeCancellable(for state: DictationFlowState) -> Bool {
+        switch state {
+        case .recording, .cancelCountdown: return true
+        default: return false
+        }
+    }
 
     static func isFnBusy(for state: DictationFlowState) -> Bool {
         switch state {
@@ -218,6 +236,8 @@ final class DictationFlowCoordinator {
     private var recordingTask: Task<Void, Never>?
     private var actionTask: Task<Void, Never>?
     private var cancelCountdownTask: Task<Void, Never>?
+    /// Seconds left on the island's cancel countdown.
+    private var cancelSecondsLeft = DictationFlowTiming.cancelCountdownSeconds
     private var displayDismissTask: Task<Void, Never>?
     private var captionGraceTimer: DispatchWorkItem?
     private var captionEscalationTimer: DispatchWorkItem?
@@ -325,7 +345,13 @@ final class DictationFlowCoordinator {
     }
 
     func stopDictation() {
-        sendEvent(.stopRequested)
+        sendEvent(Self.stopEvent(for: stateMachine.state))
+    }
+
+    /// A stop (fn tap) during the cancel countdown is the undo: the island takes
+    /// no clicks, so upstream's "Undo" button becomes the key that started it.
+    static func stopEvent(for state: DictationFlowState) -> DictationFlowEvent {
+        state == .cancelCountdown ? .undoRequested : .stopRequested
     }
 
     func cancelDictation(reason: TelemetryDictationCancelReason = .ui) {
@@ -358,6 +384,10 @@ final class DictationFlowCoordinator {
 
     // MARK: - State Machine Core
 
+    private func pushIslandPhase() {
+        onIslandPhaseChange?(Self.islandPhase(for: stateMachine.state, cancelSecondsLeft: cancelSecondsLeft))
+    }
+
     private func sendEvent(_ event: DictationFlowEvent) {
         let oldState = stateMachine.state
         let effects = stateMachine.handle(event)
@@ -369,7 +399,7 @@ final class DictationFlowCoordinator {
         }
 
         executeEffects(effects)
-        onIslandPhaseChange?(Self.islandPhase(for: stateMachine.state))
+        pushIslandPhase()
 
         if Self.mediaPauseCaptureActive(for: oldState),
            !Self.mediaPauseCaptureActive(for: stateMachine.state) {
@@ -458,8 +488,9 @@ final class DictationFlowCoordinator {
 
         case .showCancelCountdown:
             overlayViewModel?.stopTimer()
-            overlayViewModel?.cancelTimeRemaining = 5.0
-            overlayViewModel?.state = .cancelled(timeRemaining: 5.0)
+            cancelSecondsLeft = DictationFlowTiming.cancelCountdownSeconds
+            overlayViewModel?.cancelTimeRemaining = Double(DictationFlowTiming.cancelCountdownSeconds)
+            overlayViewModel?.state = .cancelled(timeRemaining: Double(DictationFlowTiming.cancelCountdownSeconds))
 
         case .showSuccess:
             dismissCaption(outcome: .success)
@@ -696,11 +727,14 @@ final class DictationFlowCoordinator {
         case .startCancelCountdown:
             let gen = stateMachine.generation
             cancelCountdownTask = Task { @MainActor in
-                // 5-second countdown, updating UI each second
-                for i in stride(from: 4.0, through: 0, by: -1) {
+                // Tick the island each second: 3 → 2 → 1, then discard.
+                for left in stride(from: DictationFlowTiming.cancelCountdownSeconds - 1, through: 0, by: -1) {
                     try? await Task.sleep(for: .seconds(1))
                     if Task.isCancelled { return }
-                    self.overlayViewModel?.cancelTimeRemaining = i
+                    self.overlayViewModel?.cancelTimeRemaining = Double(left)
+                    guard left > 0 else { break }
+                    self.cancelSecondsLeft = left
+                    self.pushIslandPhase()
                 }
                 guard !Task.isCancelled else { return }
                 self.sendEvent(.cancelCountdownExpired(generation: gen))

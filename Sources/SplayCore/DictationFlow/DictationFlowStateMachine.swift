@@ -22,7 +22,7 @@ public enum DictationFlowState: Equatable, Sendable {
     case pendingStop(mode: FnKeyStateMachine.RecordingMode)
     /// Stop called, transcription in progress.
     case processing
-    /// Cancel countdown running (5 seconds). User can undo or confirm.
+    /// Cancel countdown running (`DictationFlowTiming.cancelCountdownSeconds`). User can undo or confirm.
     case cancelCountdown
     /// Terminal display state before returning to idle.
     case finishing(outcome: DictationFlowFinishOutcome)

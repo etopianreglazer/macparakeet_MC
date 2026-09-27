@@ -19,6 +19,8 @@ struct SplayIslandIndicator: View {
     var systemLevel: Double = 0
     /// Elapsed recording time for the timer (recordings and meetings).
     var elapsedSeconds: Int = 0
+    /// The dictation cancel countdown's remaining seconds (`.cancelling`).
+    var cancelSecondsLeft: Int?
     /// Whether audio frames are actually arriving (1 Hz writer-health signal).
     /// While recording, false renders the "waiting" register: the recording
     /// light holds a motionless warning amber instead of the breathing red —
@@ -160,6 +162,8 @@ struct SplayIslandIndicator: View {
             glyphCircle("checkmark", color: markColor).transition(spawn)
         case .copied:
             glyphCircle("doc.on.doc", color: markColor).transition(spawn)
+        case .cancelling:
+            countdownCircle(cancelSecondsLeft ?? 0, color: markColor).transition(spawn)
         case .failed, .warning:
             glyphCircle("exclamationmark", color: markColor).transition(spawn)
         case .dormant, .ready:
@@ -204,6 +208,20 @@ struct SplayIslandIndicator: View {
             Circle().strokeBorder(color, lineWidth: 1.5).frame(width: 16, height: 16)
             Image(systemName: system).font(.system(size: 8, weight: .bold)).foregroundStyle(color)
         }
+    }
+
+    /// The check/copy ring holding the countdown digit, which rolls down each second.
+    private func countdownCircle(_ seconds: Int, color: Color) -> some View {
+        ZStack {
+            Circle().strokeBorder(color, lineWidth: 1.5).frame(width: 16, height: 16)
+            Text("\(seconds)")
+                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(color)
+                .contentTransition(.numericText(countsDown: true))
+                .animation(reduceMotion ? nil : .snappy(duration: 0.25), value: seconds)
+        }
+        .accessibilityLabel("Discarding in \(seconds)")
     }
 
     // MARK: Active motion (per-frame mark breathe)

@@ -10,7 +10,7 @@ import SwiftUI
 // The island is always near-black, so these colours are fixed sRGB (no
 // light/dark adaptation) — they are the design's final intent, not tokens.
 
-// MARK: - The nine indicator states
+// MARK: - The indicator states
 
 /// The discrete forms the island morphs through (handoff "Screen 1"). Distinct
 /// from `MeetingRecordingPillViewModel.PillState`: idle splits into
@@ -18,6 +18,8 @@ import SwiftUI
 /// warning / dropped are light-only forms driven later (Phase 2+).
 enum SplayIslandState: Equatable, Hashable {
     case dormant, ready, recording, transcribing, done, copied, warning, failed, dropped
+    /// Dictation cancel countdown (Escape): 3 · 2 · 1, then discarded.
+    case cancelling
 }
 
 // MARK: - Palette
@@ -70,6 +72,10 @@ enum SplayLight {
             return Palette(fiber: rgb(0xF6, 0xC8, 0x6B))
         case .failed:
             return Palette(fiber: rgb(0xFF, 0x7A, 0x6E))
+        case .cancelling:
+            // Neutral: nothing failed, and nothing is being worked on — it is
+            // just going away unless you tap fn.
+            return Palette(fiber: rgb(0xC9, 0xC4, 0xD8))
         }
     }
 
@@ -124,7 +130,7 @@ enum SplayGeometry {
             guard kind == .meeting else { return SplayMeterTuning.width }
             return SplayMeterTuning.width + SplayMeterTuning.twinGap
                 + SplayMeterTuning.width(bars: SplayMeterTuning.systemBarCount)
-        case .transcribing, .done, .copied, .warning, .failed, .dropped:
+        case .transcribing, .done, .copied, .warning, .failed, .dropped, .cancelling:
             return glyphWidth
         case .dormant, .ready:
             return 0
@@ -148,7 +154,7 @@ enum SplayGeometry {
             return (CGSize(width: dormantWidth, height: 34), 0)
         case .ready:
             return (CGSize(width: readyWidth, height: 38), 0)
-        case .recording, .transcribing, .done, .copied, .warning, .failed, .dropped:
+        case .recording, .transcribing, .done, .copied, .warning, .failed, .dropped, .cancelling:
             let leftContent = leftContentWidth(for: state, kind: kind)
             let rightContent = rightContentWidth(for: state, kind: kind)
             guard notchAttached else {
