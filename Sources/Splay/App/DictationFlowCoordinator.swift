@@ -152,6 +152,16 @@ final class DictationFlowCoordinator {
         }
     }
 
+    /// Nothing editable had focus when the dictation finished: the text goes on
+    /// the clipboard (the island shows "copied") instead of a blind ⌘V into nothing.
+    static let noTextFieldMessage = "No text field focused. Copied to clipboard. Press Cmd+V."
+
+    /// Only a confident "not editable" skips the paste. `.unknown` (no
+    /// Accessibility grant) takes the paste path, which reports the permission.
+    static func keepsOnClipboardInsteadOfPasting(_ target: AccessibilityPasteTarget) -> Bool {
+        target.verdict == .notEditable
+    }
+
     static func pasteFailureMessage(for error: Error, copiedToClipboard copied: Bool) -> String {
         let clipboardError = error as? ClipboardServiceError
 
@@ -176,6 +186,7 @@ final class DictationFlowCoordinator {
 
     private let serviceSession: DictationServiceSession
     private let clipboardService: ClipboardServiceProtocol
+    private let pasteTargetProbe: @MainActor () -> AccessibilityPasteTarget
     private let entitlementsService: EntitlementsService
     private let dictationRepo: DictationRepository
     private let settingsViewModel: SettingsViewModel
@@ -235,6 +246,9 @@ final class DictationFlowCoordinator {
     init(
         dictationService: DictationService,
         clipboardService: ClipboardServiceProtocol,
+        pasteTargetProbe: @escaping @MainActor () -> AccessibilityPasteTarget = {
+            AccessibilityPasteTarget(verdict: .unknown, role: nil)
+        },
         entitlementsService: EntitlementsService,
         dictationRepo: DictationRepository,
         settingsViewModel: SettingsViewModel,
@@ -253,6 +267,7 @@ final class DictationFlowCoordinator {
     ) {
         self.serviceSession = DictationServiceSession(service: dictationService)
         self.clipboardService = clipboardService
+        self.pasteTargetProbe = pasteTargetProbe
         self.entitlementsService = entitlementsService
         self.dictationRepo = dictationRepo
         self.settingsViewModel = settingsViewModel
@@ -553,6 +568,20 @@ final class DictationFlowCoordinator {
                     if action == nil && !transcriptHasText {
                         self.dictationLog.notice("dictation_paste_skipped gen=\(gen) reason=empty_transcript")
                         self.sendEvent(.pasteSucceeded(generation: gen))
+                        return
+                    }
+
+                    let target = self.pasteTargetProbe()
+                    let targetApp = pastedToAppAtDispatch ?? "none"
+                    self.dictationLog.notice("dictation_paste_target gen=\(gen) verdict=\(target.verdict.rawValue, privacy: .public) role=\(target.role ?? "none", privacy: .public) app=\(targetApp, privacy: .public)")
+                    AudioCaptureDiagnostics.append("dictation_paste_target verdict=\(target.verdict.rawValue) role=\(target.role ?? "none") app=\(targetApp)")
+                    if Self.keepsOnClipboardInsteadOfPasting(target) {
+                        let copied = await self.clipboardService.copyToClipboard(transcript)
+                        guard !Task.isCancelled else { return }
+                        self.sendEvent(.pasteFailed(
+                            generation: gen,
+                            message: copied ? Self.noTextFieldMessage : "No text field focused, and the clipboard could not be updated."
+                        ))
                         return
                     }
 

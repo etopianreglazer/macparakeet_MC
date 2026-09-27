@@ -170,6 +170,41 @@ final class AccessibilityServiceTests: XCTestCase {
             XCTAssertEqual(error as? AccessibilityServiceError, .unsupportedElement)
         }
     }
+
+    // MARK: - Focused paste target (fn dictation: paste vs keep on the clipboard)
+
+    func testPasteTargetUnknownWhenNotTrusted() {
+        let service = AccessibilityService(backend: MockAccessibilityBackend(isTrusted: false, role: "AXTextField"))
+        XCTAssertEqual(service.focusedPasteTarget().verdict, .unknown)
+    }
+
+    func testPasteTargetNotEditableWhenNothingFocused() {
+        let service = AccessibilityService(backend: MockAccessibilityBackend(isTrusted: true, focusedElement: nil))
+        XCTAssertEqual(service.focusedPasteTarget(), AccessibilityPasteTarget(verdict: .notEditable, role: nil))
+    }
+
+    func testPasteTargetEditableForTextRoles() {
+        for role in ["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"] {
+            let service = AccessibilityService(backend: MockAccessibilityBackend(isTrusted: true, role: role))
+            XCTAssertEqual(service.focusedPasteTarget().verdict, .editable, role)
+        }
+    }
+
+    func testPasteTargetNotEditableForPlainWebArea() {
+        let service = AccessibilityService(backend: MockAccessibilityBackend(isTrusted: true, role: "AXWebArea"))
+        XCTAssertEqual(service.focusedPasteTarget(), AccessibilityPasteTarget(verdict: .notEditable, role: "AXWebArea"))
+    }
+
+    func testPasteTargetEditableWhenElementReportsEditable() {
+        // contenteditable surfaces (web composers) often come through as groups.
+        let service = AccessibilityService(backend: MockAccessibilityBackend(isTrusted: true, role: "AXGroup", editable: true))
+        XCTAssertEqual(service.focusedPasteTarget().verdict, .editable)
+    }
+
+    func testPasteTargetEditableWhenCaretRangeIsSettable() {
+        let service = AccessibilityService(backend: MockAccessibilityBackend(isTrusted: true, role: "AXUnknown", selectedRangeSettable: true))
+        XCTAssertEqual(service.focusedPasteTarget().verdict, .editable)
+    }
 }
 
 private struct MockAccessibilityBackend: AccessibilityBackend {
@@ -179,6 +214,9 @@ private struct MockAccessibilityBackend: AccessibilityBackend {
     let selectedRangeValue: CFRange?
     let fullValueValue: String?
     let stringForRangeValue: String?
+    let roleValue: String?
+    let editableValue: Bool
+    let selectedRangeSettableValue: Bool
 
     init(
         isTrusted: Bool,
@@ -186,7 +224,10 @@ private struct MockAccessibilityBackend: AccessibilityBackend {
         selectedText: String? = nil,
         selectedRange: CFRange? = nil,
         stringForRange: String? = nil,
-        fullValue: String? = nil
+        fullValue: String? = nil,
+        role: String? = nil,
+        editable: Bool = false,
+        selectedRangeSettable: Bool = false
     ) {
         self.isTrustedValue = isTrusted
         self.hasFocusedElement = focusedElement != nil
@@ -194,6 +235,9 @@ private struct MockAccessibilityBackend: AccessibilityBackend {
         self.selectedRangeValue = selectedRange
         self.fullValueValue = fullValue
         self.stringForRangeValue = stringForRange
+        self.roleValue = role
+        self.editableValue = editable
+        self.selectedRangeSettableValue = selectedRangeSettable
     }
 
     func isTrusted() -> Bool { isTrustedValue }
@@ -204,4 +248,7 @@ private struct MockAccessibilityBackend: AccessibilityBackend {
     func selectedRange(of element: AXUIElement) -> CFRange? { selectedRangeValue }
     func fullValue(of element: AXUIElement) -> String? { fullValueValue }
     func string(for range: CFRange, of element: AXUIElement) -> String? { stringForRangeValue }
+    func role(of element: AXUIElement) -> String? { roleValue }
+    func isEditable(_ element: AXUIElement) -> Bool { editableValue }
+    func isSelectedRangeSettable(of element: AXUIElement) -> Bool { selectedRangeSettableValue }
 }

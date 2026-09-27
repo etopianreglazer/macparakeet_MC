@@ -116,6 +116,9 @@ final class AppEnvironmentConfigurer {
         let dictationCoordinator = DictationFlowCoordinator(
             dictationService: env.dictationService,
             clipboardService: env.clipboardService,
+            pasteTargetProbe: { [accessibilityService = env.accessibilityService] in
+                accessibilityService.focusedPasteTarget()
+            },
             entitlementsService: env.entitlementsService,
             dictationRepo: env.dictationRepo,
             settingsViewModel: settingsViewModel,

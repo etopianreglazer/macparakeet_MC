@@ -118,6 +118,24 @@ final class DictationFlowCoordinatorTests: XCTestCase {
         }
     }
 
+    func testOnlyAConfidentNonEditableFocusSkipsThePaste() {
+        XCTAssertTrue(DictationFlowCoordinator.keepsOnClipboardInsteadOfPasting(
+            AccessibilityPasteTarget(verdict: .notEditable, role: "AXWebArea")))
+        XCTAssertFalse(DictationFlowCoordinator.keepsOnClipboardInsteadOfPasting(
+            AccessibilityPasteTarget(verdict: .editable, role: "AXTextArea")))
+        // No Accessibility grant: paste anyway, so the permission failure surfaces.
+        XCTAssertFalse(DictationFlowCoordinator.keepsOnClipboardInsteadOfPasting(
+            AccessibilityPasteTarget(verdict: .unknown, role: nil)))
+    }
+
+    func testNoTextFieldOutcomeShowsTheCopiedFace() {
+        XCTAssertEqual(
+            DictationFlowCoordinator.islandPhase(
+                for: .finishing(outcome: .pasteFailedCopied(DictationFlowCoordinator.noTextFieldMessage))),
+            .copied
+        )
+    }
+
     func testPasteFailureMessagePreservesAccessibilityCauseWhenCopied() {
         let message = DictationFlowCoordinator.pasteFailureMessage(
             for: ClipboardServiceError.accessibilityPermissionRequired,

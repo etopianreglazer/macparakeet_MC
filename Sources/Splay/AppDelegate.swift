@@ -641,7 +641,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AudioCaptureDiagnostics.append("splay_card menu_loaded")
             let now = Date()
             let all = libraryViewModel.transcriptions
-            let rows = all.prefix(5).map { SplayRecordingRow.from($0, now: now) }
+            let dictations = (try? appEnvironment?.dictationRepo.fetchAll(limit: 5)) ?? []
+            let rows = SplayRecordingRow.recents(
+                transcriptions: Array(all.prefix(5)), dictations: dictations, limit: 5, now: now
+            )
             let folder = AutoSaveService.resolveFolder(scope: .meeting)
                 ?? AutoSaveService.resolveFolder(scope: .transcription)
                 ?? AutoSaveService.defaultFolder(for: .meeting)

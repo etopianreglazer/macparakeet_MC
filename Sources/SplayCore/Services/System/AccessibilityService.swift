@@ -19,6 +19,27 @@ public extension AccessibilityServiceProtocol {
     }
 }
 
+/// Whether the focused element will take a paste. fn dictation asks this before
+/// synthesising ⌘V: a paste into nothing is silently lost, so a non-editable
+/// focus keeps the text on the clipboard instead. `role` is for the log, so a
+/// wrong "not editable" call can be traced to the app/element that caused it.
+public struct AccessibilityPasteTarget: Sendable, Equatable {
+    public enum Verdict: String, Sendable {
+        case editable
+        case notEditable = "not_editable"
+        /// Accessibility isn't granted, so the focus can't be read.
+        case unknown
+    }
+
+    public let verdict: Verdict
+    public let role: String?
+
+    public init(verdict: Verdict, role: String?) {
+        self.verdict = verdict
+        self.role = role
+    }
+}
+
 public enum AccessibilitySelectionSource: String, Sendable, Equatable {
     case selectedTextAttribute
     case parameterizedString
@@ -55,6 +76,9 @@ protocol AccessibilityBackend: Sendable {
     func selectedRange(of element: AXUIElement) -> CFRange?
     func fullValue(of element: AXUIElement) -> String?
     func string(for range: CFRange, of element: AXUIElement) -> String?
+    func role(of element: AXUIElement) -> String?
+    func isEditable(_ element: AXUIElement) -> Bool
+    func isSelectedRangeSettable(of element: AXUIElement) -> Bool
 }
 
 struct SystemAccessibilityBackend: AccessibilityBackend {
@@ -140,6 +164,23 @@ struct SystemAccessibilityBackend: AccessibilityBackend {
         return raw as? String
     }
 
+    func role(of element: AXUIElement) -> String? {
+        copyAttributeValue(element: element, attribute: kAXRoleAttribute as CFString) as? String
+    }
+
+    /// WebKit/Chromium mark contenteditable regions with `AXEditable`.
+    func isEditable(_ element: AXUIElement) -> Bool {
+        (copyAttributeValue(element: element, attribute: "AXEditable" as CFString) as? Bool) ?? false
+    }
+
+    func isSelectedRangeSettable(of element: AXUIElement) -> Bool {
+        var settable: DarwinBoolean = false
+        let status = AXUIElementIsAttributeSettable(
+            element, kAXSelectedTextRangeAttribute as CFString, &settable
+        )
+        return status == .success && settable.boolValue
+    }
+
     private func copyAttributeValue(element: AXUIElement, attribute: CFString) -> CFTypeRef? {
         var value: CFTypeRef?
         let status = AXUIElementCopyAttributeValue(element, attribute, &value)
@@ -165,6 +206,23 @@ public final class AccessibilityService: AccessibilityServiceProtocol, @unchecke
     ) {
         self.defaultMaxCharacters = defaultMaxCharacters
         self.backend = backend
+    }
+
+    private static let textRoles: Set<String> = [
+        kAXTextFieldRole as String, kAXTextAreaRole as String,
+        kAXComboBoxRole as String, "AXSearchField",
+    ]
+
+    public func focusedPasteTarget() -> AccessibilityPasteTarget {
+        guard backend.isTrusted() else { return AccessibilityPasteTarget(verdict: .unknown, role: nil) }
+        guard let element = backend.focusedElement() else {
+            return AccessibilityPasteTarget(verdict: .notEditable, role: nil)
+        }
+        let role = backend.role(of: element)
+        let editable = role.map(Self.textRoles.contains) == true
+            || backend.isEditable(element)
+            || backend.isSelectedRangeSettable(of: element)
+        return AccessibilityPasteTarget(verdict: editable ? .editable : .notEditable, role: role)
     }
 
     public func getSelectedText(maxCharacters: Int?) throws -> String {

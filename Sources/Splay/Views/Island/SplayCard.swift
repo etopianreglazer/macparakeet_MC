@@ -410,6 +410,47 @@ struct SplayRecordingRow: Identifiable {
     /// The transcript text this row copies to the clipboard (clean, else raw).
     /// Empty when the recording has no transcript yet.
     let transcript: String
+    /// An fn dictation (from the `dictations` table) rather than a recording file.
+    var isDictation = false
+    /// Sort key for interleaving recordings and dictations.
+    var createdAt = Date.distantPast
+
+    /// The newest `limit` recordings and dictations, interleaved newest first.
+    /// Dictations are here so one that pasted into the wrong place is never lost;
+    /// failed or empty ones are left out (there is nothing to copy).
+    static func recents(
+        transcriptions: [Transcription],
+        dictations: [Dictation],
+        limit: Int,
+        now: Date = Date(),
+        calendar: Calendar = .autoupdatingCurrent
+    ) -> [SplayRecordingRow] {
+        let keptDictations = dictations.filter {
+            $0.status == .completed
+                && !$0.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        let rows = transcriptions.map { from($0, now: now, calendar: calendar) }
+            + keptDictations.map { from($0, now: now, calendar: calendar) }
+        return Array(rows.sorted { $0.createdAt > $1.createdAt }.prefix(limit))
+    }
+
+    /// Build a row from an fn dictation: titled by its own words (one line),
+    /// copying the stored text exactly.
+    static func from(_ d: Dictation, now: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> SplayRecordingRow {
+        let transcript = d.displayText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = transcript.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .joined(separator: " ")
+        return SplayRecordingRow(
+            id: d.id,
+            time: timeLabel(for: d.createdAt, now: now, calendar: calendar),
+            duration: durationLabel(ms: d.durationMs),
+            title: title,
+            transcript: transcript,
+            isDictation: true,
+            createdAt: d.createdAt
+        )
+    }
 
     /// Build a row from a stored transcription (the newest files in ~/Splay).
     static func from(_ t: Transcription, now: Date = Date(), calendar: Calendar = .autoupdatingCurrent) -> SplayRecordingRow {
@@ -425,7 +466,8 @@ struct SplayRecordingRow: Identifiable {
             time: timeLabel(for: t.createdAt, now: now, calendar: calendar),
             duration: durationLabel(ms: t.durationMs),
             title: title,
-            transcript: transcript
+            transcript: transcript,
+            createdAt: t.createdAt
         )
     }
 
@@ -497,6 +539,12 @@ private struct SplayRecordingRowView: View {
             .frame(width: 52, alignment: .leading)
             .monospacedDigit()
 
+            if row.isDictation {
+                Image(systemName: "character.cursor.ibeam")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.42))
+                    .help("Dictation")
+            }
             Text(row.title)
                 .font(.system(size: 12.5))
                 .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.72))
@@ -530,7 +578,7 @@ private struct SplayRecordingRowView: View {
         .onHover { hovering = $0 && canCopy; SplayHoverCursor.apply(hovering) }
         .help(canCopy ? "Copy transcript" : "No transcript yet")
         .accessibilityElement()
-        .accessibilityLabel("\(row.title), \(row.time)")
+        .accessibilityLabel("\(row.isDictation ? "Dictation: " : "")\(row.title), \(row.time)")
         .accessibilityHint(canCopy ? "Copies the transcript" : "No transcript yet")
         .accessibilityAddTraits(.isButton)
     }
