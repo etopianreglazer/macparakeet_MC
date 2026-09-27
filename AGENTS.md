@@ -7,9 +7,10 @@
 ## What this is
 
 Splay is a one-gesture, on-device voice recorder for Apple Silicon Macs (macOS 14.2+,
-GPL-3.0, derived from MacParakeet). Tap `fn` → mic recording; double-tap `fn` → mic +
-system audio; drop a file on the menu bar icon → file transcription. Every path writes a
-verbatim transcript `.md` (+ paired audio) to a folder. Two UI surfaces only: the **island**
+GPL-3.0, derived from MacParakeet). Tap `fn` → mic recording; double-tap `fn` → dictation
+(verbatim text pasted into the focused field); triple-tap `fn` → mic + system audio; drop a
+file on the menu bar icon → file transcription. Recordings write a verbatim transcript `.md`
+(+ paired audio) to a folder. Two UI surfaces only: the **island**
 (notch-anchored indicator light) and the **card** (Recents · Settings · About).
 
 Not in Splay, by decision: a main window, a CLI, in-app LLM features, YouTube, calendar,
@@ -24,7 +25,7 @@ scripts/dev/install_local.sh    # → /Applications/Splay.app (then `open` it yo
 scripts/dev/install_iphone_bench.sh   # iOS bench harness → connected iPhone (needs Xcode account)
 ```
 
-`scripts/dev/run_app.sh` does not work on this machine. Run `swift test` before calling
+Run `swift test` before calling
 code-change work complete, and run the Vet review skill on each logical unit of change.
 
 ## Layout
@@ -58,7 +59,7 @@ docs/                      product model, thread state, launch checklist, releas
 - Rename the kept identifiers: bundle id `com.macparakeet.mc`, data namespace
   `MacParakeet-MC`, log dir `~/Library/Logs/MacParakeet/` (see `docs/BRANDING.md`).
 - Make the island panel key, or let silence fail a recording (dead ≠ silent).
-- Push. The owner pushes.
+- Push unless the owner asks. Mac work goes on `mac/dev`; `main` is releases only.
 
 ## Runtime locations
 

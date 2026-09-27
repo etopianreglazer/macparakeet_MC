@@ -37,12 +37,7 @@
 ## 2. ⭐ Next thread starts here
 
 1. **Owed by the owner (blocked for the agent by the auto-mode classifier):**
-   - **CLAUDE.md edits** — add a "Branches" section (the model above); Privacy line "double-tap" → "triple-tap";
-     tech-stack iOS = paused; repo layout (`Views/MeetingRecording/` = panel only, the pill is off;
-     `Views/Dictation/` unused, `HiddenDictationOverlayController`); ADR 005 → dormant; drop the `run_app.sh`
-     line; add `islandPinnedAcrossSpaces` to the flag list; "Do not push" → "push when the owner asks".
-     `AGENTS.md:10` has the same wrong gesture text (double-tap = system audio). Either the owner edits, or
-     allows agent-instruction edits for the session.
+   - ~~CLAUDE.md / AGENTS.md edits~~ — done thread 21 (branches, gestures, flags, ADR 005, push rule).
    - **Delete dead scripts:** `scripts/dev/{run_app,reset_and_run_fresh,benchmark_qwen_models,quality_eval_qwen}.sh`,
      then fix the `run_app.sh` mention in `docs/BRANDING.md` (~line 45).
 2. **Press the pinned island** over Mission Control, a full-screen app, and the lock screen (boring.notch had

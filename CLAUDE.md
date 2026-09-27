@@ -45,7 +45,7 @@ nothing polishes them.
 
 | Layer | Choice |
 |---|---|
-| Platform | macOS 14.2+, Apple Silicon only (the shipped app). `SplayCore` also builds for **iOS 18+** — the in-progress iPhone utility layer, `docs/plans/splay-ios-utility-layer.md`; macOS-only code is gated `#if os(macOS)`, never forked |
+| Platform | macOS 14.2+, Apple Silicon only (the shipped app). `SplayCore` also builds for **iOS 18+** — the iPhone utility layer, **paused** until the Mac is done (`docs/plans/splay-ios-utility-layer.md`); macOS-only code is gated `#if os(macOS)`, never forked |
 | Language | Swift (tools-version 5.9), Swift 6 language-mode clean, SwiftUI + AppKit panels |
 | STT | Parakeet TDT 0.6B v3 via FluidAudio CoreML (default); WhisperKit optional for other languages. One process-wide `STTRuntime` + `STTScheduler` (ADR-016) |
 | Audio | `SharedMicrophoneStream`/AVAudioEngine mic; ScreenCaptureKit system audio; bundled FFmpeg for file import |
@@ -58,8 +58,9 @@ nothing polishes them.
 Package.swift            Splay (app) · SplayCore · SplayViewModels · SplayObjCShims · SplayTests
 Sources/Splay/           AppKit app: AppDelegate, App/ (coordinators), Hotkey/, Views/
   Views/Island/          the two surfaces: IslandController/View, SplayIslandMeter, SplayCard*, theme
-  Views/MeetingRecording/ floating pill + Notes/Transcript panel shown while recording
-  Views/Dictation/       legacy overlay/idle pill (suppressed by the island flag)
+  Views/MeetingRecording/ Notes/Transcript panel shown while recording (the floating pill is off)
+  Views/Dictation/       unused upstream overlay/idle pill; the island carries dictation
+                         (`HiddenDictationOverlayController` stands in)
   Views/Onboarding/      upstream first-run flow (not wired into first launch yet)
 Sources/SplayCore/       Foundation + GRDB + FluidAudio (+WhisperKit). No SwiftUI views.
   Audio/ STT/ Database/ TextProcessing/ Licensing/   ← each has a README.md — read it first
@@ -77,14 +78,16 @@ ios/SplayBench/          XcodeGen spec + harness that benchmarks Parakeet v3 on 
 
 `AppFeatures` flags: `meetingRecordingEnabled`, `meetingVadLiveChunkingEnabled`
 (VAD-guided live-preview chunking, fixed-chunker fallback, final transcript unaffected),
-`islandReplacesDictationPill` (all `true`), and `islandTakesMouse` (`false`: click-through island).
+`islandReplacesDictationPill`, `islandPinnedAcrossSpaces` (private CGS space so the island rides
+above Space swipes; no-op if the symbols are missing) (all `true`), and `islandTakesMouse`
+(`false`: click-through island).
 
 ## ADRs
 
 `spec/adr/` is upstream MacParakeet's decision record. Still binding for Splay: **001, 002,
 004, 007, 010, 014, 015, 016, 019, 021**. Marked **SUPERSEDED for Splay** (feature removed):
-011, 013, 018, 020, 022. Historical/dormant: 003, 006 (licensing plumbing — see below), 008,
-009, 012 (telemetry reporting removed), 017 (calendar removed).
+011, 013, 018, 020, 022. Historical/dormant: 003, 005 (onboarding not wired into first launch), 006 (licensing
+plumbing — see below), 008, 009, 012 (telemetry reporting removed), 017 (calendar removed).
 
 ## Rules that are not obvious from the code
 
@@ -127,7 +130,6 @@ scripts/dev/install_local.sh     # SwiftPM bundle → signs with Apple Developme
                                  #   does NOT relaunch; wait ~2s then `open /Applications/Splay.app`
 ```
 
-`scripts/dev/run_app.sh` (xcodebuild) is broken on this machine — use `install_local.sh`.
 iOS: `swift build --target SplayCore --triple arm64-apple-ios18.0 --sdk $(xcrun --sdk iphoneos --show-sdk-path)`
 is the fast compile check; device installs need an Apple ID in Xcode ▸ Settings ▸ Accounts (profiles).
 The dev install resolves `Bundle.module` out of `.build/` (no resource bundles); verify
@@ -147,7 +149,13 @@ pre-publish gate: `docs/launch-checklist.md`.
 - Multi-file work gets a plan in `docs/plans/`. Mark finished plans `> Status: **HISTORICAL**`.
 - Visual tuning is done in a live HTML slider tuner, not build-install loops; port the
   dialled constants into the matching tuning enum (e.g. `SplayMeterTuning`).
-- Do not push; the owner pushes.
+- Push only when the owner asks.
+
+## Branches
+
+- `main` = releases only. **`mac/dev`** = all Mac work; short-lived `mac/<topic>` branches are fine.
+- `ios/dev` is cut from `mac/dev` when iOS resumes. `SplayCore` changes land on `mac/dev` first and
+  flow Mac → iOS. The `upstream` remote tracks MacParakeet's `main` only.
 
 ## Runtime locations
 
@@ -165,4 +173,4 @@ pre-publish gate: `docs/launch-checklist.md`.
 Speech recognition is on-device. Network use: the one-time model download and Sparkle
 update checks. Telemetry reporting and crash upload are no-ops (the network class was
 deleted). No accounts. Permissions: Microphone (first record), Screen & System Audio
-Recording (first double-tap only).
+Recording (first triple-tap only), Accessibility (first dictation paste).
