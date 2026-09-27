@@ -61,6 +61,16 @@ enum IslandDictationPhase: Equatable {
     case cancelling(secondsLeft: Int)
 }
 
+/// A file transcription (menu ▸ Transcribe File, or a drop on the menu bar
+/// icon) as the island shows it: the same spinner / check / failure faces a
+/// recording ends with, and nothing else — no meter, no timer. Fed by
+/// `FileJobIslandPresenter`; nil = no file job showing.
+enum IslandFileJobPhase: Equatable {
+    case transcribing
+    case done
+    case failed
+}
+
 // MARK: - Shared layout (single source of truth for view + tracker)
 
 enum IslandLayout {
@@ -186,17 +196,27 @@ enum IslandLayout {
     }
 
     /// The pill state the island shows. The meeting flow wins whenever it is not
-    /// idle (fn never runs both); otherwise a dictation drives the same pill.
+    /// idle (fn never runs both); then a dictation; then a file transcription,
+    /// which runs in the background and must never hide a live capture.
     static func effectiveState(
         pill: MeetingRecordingPillViewModel.PillState,
-        dictation: IslandDictationPhase?
+        dictation: IslandDictationPhase?,
+        fileJob: IslandFileJobPhase? = nil
     ) -> MeetingRecordingPillViewModel.PillState {
-        guard pill == .idle, let dictation else { return pill }
-        switch dictation {
-        case .recording: return .recording
+        guard pill == .idle else { return pill }
+        if let dictation {
+            switch dictation {
+            case .recording: return .recording
+            case .transcribing: return .transcribing
+            case .pasted, .copied, .cancelling: return .completed
+            case .failed: return .error("dictation")
+            }
+        }
+        switch fileJob {
         case .transcribing: return .transcribing
-        case .pasted, .copied, .cancelling: return .completed
-        case .failed: return .error("dictation")
+        case .done: return .completed
+        case .failed: return .error("file")
+        case nil: return pill
         }
     }
 
@@ -285,6 +305,8 @@ final class IslandChromeModel {
     var meetingCapturesSystem = false
     /// The dictation the island is showing, if any (nil = none).
     var dictation: IslandDictationPhase?
+    /// The file transcription the island is showing, if any (nil = none).
+    var fileJob: IslandFileJobPhase?
     init() {}
 }
 
@@ -300,7 +322,7 @@ struct IslandView: View {
     @Bindable var chrome: IslandChromeModel
 
     private var effectiveState: MeetingRecordingPillViewModel.PillState {
-        IslandLayout.effectiveState(pill: pill.state, dictation: chrome.dictation)
+        IslandLayout.effectiveState(pill: pill.state, dictation: chrome.dictation, fileJob: chrome.fileJob)
     }
 
     private var visual: IslandVisual {

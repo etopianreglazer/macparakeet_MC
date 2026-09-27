@@ -522,7 +522,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let state = Self.resolveMenuBarState(
             isMeetingRecordingActive: meetingRecordingFlowCoordinator?.isMeetingRecordingActive == true,
             dictationMenuBarPreference: dictationFlowCoordinator?.menuBarPreference,
-            isTranscribing: transcriptionViewModel.isTranscribing
+            isTranscribing: transcriptionViewModel.isFileJobActive
         )
         menuBarCoordinator.updateIcon(state: state)
     }

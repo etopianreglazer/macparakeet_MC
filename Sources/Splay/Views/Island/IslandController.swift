@@ -273,7 +273,9 @@ final class IslandController: NSObject {
         tracker.autoresizingMask = [.width, .height]
         tracker.stateProvider = { [weak self] in
             guard let self else { return .idle }
-            return IslandLayout.effectiveState(pill: self.pillViewModel.state, dictation: self.chrome.dictation)
+            return IslandLayout.effectiveState(
+                pill: self.pillViewModel.state, dictation: self.chrome.dictation, fileJob: self.chrome.fileJob
+            )
         }
         tracker.idleVisibleProvider = { [weak self] in self?.chrome.idleVisible ?? true }
         tracker.heldOpenProvider = { [weak self] in self?.chrome.heldOpen ?? false }
@@ -581,6 +583,12 @@ final class IslandController: NSObject {
         guard chrome.dictation != phase else { return }
         if phase == nil { chrome.liveLevel = 0 }
         chrome.dictation = phase
+    }
+
+    /// The file transcription's phase changed (nil = none showing).
+    func setFileJobPhase(_ phase: IslandFileJobPhase?) {
+        guard chrome.fileJob != phase else { return }
+        chrome.fileJob = phase
     }
 
     func updateAudioAlive(_ alive: Bool) {

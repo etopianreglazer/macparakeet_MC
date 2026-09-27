@@ -92,10 +92,6 @@ final class AppEnvironmentConfigurer {
             sharedMicStream: env.sharedMicStream
         )
         settingsViewModel.onRecoverPendingMeetingRecordings = callbacks.onRecoverPendingMeetingRecordings
-        transcriptionViewModel.onTranscribingChanged = { _ in
-            callbacks.onMenuBarIconUpdate()
-        }
-
         transcriptionViewModel.onTranscriptionCompleted = { content in
             // Invoked synchronously from the ViewModel's @MainActor completion
             // funnel, so the chime/banner fire immediately (no run-loop hop).
@@ -286,6 +282,18 @@ final class AppEnvironmentConfigurer {
         // the pill, its mic level the meter.
         dictationCoordinator.onIslandPhaseChange = { [weak island] phase in
             island?.setDictationPhase(phase)
+        }
+        // File transcription (menu ▸ Transcribe File, icon drop): spinner while
+        // it runs, then the check or failure light. The closures own the presenter.
+        let fileJobPresenter = FileJobIslandPresenter(setPhase: { [weak island] phase in
+            island?.setFileJobPhase(phase)
+        })
+        transcriptionViewModel.onFileJobActiveChanged = { active in
+            fileJobPresenter.activeChanged(active)
+            callbacks.onMenuBarIconUpdate()
+        }
+        transcriptionViewModel.onFileJobFinished = { outcome in
+            fileJobPresenter.finished(outcome)
         }
         // The dictation recorder reports RMS × 5 (`AudioRecorder`); the meter is
         // tuned on the recording flow's RMS × 10 (`MeetingAudioCaptureService`),
