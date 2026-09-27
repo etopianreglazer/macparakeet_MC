@@ -11,7 +11,7 @@ enum SplayMeterTuning {
     static let barCount = 5
     static let barWidth: CGFloat = 2
     static let barGap: CGFloat = 1.5
-    static let maxHeight: CGFloat = 15
+    static let maxHeight: CGFloat = 18
     static let silentHeight: CGFloat = 2
     /// Input is `micLevel` (per-buffer RMS × 10, clamped). Below `gate` counts as
     /// room hiss and stays flat; above it `sqrt` lifts quiet speech, then `gain`.
