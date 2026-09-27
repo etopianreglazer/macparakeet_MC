@@ -4,8 +4,7 @@
 > island `edcef30b`…`a018b133`); slice 3 built `a912ac48` (thread 21: focused-field check via
 > `AccessibilityService.focusedPasteTarget`, dictations in the card's Recordings) plus Escape (owner: keep
 > upstream's undo countdown, now 3·2·1 — Escape → countdown, fn tap = undo, Escape/expiry = discard;
-> `FnCaptureRouter.escape`, island `.cancelling` face). Owner pressed Escape + paste: works. Still to press:
-> no-text-field "copied", dictations in Recordings. Slice 5 open. Mac only.
+> `FnCaptureRouter.escape`, island `.cancelling` face). Owner pressed all of slice 3: works. Slice 5 open. Mac only.
 > Slice 4 landed differently from the text below: the island is click-through, dictation shows the voice bars
 > only (no caret, no timer), meetings add a second system-audio meter; tuned live by the owner.
 

@@ -6,54 +6,54 @@
 > the previous thread's block is demoted to `docs/thread-log.md` (verbatim, newest first) each time this is
 > rewritten. **Hard cap: 150 lines.** If it is longer, move something to the log or to a plan/README.
 >
-> **Last updated:** 2026-09-27, thread 20 (end) — **CLEANUP + BRANCH MODEL (main = releases, mac/dev = Mac work);
-> ISLAND: IDLE NUB IGNORES THE CURSOR, RUNNING CAPTURE LIFTS ON HOVER, PINNED ABOVE DESKTOP SWIPES (private CGS
-> space), METER BARS 18 PT, DICTATION METER SCALE FIXED. INSTALLED 25c64f84, owner pressed it: "very smooth".**
-> Owner direction: Mac first, iPhone later "in depth". Thread 19's block is in `docs/thread-log.md`.
+> **Last updated:** 2026-09-27, thread 21 (end) — **FN DICTATION SLICE 3 DONE + PRESSED: no blind paste (no
+> text field → clipboard + island copy face), dictations in the card's Recordings, Escape → 3·2·1 undo countdown
+> (fn keeps it). CLAUDE.md/AGENTS.md brought current; dead upstream scripts deleted. INSTALLED f986f26d.**
+> Owner direction: next a few small **design continuity checks**, then **work towards the iOS app**.
+> Thread 20's block is in `docs/thread-log.md`.
 
 ## 1. Live state
 
-- **Branches:** `main` = releases only (`18524b40`, pushed). **`mac/dev`** = all Mac work, pushed at thread end.
-  `ios/dev` does not exist yet — cut it from `mac/dev` when iOS resumes; `SplayCore` changes land on `mac/dev`
-  first. The old `ios/utility-layer` (mixed Mac + iOS, never pushed) is gone; history before today interleaves
-  both. Old worktree removed; `upstream` tracks `main` only. Short-lived `mac/<topic>` branches are fine.
-- **Mac:** `/Applications/Splay.app` = `25c64f84`, running. Suite: 1990 XCTest (same 5 known environmental
-  cases, 6 assertions) + 17 swift-testing. **Check both frameworks.**
-- **fn gestures** unchanged: tap = mic recording, double = dictation (pastes at stop), triple = meeting.
-- **Island** (owner pressed all of it this thread):
-  - Idle nub visible again with the nub → pill expansion; it **ignores the cursor** (hover growth only with
-    `AppFeatures.islandTakesMouse`). Note: `ignoresMouseEvents` does NOT stop tracking-area events.
-  - A running capture scales to `SplayGeometry.captureHoverScale` (1.08, top-anchored) under the cursor;
-    still click-through. Cleared when the pill leaves `.recording` and on `resetHover`.
-  - **Pinned above Space swipes:** `IslandSpacePin` puts the panel in a private SkyLight space at max absolute
-    level (dlsym'd `SLS*`/`CGS*`, no-op if missing; flag `AppFeatures.islandPinnedAcrossSpaces`). Re-pinned on
-    the 3 s ambient re-order. Owner: "movement is stabilized". Log line `splay_island space_pin created`.
-  - Meter: `SplayMeterTuning.maxHeight` 15 → 18 (owner's call; gain/release/wobble unchanged). Dictation level
-    doubled before the island (AudioRecorder is RMS×5, recording flow RMS×10).
-  - Dead per-control hover/press chain removed; stale comments swept (Vet: no bugs on `a04304e8..HEAD`).
-- **Docs:** plan statuses fixed (fn-rework, island slices 4/5, two-surface, notch-island → HISTORICAL; iOS plan
-  → PAUSED); README says triple-tap asks for Screen & System Audio.
+- **Branches:** `main` = releases only (`18524b40`). **`mac/dev`** = all Mac work, head `bcae2c02`, **not pushed
+  this thread** (push when the owner asks). `ios/dev` does not exist yet — cut it from `mac/dev` when iOS starts.
+- **Mac:** `/Applications/Splay.app` = `f986f26d` (docs-only commit after it). Suite: 2008 XCTest (same 5 known
+  environmental cases, 6 assertions) + 17 swift-testing. **Check both frameworks.**
+- **fn gestures:** tap = mic recording, double = dictation, triple = meeting (mic + system).
+- **Dictation, thread 21 (owner pressed all three: "works"):**
+  - Paste target is whatever is focused **when you stop**. `AccessibilityService.focusedPasteTarget()` → editable
+    (text roles, `AXEditable`, settable caret range) / not editable / unknown (no AX grant → paste path as before).
+    Not editable → text stays on the clipboard, island shows the copy face. Every decision logs
+    `dictation_paste_target verdict= role= app=` — Electron apps (Slack, VS Code) are the likely false "copied".
+  - Card Recordings interleaves dictations (`dictations` table, via `Dictation.displayText`) with recordings,
+    newest 5; a text-cursor glyph marks dictations; click copies.
+  - **Escape** while capturing → `DictationFlowTiming.cancelCountdownSeconds` (3, upstream 5) on the island
+    (`.cancelling` ring with the digit); fn tap = undo (transcribe + paste); Escape again / expiry = discard.
+    Escape is ignored by recordings, meetings, and a *transcribing* dictation (`FnCaptureRouter.escape`,
+    `isEscapeCancellable`) — the state machine's cancel there has no undo window (Vet caught it).
+- **Island:** unchanged from thread 20 (click-through, pinned above Space swipes, idle nub, 18 pt bars).
 
 ## 2. ⭐ Next thread starts here
 
-1. **Owed by the owner (blocked for the agent by the auto-mode classifier):**
-   - ~~CLAUDE.md / AGENTS.md edits~~ — done thread 21 (branches, gestures, flags, ADR 005, push rule).
-   - ~~Delete dead scripts~~ — done thread 21 (4 scripts + BRANDING.md line).
-2. **Press the pinned island** over Mission Control, a full-screen app, and the lock screen (boring.notch had
-   it drawing over Mission Control's space labels). If it misbehaves: hide/unpin around those, or flag off.
-3. **Fn dictation slice 3 built (thread 21) — owner pressed Escape + paste ("works"); still press "copied" + Recordings:** no-text-field → clipboard + "copied";
-   dictations in the card's Recordings; Escape → 3·2·1 countdown (fn = keep). See the plan's status line.
-   Then slice 5 (product-model capture table + Settings gesture text) and mark the plan HISTORICAL.
+1. **Small design continuity checks** (owner's pick, scope not yet named — ask which surfaces). Candidates seen
+   this thread: the new `.cancelling` countdown ring (neutral grey `C9C4D8`, 9.5 pt digit — first cut, never
+   tuned) next to the ✓ / copy glyphs; the dictation text-cursor glyph in the card's Recordings; the card's
+   empty-state text still says "Hold your shortcut…". Visual tuning goes in the live HTML tuner, not install loops.
+2. **Fn dictation slice 5** (small, can ride along): card Settings text explaining the gestures (+ Escape),
+   the empty-state line, `fork-product-model.md` capture table; then mark `docs/plans/fn-dictation-double-tap.md`
+   HISTORICAL.
+3. **Then towards iOS:** cut `ios/dev` from `mac/dev`; read `docs/plans/splay-ios-utility-layer.md` (PAUSED)
+   first. Owed there: `/vet` the thread-15 island-dwell change in `ios/Splay/App/RecordingCoordinator.swift`;
+   decide upstream-style recovery for iOS. `SplayCore` iOS compile check is in CLAUDE.md.
+4. Still unpressed from thread 20: the pinned island over Mission Control, a full-screen app, the lock screen.
 
 ## 3. Decided, not done
 
-- **iPhone "in depth" comes after the Mac** (owner), on `ios/dev`. Owed there: `/vet` the thread-15
-  island-dwell change in `ios/Splay/App/RecordingCoordinator.swift`; decide upstream-style recovery for iOS.
-- Meter liveliness beyond height (gain 2.6 / release 0.09 / wobble 0.40 were offered in a tuner) — owner chose
-  height only; revisit only if asked.
+- Meter liveliness beyond height (gain 2.6 / release 0.09 / wobble 0.40 offered in a tuner) — owner chose height
+  only; revisit only if asked.
 - Mic port presses still owed: AirPods switch cases (grammar in `Sources/SplayCore/Audio/README.md`), Retry path,
   typing-lag check.
 - **Open from before:** Whisper cold load looks like a hang; FluidAudio 0.14.5 → 0.15.7 with a WER check
   (`docs/plans/upstream-087-port.md`); Mac visual pass + second-Mac install (`docs/launch-checklist.md` §C4).
 - Held failures still block `fn`; a tap opens the failure card (menu ▸ Recordings does too).
-- Vet via the claude CLI can hit the session limit and print an error instead of a review — read the output.
+- Vet (`--agentic --agent-harness claude`) can take >10 min — run it in the background; it can also hit the
+  session limit and print an error instead of a review — read the output.
