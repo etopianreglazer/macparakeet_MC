@@ -57,5 +57,7 @@
 - **Open from before:** Whisper cold load looks like a hang; FluidAudio 0.14.5 → 0.15.7 with a WER check
   (`docs/plans/upstream-087-port.md`); Mac visual pass + second-Mac install (`docs/launch-checklist.md` §C4).
 - Held failures still block `fn`; a tap opens the failure card (menu ▸ Recordings does too).
+- **Vet owed on `7afd2572`** (the fix for Vet's slice-1 findings): the run hit the session limit; reviewed by hand
+  only. Re-run: `vet "…" --base-commit 7afd2572~1 --agentic --agent-harness claude`.
 - Vet (`--agentic --agent-harness claude`) takes 10–15 min here — run it in the background; it can also hit the
   session limit and print an error instead of a review — read the output.
