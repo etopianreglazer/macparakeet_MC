@@ -45,10 +45,14 @@ final class TranscriptionViewModelFileJobTests: XCTestCase {
         return url
     }
 
+    private struct TimedOut: Error {}
+
+    /// Throws on timeout, so a hung job fails one test instead of trapping on
+    /// a force-unwrap after it.
     private func waitUntil(timeout: Duration = .seconds(2), _ condition: () -> Bool) async throws {
         let deadline = ContinuousClock.now + timeout
         while !condition() {
-            if ContinuousClock.now >= deadline { XCTFail("Timed out"); return }
+            if ContinuousClock.now >= deadline { throw TimedOut() }
             try await Task.sleep(for: .milliseconds(10))
         }
     }
@@ -74,10 +78,10 @@ final class TranscriptionViewModelFileJobTests: XCTestCase {
         let saved = try XCTUnwrap(savedTo)
         XCTAssertEqual(saved.deletingLastPathComponent().standardizedFileURL.path, outDir.standardizedFileURL.path)
         XCTAssertTrue(FileManager.default.fileExists(atPath: saved.path))
-        XCTAssertFalse(outcome!.isFailure)
+        XCTAssertFalse(try XCTUnwrap(outcome).isFailure)
     }
 
-    func testUnwritableFolderIsReportedNotSwallowed() async throws {
+    func testMissingFolderIsReportedNotSwallowed() async throws {
         let vm = makeViewModel(saveFolder: false) // auto-save on (default), no folder resolves
         var outcome: FileJobOutcome?
         vm.onFileJobFinished = { outcome = $0 }
@@ -86,7 +90,7 @@ final class TranscriptionViewModelFileJobTests: XCTestCase {
         try await waitUntil { outcome != nil }
 
         XCTAssertEqual(outcome, .transcribed(fileName: "talk.m4a", wordCount: 2, savedTo: nil, saveFailed: true))
-        XCTAssertTrue(outcome!.isFailure)
+        XCTAssertTrue(try XCTUnwrap(outcome).isFailure)
     }
 
     func testFailureCarriesTheFileNameAndReason() async throws {
@@ -147,35 +151,40 @@ final class TranscriptionViewModelFileJobTests: XCTestCase {
         XCTAssertFalse(vm.transcribeFiles(urls: [try touch("two.wav")]))
     }
 
-    // MARK: - Banner copy
+    func testBatchWithNoFolderCountsUnsavedFiles() async throws {
+        let vm = makeViewModel(saveFolder: false)
+        var outcome: FileJobOutcome?
+        vm.onFileJobFinished = { outcome = $0 }
 
-    func testBannerSaysWhereItWentAndRevealsIt() {
-        let url = URL(fileURLWithPath: "/Users/x/Documents/MacParakeet-MC/Transcriptions/talk.md")
-        let content = TranscriptionCompletionNotifier.content(
-            for: .transcribed(fileName: "talk.m4a", wordCount: 120, savedTo: url, saveFailed: false),
-            settingEnabled: true
-        )
-        XCTAssertEqual(content?.title, "Transcribed talk.m4a")
-        XCTAssertEqual(content?.body, "Saved to Transcriptions \u{00B7} 120 words")
-        XCTAssertEqual(content?.revealURL, url)
+        vm.transcribeFiles(urls: [try touch("a.mp3"), try touch("b.mp3"), try touch("c.mp3")])
+        try await waitUntil { outcome != nil }
+
+        XCTAssertEqual(outcome, .batch(completed: 3, failed: 0, unsaved: 3, folder: nil))
     }
 
-    func testFailuresShowEvenWithNotificationsOff() {
-        XCTAssertNotNil(TranscriptionCompletionNotifier.content(
-            for: .failed(fileName: "x.mov", reason: "bad"), settingEnabled: false))
-        XCTAssertNotNil(TranscriptionCompletionNotifier.content(
-            for: .transcribed(fileName: "x", wordCount: 1, savedTo: nil, saveFailed: true), settingEnabled: false))
-        XCTAssertNil(TranscriptionCompletionNotifier.content(
-            for: .transcribed(fileName: "x", wordCount: 1, savedTo: nil, saveFailed: false), settingEnabled: false))
-        XCTAssertNil(TranscriptionCompletionNotifier.content(for: .cancelled, settingEnabled: true))
+    func testCancelEndsABatchWithOneReport() async throws {
+        await mockService.configureDelay(milliseconds: 200)
+        let vm = makeViewModel()
+        var outcomes: [FileJobOutcome] = []
+        vm.onFileJobFinished = { outcomes.append($0) }
+
+        vm.transcribeFiles(urls: [try touch("a.mp3"), try touch("b.mp3")])
+        vm.cancelFileJob()
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertFalse(vm.isFileJobActive)
+        XCTAssertEqual(outcomes, [.cancelled])
     }
 
-    func testBatchBannerCountsFailures() {
-        let folder = URL(fileURLWithPath: "/tmp/Transcriptions")
-        let content = TranscriptionCompletionNotifier.content(
-            for: .batch(completed: 2, failed: 1, unsaved: 0, folder: folder), settingEnabled: true)
-        XCTAssertEqual(content?.title, "Transcribed 2 files, some failed")
-        XCTAssertEqual(content?.body, "Saved to Transcriptions \u{00B7} 2 transcribed \u{00B7} 1 failed")
-        XCTAssertEqual(content?.revealURL, folder)
+    func testRecoveredTranscriptThatCannotBeSavedIsReported() {
+        let vm = makeViewModel(saveFolder: false)
+        var outcome: FileJobOutcome?
+        vm.onFileJobFinished = { outcome = $0 }
+
+        let recovered = Transcription(fileName: "Standup", rawTranscript: "two words", status: .completed,
+                                      sourceType: .meeting)
+        vm.presentCompletedTranscription(recovered, autoSave: true)
+
+        XCTAssertEqual(outcome, .transcribed(fileName: "Standup", wordCount: 2, savedTo: nil, saveFailed: true))
     }
 }

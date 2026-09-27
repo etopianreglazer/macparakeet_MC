@@ -33,10 +33,11 @@ it does exactly and if it works." A trace confirmed the pipeline works (DB row, 
 
 ## Slices
 
-1. **View model events** — `TranscriptionViewModel.onFileJobEvent` (`started` / `progress` /
-   `finished(FileJobOutcome)`), `isFileJobActive` (no inter-file flicker), auto-save through the throwing
-   `save()` so the outcome carries the written URL or the save error; notifier copy for success (folder
-   name), failure, batch. Tests.
+1. **View model events** — `TranscriptionViewModel.onFileJobActiveChanged(Bool)` (flips once per job, no
+   inter-file flicker), `onFileJobFinished(FileJobOutcome)`, `cancelFileJob()`. Progress is not an event: the
+   menu reads the `@Observable` view model's `transcribingFileName` / `transcriptionProgress` / batch counts.
+   Auto-save goes through the throwing `save()`; the outcome carries the written URL or `saveFailed`
+   (generic banner copy). The legacy `onTranscriptionCompleted` channel is removed. Tests.
 2. **Island** — `IslandFileJobPhase` (`transcribing` / `done` / `failed`) on `IslandChromeModel`,
    `IslandLayout.effectiveState` priority meeting > dictation > file; a dwell for done/failed. Tests.
 3. **Menu** — item title/glyph/enabled from the view model (observation-tracked, updates while open),

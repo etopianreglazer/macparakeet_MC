@@ -58,8 +58,8 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
 
     func testSingleFileRoutesThroughSinglePathAndSignals() async throws {
         let vm = makeViewModel()
-        var captured: TranscriptionCompletionNotifier.Content?
-        vm.onTranscriptionCompleted = { captured = $0 }
+        var captured: FileJobOutcome?
+        vm.onFileJobFinished = { captured = $0 }
 
         let url = try touch("only.mp3")
         let accepted = vm.transcribeFiles(urls: [url])
@@ -68,9 +68,12 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
 
         try await waitUntil { !vm.isTranscribing }
         XCTAssertNotNil(vm.currentTranscription, "Single file still presents its result")
-        XCTAssertEqual(captured?.title, "only.mp3")
+        guard case .transcribed(let name, let words, _, _) = captured else {
+            return XCTFail("expected .transcribed, got \(String(describing: captured))")
+        }
+        XCTAssertEqual(name, "only.mp3")
         // Mock default transcript is "Mock transcription" (two words).
-        XCTAssertEqual(captured?.body, "Transcription complete \u{00B7} 2 words")
+        XCTAssertEqual(words, 2)
     }
 
     // MARK: - Batch happy path
@@ -78,8 +81,8 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
     func testBatchProcessesAllFilesInNameOrderAndSignalsOnce() async throws {
         let vm = makeViewModel()
         var signalCount = 0
-        var captured: TranscriptionCompletionNotifier.Content?
-        vm.onTranscriptionCompleted = { signalCount += 1; captured = $0 }
+        var captured: FileJobOutcome?
+        vm.onFileJobFinished = { signalCount += 1; captured = $0 }
 
         // Provide out of order; enumerator sorts to a, b, c.
         let urls = [try touch("c.mp3"), try touch("a.mp3"), try touch("b.mp3")]
@@ -93,7 +96,9 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
         let order = await mockService.transcribedFileNames
         XCTAssertEqual(order, ["a.mp3", "b.mp3", "c.mp3"], "Sequential, name-ordered")
         XCTAssertEqual(signalCount, 1, "Exactly one signal for the whole batch")
-        XCTAssertEqual(captured?.body, "3 files transcribed")
+        guard case .batch(let completed, let failed, _, _) = captured else { return XCTFail("expected .batch") }
+        XCTAssertEqual(completed, 3)
+        XCTAssertEqual(failed, 0)
         XCTAssertNil(vm.currentTranscription, "Batch is ambient — no per-file presentation")
     }
 
@@ -104,8 +109,8 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
             "b.mp3": NSError(domain: "test", code: 1, userInfo: [NSLocalizedDescriptionKey: "boom"])
         ])
         let vm = makeViewModel()
-        var captured: TranscriptionCompletionNotifier.Content?
-        vm.onTranscriptionCompleted = { captured = $0 }
+        var captured: FileJobOutcome?
+        vm.onFileJobFinished = { captured = $0 }
 
         let urls = [try touch("a.mp3"), try touch("b.mp3"), try touch("c.mp3")]
         vm.transcribeFiles(urls: urls)
@@ -114,8 +119,9 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
 
         let order = await mockService.transcribedFileNames
         XCTAssertEqual(order, ["a.mp3", "b.mp3", "c.mp3"], "All files attempted despite the failure")
-        XCTAssertEqual(captured?.title, "Transcriptions finished with errors")
-        XCTAssertEqual(captured?.body, "2 transcribed \u{00B7} 1 failed")
+        guard case .batch(let completed, let failed, _, _) = captured else { return XCTFail("expected .batch") }
+        XCTAssertEqual(completed, 2)
+        XCTAssertEqual(failed, 1)
         XCTAssertNil(vm.errorMessage, "Batch failures don't raise a blocking error card")
     }
 
@@ -124,8 +130,8 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
     func testCancelBatchStopsAdvancing() async throws {
         await mockService.configureDelay(milliseconds: 60)
         let vm = makeViewModel()
-        var signalCount = 0
-        vm.onTranscriptionCompleted = { _ in signalCount += 1 }
+        var outcomes: [FileJobOutcome] = []
+        vm.onFileJobFinished = { outcomes.append($0) }
 
         let urls = [try touch("a.mp3"), try touch("b.mp3"), try touch("c.mp3"), try touch("d.mp3")]
         vm.transcribeFiles(urls: urls)
@@ -145,23 +151,8 @@ final class TranscriptionViewModelBatchTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
         let count = await mockService.transcribedFileNames.count
         XCTAssertLessThan(count, 4, "Cancelling must stop draining the queue")
-        XCTAssertEqual(signalCount, 0, "No completion signal fires after Cancel all")
+        XCTAssertEqual(outcomes, [.cancelled], "Cancel all reports once; a late file never reports completion")
         XCTAssertFalse(vm.isBatchActive, "A late-resolving file must not revive the batch")
-    }
-
-    // MARK: - Notification setting
-
-    func testNoSignalWhenNotificationSettingOff() async throws {
-        defaults.set(false, forKey: UserDefaultsAppRuntimePreferences.notifyOnTranscriptionCompleteKey)
-        let vm = makeViewModel()
-        var captured: TranscriptionCompletionNotifier.Content?
-        vm.onTranscriptionCompleted = { captured = $0 }
-
-        let url = try touch("only.mp3")
-        vm.transcribeFiles(urls: [url])
-        try await waitUntil { !vm.isTranscribing }
-
-        XCTAssertNil(captured, "No completion signal when the setting is off")
     }
 
     // MARK: - Unsupported drop

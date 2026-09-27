@@ -1,13 +1,13 @@
 import Foundation
 
-/// Pure decision + copy for the "transcription finished" signal (a chime, plus
-/// a banner when the app is backgrounded). Kept free of AppKit and
-/// UserNotifications so it is fully unit-testable; the app layer turns a
-/// non-`nil` `Content` into a `SoundManager` chime and an optional banner.
+/// Pure decision + copy for Splay's file-job banner. Kept free of AppKit and
+/// UserNotifications so it is fully unit-testable; the app layer
+/// (`TranscriptionCompletionPresenter`) plays the sound and posts the banner —
+/// also while Splay is frontmost.
 ///
-/// One Settings toggle (`notifyOnTranscriptionComplete`, default on) governs
-/// both surfaces — when it is off these factory methods return `nil` and the
-/// app layer does nothing.
+/// The `notifyOnTranscriptionComplete` setting (default on) silences only
+/// *successes*. Failures, unsaved transcripts, and the "still transcribing"
+/// refusal always produce content: they are the only place the reason is said.
 public enum TranscriptionCompletionNotifier {
     public struct Content: Equatable, Sendable {
         public let title: String
@@ -47,20 +47,29 @@ public enum TranscriptionCompletionNotifier {
         case .failed(let fileName, let reason):
             return Content(title: "Couldn't transcribe \(fileName)", body: reason)
         case .batch(let completed, let failed, let unsaved, let folder):
-            guard settingEnabled || failed > 0 || unsaved > 0 else { return nil }
+            // The title agrees with the island (`outcome.isFailure`).
+            guard settingEnabled || outcome.isFailure else { return nil }
             var parts = ["\(completed) transcribed"]
             if failed > 0 { parts.append("\(failed) failed") }
             if unsaved > 0 { parts.append("\(unsaved) not saved") }
-            let body = folder.map { "Saved to \($0.lastPathComponent) \u{00B7} " + parts.joined(separator: " \u{00B7} ") }
-                ?? parts.joined(separator: " \u{00B7} ")
-            return Content(
-                title: failed > 0 ? "Transcribed \(filesLabel(completed)), some failed" : "Transcribed \(filesLabel(completed))",
-                body: body,
-                revealURL: folder
-            )
+            var body = parts.joined(separator: " \u{00B7} ")
+            if let folder {
+                body = "Saved to \(folder.lastPathComponent) \u{00B7} " + body
+            } else if unsaved > 0 {
+                body += ". Couldn't write to your transcripts folder; the text is in Splay's Recordings."
+            }
+            return Content(title: batchTitle(completed: completed, failed: failed, unsaved: unsaved),
+                           body: body, revealURL: folder)
         case .cancelled:
             return nil
         }
+    }
+
+    static func batchTitle(completed: Int, failed: Int, unsaved: Int) -> String {
+        if completed == 0 { return "Couldn't transcribe \(filesLabel(failed))" }
+        if failed > 0 { return "Transcribed \(completed) of \(completed + failed) files" }
+        if unsaved > 0 { return "Transcribed \(filesLabel(completed)), \(unsaved) not saved" }
+        return "Transcribed \(filesLabel(completed))"
     }
 
     /// A file offered while a job runs is refused; say so instead of a no-op.
@@ -69,40 +78,6 @@ public enum TranscriptionCompletionNotifier {
         return Content(
             title: "Still transcribing",
             body: "Wait for \(name) to finish, or cancel it from the Splay menu."
-        )
-    }
-
-    /// Signal content for a single completed transcription, or `nil` when the
-    /// user has turned completion notifications off.
-    public static func singleContent(
-        settingEnabled: Bool,
-        transcriptName: String,
-        wordCount: Int
-    ) -> Content? {
-        guard settingEnabled else { return nil }
-        return Content(
-            title: transcriptName,
-            body: "Transcription complete \u{00B7} \(wordsLabel(wordCount))"
-        )
-    }
-
-    /// Signal content for a finished batch, or `nil` when notifications are off.
-    /// A batch always signals once, on drain — never per intermediate file.
-    public static func batchContent(
-        settingEnabled: Bool,
-        completed: Int,
-        failed: Int
-    ) -> Content? {
-        guard settingEnabled else { return nil }
-        if failed == 0 {
-            return Content(
-                title: "Transcriptions complete",
-                body: "\(filesLabel(completed)) transcribed"
-            )
-        }
-        return Content(
-            title: "Transcriptions finished with errors",
-            body: "\(completed) transcribed \u{00B7} \(failed) failed"
         )
     }
 

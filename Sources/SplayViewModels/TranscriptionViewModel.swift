@@ -61,11 +61,6 @@ public final class TranscriptionViewModel {
     public var onFileJobFinished: ((FileJobOutcome) -> Void)?
     private var reportedFileJobActive = false
 
-    /// Fired once when a single transcription, or a whole batch, finishes and
-    /// the user's completion-notification setting is on. The app layer plays
-    /// the chime and (when backgrounded) posts a banner. Nil-safe: the
-    /// ViewModel only invokes this with a non-nil `Content`.
-    public var onTranscriptionCompleted: ((TranscriptionCompletionNotifier.Content) -> Void)?
 
     // MARK: - Batch transcription (local files only)
     //
@@ -444,11 +439,6 @@ public final class TranscriptionViewModel {
     }
 
     private func finishBatch() {
-        let content = TranscriptionCompletionNotifier.batchContent(
-            settingEnabled: notifyOnCompletionEnabled,
-            completed: batchCompletedCount,
-            failed: batchFailedCount
-        )
         let outcome = FileJobOutcome.batch(
             completed: batchCompletedCount,
             failed: batchFailedCount,
@@ -456,7 +446,6 @@ public final class TranscriptionViewModel {
             folder: batchSavedFolder
         )
         resetBatchState()
-        emitCompletionSignal(content)
         onFileJobFinished?(outcome)
     }
 
@@ -469,15 +458,6 @@ public final class TranscriptionViewModel {
         batchSavedFolder = nil
         batchQueue.removeAll()
         reportFileJobActivity()
-    }
-
-    private func emitCompletionSignal(_ content: TranscriptionCompletionNotifier.Content?) {
-        guard let content else { return }
-        onTranscriptionCompleted?(content)
-    }
-
-    private var notifyOnCompletionEnabled: Bool {
-        defaults.object(forKey: UserDefaultsAppRuntimePreferences.notifyOnTranscriptionCompleteKey) as? Bool ?? true
     }
 
     private static func wordCount(of transcription: Transcription) -> Int {
@@ -571,13 +551,6 @@ public final class TranscriptionViewModel {
         } else {
             presentCompletedTranscription(result, autoSave: false)
             let save = autoSave(result)
-            emitCompletionSignal(
-                TranscriptionCompletionNotifier.singleContent(
-                    settingEnabled: notifyOnCompletionEnabled,
-                    transcriptName: result.fileName,
-                    wordCount: Self.wordCount(of: result)
-                )
-            )
             let savedTo: URL?
             let saveFailed: Bool
             switch save {
@@ -611,10 +584,6 @@ public final class TranscriptionViewModel {
         }
     }
 
-    private func autoSaveIfEnabled(_ transcription: Transcription) {
-        _ = autoSave(transcription)
-    }
-
     public func presentCompletedTranscription(_ transcription: Transcription) {
         presentCompletedTranscription(transcription, autoSave: false)
     }
@@ -622,8 +591,16 @@ public final class TranscriptionViewModel {
     public func presentCompletedTranscription(_ transcription: Transcription, autoSave: Bool) {
         currentTranscription = transcription
         loadTranscriptions()
-        if autoSave {
-            autoSaveIfEnabled(transcription)
+        // Only the recovered-meeting path asks for a save here. A failed write
+        // must not pass as a successful recovery: report it like a file job
+        // whose transcript could not be written (failure light + banner).
+        if autoSave, case .failed = self.autoSave(transcription) {
+            onFileJobFinished?(.transcribed(
+                fileName: transcription.fileName,
+                wordCount: Self.wordCount(of: transcription),
+                savedTo: nil,
+                saveFailed: true
+            ))
         }
     }
 
