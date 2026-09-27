@@ -53,15 +53,51 @@ final class IslandCaptureFaceTests: XCTestCase {
         }
     }
 
-    // MARK: Width
+    // MARK: Asymmetric geometry (owner, 2026-09-27)
 
-    func testActiveWidthIsNarrowOffTheNotchAndClearsTheCameraOnIt() {
-        XCTAssertEqual(SplayGeometry.size(for: .recording, notchAttached: false).width, 250)
-        let notched = SplayGeometry.size(for: .recording, notchAttached: true).width
-        // Each side of the camera dead zone must fit the widest slot content
-        // (timer up to 99:59, or the meeting's twin meter) inside the face padding.
-        let side = (notched - SplayGeometry.cameraDeadZone.width) / 2 - SplayGeometry.facePadding
-        XCTAssertGreaterThanOrEqual(side, SplayGeometry.widestSlotContent)
-        XCTAssertEqual(IslandLayout.pillSize(for: .recording, notchAttached: true).width, notched)
+    /// Everything lives left of the camera; the pill's length says what runs.
+    func testLeftSideGrowsWithWhatIsRunning() {
+        for notch in [false, true] {
+            let dictation = SplayGeometry.layout(for: .recording, kind: .dictation, notchAttached: notch).size.width
+            let recording = SplayGeometry.layout(for: .recording, kind: .recording, notchAttached: notch).size.width
+            let meeting = SplayGeometry.layout(for: .recording, kind: .meeting, notchAttached: notch).size.width
+            XCTAssertLessThan(dictation, recording)
+            XCTAssertLessThan(recording, meeting)
+        }
+    }
+
+    func testOnTheNotchContentClearsTheCameraAndTheRightSideIsJustAnEar() {
+        for kind in [IslandCaptureKind.recording, .meeting, .dictation] {
+            for state in [SplayIslandState.recording, .transcribing, .done, .failed] {
+                let layout = SplayGeometry.layout(for: state, kind: kind, notchAttached: true)
+                let w = layout.size.width
+                // Pill edges relative to the camera's centre.
+                let left = -w / 2 + layout.centerOffset
+                let right = w / 2 + layout.centerOffset
+                let cameraHalf = SplayGeometry.cameraDeadZone.width / 2
+                let content = SplayGeometry.contentWidth(for: state, kind: kind)
+                XCTAssertLessThanOrEqual(
+                    left + SplayGeometry.contentInset + content, -cameraHalf,
+                    "\(state) \(kind): content must end before the camera"
+                )
+                XCTAssertEqual(right, cameraHalf + SplayGeometry.trailingEar, accuracy: 0.001)
+            }
+        }
+    }
+
+    func testOffTheNotchThePillHugsItsContentCentred() {
+        let layout = SplayGeometry.layout(for: .recording, kind: .dictation, notchAttached: false)
+        XCTAssertEqual(layout.centerOffset, 0)
+        XCTAssertEqual(
+            layout.size.width,
+            SplayGeometry.contentWidth(for: .recording, kind: .dictation) + 2 * SplayGeometry.contentInset
+        )
+    }
+
+    func testTheHitRectFollowsTheDrawnPill() {
+        let layout = SplayGeometry.layout(for: .recording, kind: .meeting, notchAttached: true)
+        let rect = IslandLayout.pillRect(for: .recording, kind: .meeting, notchAttached: true)
+        XCTAssertEqual(rect.width, layout.size.width)
+        XCTAssertEqual(rect.midX, IslandLayout.panelWidth / 2 + layout.centerOffset, accuracy: 0.001)
     }
 }

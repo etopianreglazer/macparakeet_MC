@@ -84,52 +84,83 @@ enum SplayLight {
 // MARK: - Geometry (handoff tables)
 
 enum SplayGeometry {
-    /// The fixed camera-housing dead zone reserved at the pill's centre; content
-    /// splits into a left + right cluster around it and never runs under it.
+    /// The fixed camera-housing dead zone. Active content sits left of it and
+    /// never runs under it (see `layout`).
     static let cameraDeadZone = CGSize(width: 180, height: 32)
 
-    /// The single width the island grows to for any *active* state. Live feedback
-    /// (2026-08-07): the old per-state widths (240/244/248/264/300) made the pill
-    /// wobble as it morphed recording → transcribing → done. There is ONE active
-    /// width per display so the lifecycle never re-sizes between states.
-    /// Tuner round 2026-09-26: the owner dialled 250. Off the notch that is the
-    /// width; beside the camera it cannot fit the slots (see `widestSlotContent`),
-    /// so notched displays keep 280.
-    static let activeWidth: CGFloat = 250
-    static let notchedActiveWidth: CGFloat = 280
-    /// Horizontal face padding (the face's leading/trailing inset).
-    static let facePadding: CGFloat = 14
-    /// The widest thing a side slot ever holds beside the camera: the timer at
-    /// 99:59 (≈34pt at 12pt); the meeting's twin meter is ≈29pt.
-    static let widestSlotContent: CGFloat = 34
-
-    /// The compact resting nub — a quiet, hidden bar. The mark + record dot are
-    /// revealed on hover (the ready step), not drawn here, so idle stays minimal.
+    /// The compact resting nub — a quiet, hidden bar (symmetric under the notch).
     static let dormantWidth: CGFloat = 206
-    /// The hover/ready step: clearly wider AND taller than dormant so touching the
-    /// nub visibly grows it (the hover response the resting nub was missing). This
-    /// is where the clickable mark (left) + the status dot (right) appear.
+    /// The old hover step (clicks are off, so it is no longer reached; kept so
+    /// `SplayIslandInteraction.enabled` can bring it back).
     static let readyWidth: CGFloat = 248
 
-    /// Pill width / height per state. Three widths total (dormant → ready → active
-    /// max) so the morph reads as deliberate growth, never a jittering re-size.
-    static func size(for state: SplayIslandState, notchAttached: Bool) -> CGSize {
+    // Active states are asymmetric (owner, 2026-09-27): everything lives LEFT of
+    // the camera, so the pill's length says what is running — dictation is just
+    // the voice bars, a recording adds the timer, a meeting adds the system
+    // bars. Right of the camera is only a short ear that rounds the pill off.
+    static let activeHeight: CGFloat = 34
+    /// Pill edge → first content.
+    static let contentInset: CGFloat = 10
+    /// Last content → camera housing.
+    static let cameraGap: CGFloat = 6
+    /// How far the pill reaches right of the camera.
+    static let trailingEar: CGFloat = 12
+    /// Meters → timer.
+    static let slotGap: CGFloat = 8
+    /// The timer's fixed slot (fits "99:59" at 12pt), so the pill never
+    /// changes length as the seconds tick.
+    static let timerWidth: CGFloat = 34
+    /// One glyph (spinner, check, failed, mark).
+    static let glyphWidth: CGFloat = 16
+
+    /// Width of the content left of the camera for a state + capture kind.
+    static func contentWidth(for state: SplayIslandState, kind: IslandCaptureKind) -> CGFloat {
         switch state {
-        case .dormant:      return CGSize(width: dormantWidth, height: 34)
-        case .ready:        return CGSize(width: readyWidth, height: 38)
-        // Every active state shares the max width + one height → zero wobble as the
-        // lifecycle advances. Recording sits at the island's largest size.
-        case .recording, .transcribing, .done, .copied,
-             .warning, .failed, .dropped:
-            return CGSize(width: notchAttached ? notchedActiveWidth : activeWidth, height: 38)
+        case .recording:
+            let micMeter = SplayMeterTuning.width
+            switch kind {
+            case .dictation:
+                return micMeter
+            case .recording:
+                return micMeter + slotGap + timerWidth
+            case .meeting:
+                let meters = micMeter + SplayMeterTuning.twinGap
+                    + SplayMeterTuning.width(bars: SplayMeterTuning.systemBarCount)
+                return meters + slotGap + timerWidth
+            }
+        case .transcribing, .done, .copied, .warning, .failed, .dropped:
+            return glyphWidth
+        case .dormant, .ready:
+            return 0
+        }
+    }
+
+    /// The pill's size and its horizontal offset from the camera's centre
+    /// (negative = hangs left). Off the notch there is no camera: the pill
+    /// hugs its content, centred.
+    static func layout(
+        for state: SplayIslandState, kind: IslandCaptureKind, notchAttached: Bool
+    ) -> (size: CGSize, centerOffset: CGFloat) {
+        switch state {
+        case .dormant:
+            return (CGSize(width: dormantWidth, height: 34), 0)
+        case .ready:
+            return (CGSize(width: readyWidth, height: 38), 0)
+        case .recording, .transcribing, .done, .copied, .warning, .failed, .dropped:
+            let content = contentWidth(for: state, kind: kind)
+            guard notchAttached else {
+                return (CGSize(width: content + 2 * contentInset, height: activeHeight), 0)
+            }
+            let left = contentInset + content + cameraGap
+            let width = left + cameraDeadZone.width + trailingEar
+            return (CGSize(width: width, height: activeHeight), (trailingEar - left) / 2)
         }
     }
 
     /// Bottom-corner radius per state (top corners are square — the pill's top
-    /// edge is flush with the physical screen top). Two radii only, tracking the
-    /// two heights above, so the corner never wobbles across the active lifecycle.
+    /// edge is flush with the physical screen top).
     static func bottomRadius(for state: SplayIslandState) -> CGFloat {
-        state == .dormant ? 17 : 19
+        state == .ready ? 19 : 17
     }
 }
 

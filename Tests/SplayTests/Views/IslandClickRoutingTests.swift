@@ -69,25 +69,20 @@ final class IslandClickRoutingTests: XCTestCase {
                 let rect = IslandLayout.hitRect(for: visual, notchAttached: notchAttached)
                 for x in stride(from: rect.minX + 1, to: rect.maxX, by: 8) {
                     let p = CGPoint(x: x, y: rect.midY)
-                    XCTAssertEqual(IslandLayout.control(at: p, visual: visual, notchAttached: notchAttached), .none)
+                    XCTAssertEqual(IslandLayout.control(at: p, visual: visual, kind: .recording, notchAttached: notchAttached), .none)
                 }
             }
         }
     }
 
-    func testRecordingStopsFromTheTimerAndTheWholeBar() {
+    func testRecordingStopsFromAnywhereOnThePill() {
         for notchAttached in [false, true] {
-            let stop = IslandLayout.controlRect(for: .recording, notchAttached: notchAttached)
-            XCTAssertEqual(
-                IslandLayout.control(at: CGPoint(x: stop.midX, y: stop.midY), visual: .recording, notchAttached: notchAttached),
-                .stop
-            )
-            // The left meter is no longer a card button.
-            let pill = IslandLayout.hitRect(for: .recording, notchAttached: notchAttached)
-            XCTAssertEqual(
-                IslandLayout.control(at: CGPoint(x: pill.minX + 20, y: pill.midY), visual: .recording, notchAttached: notchAttached),
-                .none
-            )
+            for kind in [IslandCaptureKind.recording, .meeting, .dictation] {
+                let pill = IslandLayout.pillRect(for: .recording, kind: kind, notchAttached: notchAttached)
+                XCTAssertEqual(IslandLayout.controlRect(for: .recording, kind: kind, notchAttached: notchAttached), pill)
+                let p = CGPoint(x: pill.minX + 12, y: pill.midY)
+                XCTAssertEqual(IslandLayout.control(at: p, visual: .recording, kind: kind, notchAttached: notchAttached), .stop)
+            }
         }
         XCTAssertEqual(IslandLayout.clickAction(visual: .recording, control: .none), .stop)
         XCTAssertEqual(IslandLayout.clickAction(visual: .recording, control: .stop), .stop)
@@ -96,7 +91,8 @@ final class IslandClickRoutingTests: XCTestCase {
     func testTranscribingIgnoresClicksAndDoneOpensTheCard() {
         let pill = IslandLayout.hitRect(for: .transcribing, notchAttached: false)
         XCTAssertEqual(
-            IslandLayout.control(at: CGPoint(x: pill.minX + 20, y: pill.midY), visual: .transcribing, notchAttached: false),
+            IslandLayout.control(at: CGPoint(x: pill.minX + 20, y: pill.midY), visual: .transcribing,
+                                 kind: .recording, notchAttached: false),
             .none
         )
         XCTAssertEqual(IslandLayout.clickAction(visual: .transcribing, control: .none), .none)

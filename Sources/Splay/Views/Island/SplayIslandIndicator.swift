@@ -29,12 +29,6 @@ struct SplayIslandIndicator: View {
     /// On a notched built-in display the pill straddles the camera housing, so a
     /// central dead zone is reserved. External displays render a centred row.
     var notchAttached: Bool = true
-    /// Which control the cursor is over (from the AppKit tracker) — drives the
-    /// hover "pop" (lift + glow) so the buttons answer the touch against the moving pill.
-    var hoveredControl: IslandControl = .none
-    /// Which control is momentarily pressed (a click pulse from the tracker) —
-    /// depresses it like a physical key.
-    var pressedControl: IslandControl = .none
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Smooths the live mic level into the recording meter.
@@ -88,7 +82,8 @@ struct SplayIslandIndicator: View {
 
     private func pill(markBreathe: (Double, Double), live: Bool,
                       meterLevel: Double, systemMeterLevel: Double, meterPhase: Double?) -> some View {
-        let size = SplayGeometry.size(for: state, notchAttached: notchAttached)
+        let layout = SplayGeometry.layout(for: state, kind: captureKind, notchAttached: notchAttached)
+        let size = layout.size
         let radius = SplayGeometry.bottomRadius(for: state)
         return ZStack(alignment: .bottom) {
             UnevenRoundedRectangle(topLeadingRadius: 0, bottomLeadingRadius: radius,
@@ -100,30 +95,24 @@ struct SplayIslandIndicator: View {
                  systemMeterLevel: systemMeterLevel, meterPhase: meterPhase)
                 .frame(width: size.width, height: size.height, alignment: .bottom)
         }
+        // Asymmetric: on the notch the pill hangs left of the camera.
+        .offset(x: layout.centerOffset)
         .frame(maxWidth: .infinity, alignment: .top)
     }
 
-    // MARK: Face content (left cluster · camera dead zone · right cluster)
+    // MARK: Face content (one cluster, left of the camera)
 
     private func face(markBreathe: (Double, Double), live: Bool, meterLevel: Double,
                       systemMeterLevel: Double, meterPhase: Double?) -> some View {
-        HStack(spacing: 0) {
+        let height = SplayGeometry.layout(for: state, kind: captureKind, notchAttached: notchAttached).size.height
+        return HStack(spacing: 0) {
             leftCluster(markBreathe: markBreathe, live: live, meterLevel: meterLevel,
                         systemMeterLevel: systemMeterLevel, meterPhase: meterPhase)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if notchAttached {
-                Spacer(minLength: SplayGeometry.cameraDeadZone.width)
-                    .frame(width: SplayGeometry.cameraDeadZone.width)
-            } else {
-                Spacer(minLength: 8)
-            }
-            rightCluster
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            Spacer(minLength: 0)
         }
         .frame(height: 26)
-        // Horizontal breathing room so the slots clear the rounded corner.
-        .padding(.horizontal, SplayGeometry.facePadding)
-        .padding(.bottom, 6)
+        .padding(.leading, SplayGeometry.contentInset)
+        .padding(.bottom, max(0, (height - 26) / 2))
     }
 
     /// Elements scale up + fade as they appear, so they feel spawned with the
@@ -148,17 +137,27 @@ struct SplayIslandIndicator: View {
                                           meterPhase: Double?) -> some View {
         switch state {
         case .recording:
-            // Your mic, in every capture: red while frames arrive, flat motionless
-            // amber when dead. A meeting adds a second, fainter meter for the
-            // system audio (tuner round 2026-09-26: "second meter").
-            HStack(spacing: SplayMeterTuning.twinGap) {
-                SplayIslandMeter(level: meterLevel, phase: meterPhase, color: statusDotColor)
-                if captureKind == .meeting {
-                    SplayIslandMeter(level: systemMeterLevel, phase: meterPhase.map { $0 + 0.7 },
-                                     color: SplayLight.systemAudio, bars: SplayMeterTuning.systemBarCount)
+            // Your mic in every capture: red while frames arrive, flat motionless
+            // amber when dead. A meeting adds the fainter system-audio bars ("more
+            // voices"); recordings and meetings add the timer; dictation is the
+            // voice bars alone (owner, 2026-09-27: the length says what runs).
+            HStack(spacing: SplayGeometry.slotGap) {
+                HStack(spacing: SplayMeterTuning.twinGap) {
+                    SplayIslandMeter(level: meterLevel, phase: meterPhase, color: statusDotColor)
+                    if captureKind == .meeting {
+                        SplayIslandMeter(level: systemMeterLevel, phase: meterPhase.map { $0 + 0.7 },
+                                         color: SplayLight.systemAudio, bars: SplayMeterTuning.systemBarCount)
+                    }
+                }
+                if captureKind != .dictation {
+                    SplayIslandTimer(seconds: elapsedSeconds, color: statusDotColor)
+                        .frame(width: SplayGeometry.timerWidth, alignment: .leading)
                 }
             }
             .transition(spawn)
+        case .transcribing:
+            // Amber arc (the transcribing palette) = semantic "processing".
+            SplayIslandSpinner(color: markColor).frame(width: 14, height: 14).transition(spawn)
         case .dropped:
             // A dropped file (menu bar icon drop) still shows the brand mark.
             mark(markBreathe: markBreathe, live: live).transition(spawn)
@@ -166,81 +165,12 @@ struct SplayIslandIndicator: View {
             glyphCircle("checkmark", color: markColor).transition(spawn)
         case .copied:
             glyphCircle("doc.on.doc", color: markColor).transition(spawn)
-        case .failed:
+        case .failed, .warning:
             glyphCircle("exclamationmark", color: markColor).transition(spawn)
-        case .dormant, .ready, .transcribing, .warning:
-            // No mark (owner, tuner round 2026-09-26): the island is an indicator;
-            // Splay is opened from the menu bar icon (or a click on the idle pill).
+        case .dormant, .ready:
+            // The resting nub shows nothing (no mark, owner 2026-09-26).
             EmptyView()
         }
-    }
-
-    @ViewBuilder private var rightCluster: some View {
-        switch state {
-        case .recording where captureKind == .dictation:
-            // Dictation writes into a text field, not a file: a blinking text
-            // cursor instead of the timer. Clicking it stops.
-            hoverPop(SplayIslandCaret(color: .white, blinking: !reduceMotion),
-                     control: .stop, scale: 1.08, glow: .white)
-                .transition(spawn)
-        case .recording:
-            // Elapsed time (Voice Memos layout). Clicking it stops.
-            hoverPop(SplayIslandTimer(seconds: elapsedSeconds, color: statusDotColor),
-                     control: .stop, scale: 1.08, glow: statusDotColor)
-                .transition(spawn)
-        case .transcribing:
-            // "wrapping up" — no button. Amber arc (markColor is the transcribing
-            // palette's amber) so the spinner reads as semantic "processing".
-            SplayIslandSpinner(color: markColor).frame(width: 14, height: 14).transition(spawn)
-        case .done:
-            // One icon only. At the 280 max width the two-button cluster spilled
-            // into the 180px camera dead zone and disappeared behind the housing
-            // (2026-08-07 feedback). A single trailing "open" button clears the
-            // camera — and clicking the done pill already triggers Open, so this is
-            // just its affordance.
-            hoverPop(
-                actionButton(system: "folder", background: SplayTheme.shared.accent.islandBright, glyph: SplayLight.surface),
-                control: .open, scale: 1.16, glow: SplayTheme.shared.accent.islandBright
-            )
-            .transition(spawn)
-        case .warning, .failed:
-            Image(systemName: "chevron.down")
-                .font(.system(size: 9, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.45))
-                .transition(spawn)
-        case .dormant, .ready, .copied, .dropped:
-            EmptyView()
-        }
-    }
-
-    /// Interactive feedback for a control. On **hover** it lifts, brightens, and
-    /// blooms a strong coloured glow — a clear 3D "you can press this" invite. On
-    /// **press** (a click pulse from the tracker) it pushes *down* below the hover
-    /// pop and the glow squeezes in, like a physical key bottoming out; it then
-    /// springs back up. Press wins over hover. Both disabled under Reduce Motion.
-    @ViewBuilder private func hoverPop<V: View>(
-        _ view: V, control: IslandControl, scale: CGFloat = 1.20,
-        glow: Color = SplayLight.recordRed, hueShift: Double = 0
-    ) -> some View {
-        let hovered = hoveredControl == control && !reduceMotion
-        let pressed = pressedControl == control && !reduceMotion
-        let active = hovered || pressed
-        // Rest → flat. Hover → scale up, brighten, *richen* (saturate — makes the red
-        // read as lucious rather than washed), tight glow. Press → sink toward rest
-        // (0.95), glow tightens, a touch darker — the key bottoming out.
-        let s: CGFloat = pressed ? 0.95 : (hovered ? scale : 1)
-        let glowRadius: CGFloat = pressed ? 1 : (hovered ? 3 : 0)
-        let glowOpacity: Double = pressed ? 0.6 : (hovered ? 1.0 : 0)
-        let lift: CGFloat = pressed ? 0 : (hovered ? 2 : 0)   // sits "above" the surface on hover
-        view
-            .saturation(active ? 1.30 : 1)                      // richer, more lucious on touch
-            .hueRotation(.degrees(active ? hueShift : 0))       // nudge the red's hue (dot only; 0 = off)
-            .brightness(pressed ? -0.05 : (hovered ? 0.25 : 0))
-            .scaleEffect(s)
-            .shadow(color: glow.opacity(glowOpacity), radius: glowRadius, y: lift)
-            .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.58), value: hoveredControl)
-            // A soft, gentle spring for the press.
-            .animation(reduceMotion ? nil : .spring(response: 0.20, dampingFraction: 0.55), value: pressedControl)
     }
 
     // MARK: Pieces
@@ -271,13 +201,6 @@ struct SplayIslandIndicator: View {
         }
     }
 
-    private func actionButton(system: String, background: Color, glyph: Color) -> some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .fill(background)
-            .frame(width: 22, height: 22)
-            .overlay(Image(systemName: system).font(.system(size: 11)).foregroundStyle(glyph))
-    }
-
     // MARK: Active motion (per-frame mark breathe)
 
     /// The mark breathes while a dropped file is working; everything else is still.
@@ -287,25 +210,6 @@ struct SplayIslandIndicator: View {
         case .transcribing, .dropped: return SplayMotion.breathe(t, period: 1.1)
         default: return (1, 1)
         }
-    }
-}
-
-// MARK: - Dictation caret
-
-/// A text cursor: dictation's right slot (it types into a field, so no timer).
-private struct SplayIslandCaret: View {
-    let color: Color
-    let blinking: Bool
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.53)) { context in
-            let on = !blinking || Int(context.date.timeIntervalSinceReferenceDate / 0.53) % 2 == 0
-            RoundedRectangle(cornerRadius: 1)
-                .fill(color)
-                .frame(width: 2, height: 15)
-                .opacity(on ? 1 : 0.25)
-                .animation(.easeInOut(duration: 0.12), value: on)
-        }
-        .frame(width: 10, height: 15)
     }
 }
 

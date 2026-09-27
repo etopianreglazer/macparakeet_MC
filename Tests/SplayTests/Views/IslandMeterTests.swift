@@ -78,36 +78,4 @@ final class IslandMeterTests: XCTestCase {
         XCTAssertEqual(SplayIslandTimer.format(3725), "62:05")
         XCTAssertEqual(SplayIslandTimer.format(-3), "0:00")
     }
-
-    // MARK: Recording hit geometry
-
-    func testRecordingTimerIsTheStopControlAndBarsOpenTheMenu() {
-        for notchAttached in [false, true] {
-            let pill = IslandLayout.pillRect(for: .recording, notchAttached: notchAttached)
-            let y = pill.midY
-            // The timer is right-aligned at the 14pt face padding; probe both ends of "0:04".
-            for x in [pill.maxX - 16, pill.maxX - 14 - 26] {
-                XCTAssertEqual(
-                    IslandLayout.control(at: CGPoint(x: x, y: y), visual: .recording, notchAttached: notchAttached),
-                    .stop, "x=\(x) notch=\(notchAttached)"
-                )
-            }
-            // The bars (14pt pad, ~16pt wide) are no longer a card button; a
-            // click there still stops (`clickAction`), it just doesn't pop.
-            let barsX = pill.minX + 14 + SplayMeterTuning.width / 2
-            XCTAssertEqual(
-                IslandLayout.control(at: CGPoint(x: barsX, y: y), visual: .recording, notchAttached: notchAttached),
-                .none
-            )
-            let stop = IslandLayout.controlRect(for: .recording, notchAttached: notchAttached)
-            XCTAssertLessThanOrEqual(stop.maxX, pill.maxX)
-        }
-    }
-
-    func testNonRecordingControlRectsAreUnchanged() {
-        let pill = IslandLayout.pillRect(for: .done, notchAttached: false)
-        let rect = IslandLayout.controlRect(for: .done, notchAttached: false)
-        XCTAssertEqual(rect.width, IslandLayout.controlHitWidth)
-        XCTAssertEqual(rect.midX, pill.maxX - 18)
-    }
 }

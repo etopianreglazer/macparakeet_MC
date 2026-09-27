@@ -14,6 +14,7 @@ private final class IslandTrackingView: NSView {
     var idleVisibleProvider: () -> Bool = { true }
     var heldOpenProvider: () -> Bool = { false }
     var notchProvider: () -> Bool = { false }
+    var kindProvider: () -> IslandCaptureKind = { .recording }
 
     var onHoverEnter: (() -> Void)?
     var onHoverExit: (() -> Void)?
@@ -81,7 +82,7 @@ private final class IslandTrackingView: NSView {
         if visual == .idleCollapsed, recentlyRevealed {
             return IslandLayout.hitRect(for: .idleHover, notchAttached: notchProvider())
         }
-        return IslandLayout.hitRect(for: visual, notchAttached: notchProvider())
+        return IslandLayout.hitRect(for: visual, kind: kindProvider(), notchAttached: notchProvider())
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -113,7 +114,7 @@ private final class IslandTrackingView: NSView {
 
         // Per-control hover (mark / status dot / open button) for the pop
         // feedback — computed for whatever the current visual is, in every state.
-        setControlHover(IslandLayout.control(at: point, visual: currentVisual(), notchAttached: notchProvider()))
+        setControlHover(IslandLayout.control(at: point, visual: currentVisual(), kind: kindProvider(), notchAttached: notchProvider()))
     }
 
     /// Signal the hovered control only when it changes.
@@ -140,14 +141,14 @@ private final class IslandTrackingView: NSView {
             for: currentVisual(), at: point,
             notchAttached: notchProvider(), recentlyRevealed: recentlyRevealed
         )
-        guard IslandLayout.hitRect(for: visual, notchAttached: notchProvider()).contains(point) else {
+        guard IslandLayout.hitRect(for: visual, kind: kindProvider(), notchAttached: notchProvider()).contains(point) else {
             AudioCaptureDiagnostics.append(
                 "splay_island click_rejected src=\(source) point=\(point) visual=\(visual) hovering=\(hovering) "
-                + "recently_revealed=\(recentlyRevealed) rect=\(IslandLayout.hitRect(for: visual, notchAttached: notchProvider()))"
+                + "recently_revealed=\(recentlyRevealed) rect=\(IslandLayout.hitRect(for: visual, kind: kindProvider(), notchAttached: notchProvider()))"
             )
             return
         }
-        let control = IslandLayout.control(at: point, visual: visual, notchAttached: notchProvider())
+        let control = IslandLayout.control(at: point, visual: visual, kind: kindProvider(), notchAttached: notchProvider())
 
         // Depress the touched glyph like a physical key (a short pulse), before
         // running its action. A click on the empty bar has nothing to push down.
@@ -293,6 +294,13 @@ final class IslandController: NSObject {
         tracker.idleVisibleProvider = { [weak self] in self?.chrome.idleVisible ?? true }
         tracker.heldOpenProvider = { [weak self] in self?.chrome.heldOpen ?? false }
         tracker.notchProvider = { [weak self] in self?.chrome.isNotchResting ?? false }
+        tracker.kindProvider = { [weak self] in
+            guard let self else { return .recording }
+            return IslandLayout.captureKind(
+                pill: self.pillViewModel.state, dictation: self.chrome.dictation,
+                meetingCapturesSystem: self.chrome.meetingCapturesSystem
+            )
+        }
         tracker.onHoverEnter = { [weak self] in self?.chrome.isHovered = true }
         tracker.onHoverExit = { [weak self] in self?.chrome.isHovered = false }
         tracker.onOpenCard = { [weak self] in

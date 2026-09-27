@@ -93,28 +93,31 @@ enum IslandLayout {
     // Sizes mirror the design handoff's per-state geometry so the AppKit tracker's
     // hit-rects never drift from the drawn pill (`SplayGeometry.size` is the twin
     // used by the SwiftUI indicator).
-    static func pillSize(for visual: IslandVisual, notchAttached: Bool) -> CGSize {
+    static func pillSize(
+        for visual: IslandVisual, kind: IslandCaptureKind = .recording, notchAttached: Bool
+    ) -> CGSize {
+        guard let state = indicatorState(for: visual) else { return .zero }
+        return SplayGeometry.layout(for: state, kind: kind, notchAttached: notchAttached).size
+    }
+
+    /// The indicator state whose geometry a visual uses (nil = hidden).
+    static func indicatorState(for visual: IslandVisual) -> SplayIslandState? {
         switch visual {
-        case .hidden:        return .zero
-        case .idleCollapsed: return SplayGeometry.size(for: .dormant, notchAttached: notchAttached)
-        case .idleHover:     return SplayGeometry.size(for: .ready, notchAttached: notchAttached)
-        case .recording:     return SplayGeometry.size(for: .recording, notchAttached: notchAttached)
-        case .transcribing:  return SplayGeometry.size(for: .transcribing, notchAttached: notchAttached)
-        case .done:          return SplayGeometry.size(for: .done, notchAttached: notchAttached)
+        case .hidden:        return nil
+        case .idleCollapsed: return .dormant
+        case .idleHover:     return .ready
+        case .recording:     return .recording
+        case .transcribing:  return .transcribing
+        case .done:          return .done
         }
     }
 
-    /// Width of a right-cluster control's hit region (the status dot / open
-    /// button). Kept tight — close to the drawn glyph — so hover/click detection
-    /// hugs the small dot instead of arming across the whole right of the pill.
-    static let controlHitWidth: CGFloat = 16
-    /// Hit width over the recording timer (`m:ss` at 12pt ≈ 28pt, up to 99 min).
-    static let recordingTimerHitWidth: CGFloat = 34
-
     /// Interaction rect for the AppKit tracker — simply the drawn pill (notch-mode
     /// hover is additionally served by `notchRevealRect`).
-    static func hitRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
-        pillRect(for: visual, notchAttached: notchAttached)
+    static func hitRect(
+        for visual: IslandVisual, kind: IslandCaptureKind = .recording, notchAttached: Bool = false
+    ) -> CGRect {
+        pillRect(for: visual, kind: kind, notchAttached: notchAttached)
     }
 
     /// Hover-only central approach zone. In Notch mode it deliberately meets
@@ -134,24 +137,13 @@ enum IslandLayout {
         return CGRect(x: (panelWidth - w) / 2, y: ready.minY - extraBelow, width: w, height: ready.height + extraBelow)
     }
 
-    /// The right-cluster control hit region for a given visual — where the status
-    /// dot / open button is drawn (`SplayIslandIndicator.rightCluster`, trailing-
-    /// aligned with 14pt face padding, in both notch and non-notch layouts). The
-    /// rect is a bit wider than the glyph so it's an easy target. The drawn glyph
-    /// and this rect derive from the same `pillRect`, so they never drift.
-    static func controlRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
-        let pill = pillRect(for: visual, notchAttached: notchAttached)
-        if visual == .recording {
-            // The recording stop control is the elapsed timer, right-aligned at the
-            // 14pt face padding — cover its width, not just a dot.
-            return CGRect(x: pill.maxX - 14 - recordingTimerHitWidth, y: pill.minY,
-                          width: recordingTimerHitWidth + 8, height: pill.height)
-        }
-        let w = controlHitWidth
-        // Centre the tight target on the trailing glyph (drawn ~14pt in from the
-        // pill's right edge), not flush to the edge, so it sits right over the dot.
-        let center = pill.maxX - 18
-        return CGRect(x: center - w / 2, y: pill.minY, width: w, height: pill.height)
+    /// The control hit region for a visual. There are no small buttons any
+    /// more (the face is display-only), so a running capture's stop target and
+    /// the done pill's open target are the whole pill.
+    static func controlRect(
+        for visual: IslandVisual, kind: IslandCaptureKind = .recording, notchAttached: Bool = false
+    ) -> CGRect {
+        pillRect(for: visual, kind: kind, notchAttached: notchAttached)
     }
 
     /// Grace window after hover drops during which an idle click is still
@@ -180,12 +172,14 @@ enum IslandLayout {
     /// Which interactive control (if any) sits under `point` for the current
     /// visual — only for the hover/press feedback on a drawn glyph. The island
     /// has no mark (owner, tuner round 2026-09-26): idle draws nothing to press.
-    static func control(at point: CGPoint, visual: IslandVisual, notchAttached: Bool) -> IslandControl {
+    static func control(
+        at point: CGPoint, visual: IslandVisual, kind: IslandCaptureKind, notchAttached: Bool
+    ) -> IslandControl {
         switch visual {
         case .recording:
-            return controlRect(for: .recording, notchAttached: notchAttached).contains(point) ? .stop : .none
+            return controlRect(for: .recording, kind: kind, notchAttached: notchAttached).contains(point) ? .stop : .none
         case .done:
-            return controlRect(for: .done, notchAttached: notchAttached).contains(point) ? .open : .none
+            return controlRect(for: .done, kind: kind, notchAttached: notchAttached).contains(point) ? .open : .none
         case .hidden, .idleCollapsed, .idleHover, .transcribing:
             return .none
         }
@@ -250,11 +244,16 @@ enum IslandLayout {
     /// The pill's frame in panel (AppKit, bottom-left origin) coordinates.
     /// The view is top-anchored, while AppKit coordinates grow upward, so the
     /// shared tracker uses the corresponding top-derived y value.
-    static func pillRect(for visual: IslandVisual, notchAttached: Bool = false) -> CGRect {
-        let size = pillSize(for: visual, notchAttached: notchAttached)
+    static func pillRect(
+        for visual: IslandVisual, kind: IslandCaptureKind = .recording, notchAttached: Bool = false
+    ) -> CGRect {
+        let size = pillSize(for: visual, kind: kind, notchAttached: notchAttached)
+        let offset = indicatorState(for: visual).map {
+            SplayGeometry.layout(for: $0, kind: kind, notchAttached: notchAttached).centerOffset
+        } ?? 0
         let topBreathingRoom = notchAttached ? 0 : topInset
         return CGRect(
-            x: (panelWidth - size.width) / 2,
+            x: (panelWidth - size.width) / 2 + offset,
             y: panelHeight - topBreathingRoom - size.height,
             width: size.width,
             height: size.height
@@ -351,9 +350,7 @@ struct IslandView: View {
                     systemLevel: chrome.liveSystemLevel,
                     elapsedSeconds: pill.elapsedSeconds,
                     audioAlive: chrome.audioAlive,
-                    notchAttached: chrome.isNotchResting,
-                    hoveredControl: chrome.hoveredControl,
-                    pressedControl: chrome.pressedControl
+                    notchAttached: chrome.isNotchResting
                 )
                 // Mirror the tracker's `pillRect` top offset exactly so the drawn
                 // pill and its hit-rect stay aligned: flush to the physical top in
