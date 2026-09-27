@@ -42,8 +42,7 @@ orphan existing local data or break callers, so they intentionally stay:
 
 `scripts/dev/install_local.sh` → `scripts/dist/build_app_bundle.sh` is the fork's
 build/install path; its SwiftPM product references were updated to the `Splay`
-product. `scripts/dev/run_app.sh` (the xcodebuild-based dev runner) is not used on
-this machine and was left on its original names.
+product. Upstream's xcodebuild dev runner (`run_app.sh`) was deleted in thread 21.
 
 ## License
 

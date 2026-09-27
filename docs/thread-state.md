@@ -38,8 +38,7 @@
 
 1. **Owed by the owner (blocked for the agent by the auto-mode classifier):**
    - ~~CLAUDE.md / AGENTS.md edits~~ — done thread 21 (branches, gestures, flags, ADR 005, push rule).
-   - **Delete dead scripts:** `scripts/dev/{run_app,reset_and_run_fresh,benchmark_qwen_models,quality_eval_qwen}.sh`,
-     then fix the `run_app.sh` mention in `docs/BRANDING.md` (~line 45).
+   - ~~Delete dead scripts~~ — done thread 21 (4 scripts + BRANDING.md line).
 2. **Press the pinned island** over Mission Control, a full-screen app, and the lock screen (boring.notch had
    it drawing over Mission Control's space labels). If it misbehaves: hide/unpin around those, or flag off.
 3. **Fn dictation slice 3** (`docs/plans/fn-dictation-double-tap.md`): nothing-focused → keep text on the
