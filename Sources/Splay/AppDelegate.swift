@@ -645,9 +645,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let rows = SplayRecordingRow.recents(
                 transcriptions: Array(all.prefix(5)), dictations: dictations, limit: 5, now: now
             )
-            let folder = AutoSaveService.resolveFolder(scope: .meeting)
-                ?? AutoSaveService.resolveFolder(scope: .transcription)
-                ?? AutoSaveService.defaultFolder(for: .meeting)
+            // Open the folder the newest item lives in: a file transcription's
+            // is Transcriptions, a recording's is Meetings.
+            let scope: AutoSaveScope = rows.first(where: { !$0.isDictation })?.isFileImport == true
+                ? .transcription : .meeting
+            let other: AutoSaveScope = scope == .meeting ? .transcription : .meeting
+            let folder = AutoSaveService.resolveFolder(scope: scope)
+                ?? AutoSaveService.resolveFolder(scope: other)
+                ?? AutoSaveService.defaultFolder(for: scope)
             let display = folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
             let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? ""
             let repoURL = URL(string: "https://github.com/etopianreglazer/splay")

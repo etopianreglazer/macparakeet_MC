@@ -46,4 +46,25 @@ final class SplayRecordingRowTests: XCTestCase {
         XCTAssertTrue(SplayRecordingRow.recents(transcriptions: [], dictations: [failed, empty],
                                                 limit: 5, now: now).isEmpty)
     }
+
+    // MARK: - Failed and cancelled jobs (docs/plans/file-transcription-feedback.md)
+
+    func testFailedJobSaysItFailedAndWhy() {
+        let failed = Transcription(createdAt: now, fileName: "broken.mov", status: .error,
+                                   errorMessage: "Unsupported codec")
+        let row = SplayRecordingRow.from(failed, now: now)
+        XCTAssertEqual(row.problem, .failed(reason: "Unsupported codec"))
+        XCTAssertEqual(row.problem?.detail, "Failed: Unsupported codec")
+        XCTAssertTrue(row.isFileImport)
+    }
+
+    func testCancelledAndCompletedRows() {
+        let cancelled = Transcription(createdAt: now, fileName: "a.wav", status: .cancelled)
+        XCTAssertEqual(SplayRecordingRow.from(cancelled, now: now).problem, .cancelled)
+        let done = Transcription(createdAt: now, fileName: "a.wav", rawTranscript: "hi", status: .completed,
+                                 sourceType: .meeting)
+        let row = SplayRecordingRow.from(done, now: now)
+        XCTAssertNil(row.problem)
+        XCTAssertFalse(row.isFileImport)
+    }
 }

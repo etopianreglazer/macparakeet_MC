@@ -414,6 +414,31 @@ struct SplayRecordingRow: Identifiable {
     var isDictation = false
     /// Sort key for interleaving recordings and dictations.
     var createdAt = Date.distantPast
+    /// Set when the job did not produce a transcript: it failed (with its
+    /// reason) or was cancelled. The row says so instead of sitting blank.
+    var problem: Problem?
+    /// A file transcription (menu ▸ Transcribe File / icon drop), whose
+    /// transcript lives in the Transcriptions folder rather than Meetings.
+    var isFileImport = false
+
+    enum Problem: Equatable {
+        case failed(reason: String?)
+        case cancelled
+
+        var label: String {
+            switch self {
+            case .failed: return "Failed"
+            case .cancelled: return "Cancelled"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .failed(let reason): return reason.map { "Failed: \($0)" } ?? "Transcription failed"
+            case .cancelled: return "Cancelled before it finished"
+            }
+        }
+    }
 
     /// The newest `limit` recordings and dictations, interleaved newest first.
     /// Dictations are here so one that pasted into the wrong place is never lost;
@@ -461,13 +486,20 @@ struct SplayRecordingRow: Identifiable {
         }()
         let transcript = (t.cleanTranscript ?? t.rawTranscript ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let problem: Problem? = switch t.status {
+        case .error: .failed(reason: t.errorMessage?.trimmingCharacters(in: .whitespacesAndNewlines))
+        case .cancelled: .cancelled
+        case .completed, .processing: nil
+        }
         return SplayRecordingRow(
             id: t.id,
             time: timeLabel(for: t.createdAt, now: now, calendar: calendar),
             duration: durationLabel(ms: t.durationMs),
             title: title,
             transcript: transcript,
-            createdAt: t.createdAt
+            createdAt: t.createdAt,
+            problem: problem,
+            isFileImport: t.sourceType == .file
         )
     }
 
@@ -545,21 +577,36 @@ private struct SplayRecordingRowView: View {
                     .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.42))
                     .help("Dictation")
             }
+            if let problem = row.problem {
+                Text(problem.label)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(problemTint(problem))
+                    .padding(.vertical, 2)
+                    .padding(.horizontal, 6)
+                    .background(Capsule().fill(problemTint(problem).opacity(0.1)))
+            }
             Text(row.title)
                 .font(.system(size: 12.5))
-                .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, 0.72))
+                .foregroundStyle(SplayCardPalette.rgba(36, 31, 56, row.problem == nil ? 0.72 : 0.45))
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
-            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(copied
-                                 ? SplayCardPalette.brand
-                                 : SplayCardPalette.brandTint(canCopy ? (hovering ? 0.95 : 0.5) : 0.22))
-                .frame(width: 16, alignment: .center)
-                .scaleEffect(hovering && canCopy ? 1.16 : 1)
-                .animation(.easeOut(duration: 0.12), value: hovering)
-                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: copied)
+            if let problem = row.problem, !canCopy {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(problemTint(problem).opacity(0.7))
+                    .frame(width: 16, alignment: .center)
+            } else {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(copied
+                                     ? SplayCardPalette.brand
+                                     : SplayCardPalette.brandTint(canCopy ? (hovering ? 0.95 : 0.5) : 0.22))
+                    .frame(width: 16, alignment: .center)
+                    .scaleEffect(hovering && canCopy ? 1.16 : 1)
+                    .animation(.easeOut(duration: 0.12), value: hovering)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.6), value: copied)
+            }
         }
         .padding(EdgeInsets(top: 9, leading: 11, bottom: 9, trailing: 11))
         .background(
@@ -576,11 +623,18 @@ private struct SplayRecordingRowView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { copied = false }
         }
         .onHover { hovering = $0 && canCopy; SplayHoverCursor.apply(hovering) }
-        .help(canCopy ? "Copy transcript" : "No transcript yet")
+        .help(canCopy ? "Copy transcript" : (row.problem?.detail ?? "No transcript yet"))
         .accessibilityElement()
-        .accessibilityLabel("\(row.isDictation ? "Dictation: " : "")\(row.title), \(row.time)")
-        .accessibilityHint(canCopy ? "Copies the transcript" : "No transcript yet")
+        .accessibilityLabel("\(row.isDictation ? "Dictation: " : "")\(row.problem.map { "\($0.label): " } ?? "")\(row.title), \(row.time)")
+        .accessibilityHint(canCopy ? "Copies the transcript" : (row.problem?.detail ?? "No transcript yet"))
         .accessibilityAddTraits(.isButton)
+    }
+
+    private func problemTint(_ problem: SplayRecordingRow.Problem) -> Color {
+        switch problem {
+        case .failed: return SplayCardPalette.danger
+        case .cancelled: return SplayCardPalette.rgba(36, 31, 56, 0.55)
+        }
     }
 
     private var rowFill: Color {
