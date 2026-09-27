@@ -278,8 +278,11 @@ final class AppEnvironmentConfigurer {
         dictationCoordinator.onIslandPhaseChange = { [weak island] phase in
             island?.setDictationPhase(phase)
         }
+        // The dictation recorder reports RMS × 5 (`AudioRecorder`); the meter is
+        // tuned on the recording flow's RMS × 10 (`MeetingAudioCaptureService`),
+        // so double it or a dictation's bars move half as much as a recording's.
         dictationCoordinator.onLiveAudioLevel = { [weak island] level in
-            island?.updateLiveAudioLevel(level)
+            island?.updateLiveAudioLevel(min(1, level * 2))
         }
 
         // Dead ≠ silent: the coordinator's 1 s writer-health poll pushes whether
