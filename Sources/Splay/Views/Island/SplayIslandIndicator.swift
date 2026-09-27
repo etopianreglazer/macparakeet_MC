@@ -95,7 +95,8 @@ struct SplayIslandIndicator: View {
                  systemMeterLevel: systemMeterLevel, meterPhase: meterPhase)
                 .frame(width: size.width, height: size.height, alignment: .bottom)
         }
-        // Asymmetric: on the notch the pill hangs left of the camera.
+        // Each side hugs its own content, so the pill sits a few points off the
+        // camera's centre; dictation (bars + short ear) hangs visibly left.
         .offset(x: layout.centerOffset)
         .frame(maxWidth: .infinity, alignment: .top)
     }

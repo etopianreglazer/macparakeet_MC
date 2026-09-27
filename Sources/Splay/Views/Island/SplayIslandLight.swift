@@ -84,8 +84,8 @@ enum SplayLight {
 // MARK: - Geometry (handoff tables)
 
 enum SplayGeometry {
-    /// The fixed camera-housing dead zone. Active content sits left of it and
-    /// never runs under it (see `layout`).
+    /// The fixed camera-housing dead zone. Active content sits either side of it
+    /// (bars left, timer right) and never runs under it (see `layout`).
     static let cameraDeadZone = CGSize(width: 180, height: 32)
 
     /// The compact resting nub — a quiet, hidden bar (symmetric under the notch).
