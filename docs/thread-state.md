@@ -37,15 +37,9 @@
 
 ## 2. ⭐ Next thread starts here
 
-1. **Vet leftovers (owner said: next thread).** Vet on `00a48963..a04304e8`, no bugs, docs/dead code only:
-   (a) the per-control hover/press chain is dead — `IslandChromeModel.hoveredControl/pressedControl`,
-   `IslandTrackingView.onControlHover/onControlPress/setControlHover/pressPulse/lastControl` are written, never
-   read (a removal was drafted and reverted at wrap; easy redo); `AppFeatures.islandTakesMouse` doc overclaims
-   "restores clicks and hover" (per-control pop is gone); (b) `SplayIslandLight.readyWidth` comment says the
-   ready step is "no longer reached" — wrong, `heldOpen` (card open) still morphs the nub to 248×38;
-   (c) `IslandView.pillSize` comment names the deleted `SplayGeometry.size`; (d) `IslandCaptureKind.dictation`
-   doc still says "meter + text cursor"; (e) stale "pop / depress" comments in `IslandController` dispatchClick
-   and `IslandView.control(at:)`. **Then run `/vet` on `a018b133`** (not yet reviewed).
+1. ~~Vet leftovers~~ **DONE thread 20** (`bdb2c867` dead hover/press chain + comments, `249e3f59` two more
+   comments). `/vet` on `a04304e8..HEAD` (covers `a018b133`): no bugs. Suite at baseline. Not reinstalled —
+   comment/dead-code only, the installed `a018b133` behaves the same.
 2. **Owner press of `a018b133`:** tap / double / triple faces on the notch; timer right; dictation ear.
 3. **Fn dictation slice 3** (`docs/plans/fn-dictation-double-tap.md`): nothing-focused → keep text on the
    clipboard + "copied" face (today it pastes blind; `.copied` only on paste failure); dictations in the card's
