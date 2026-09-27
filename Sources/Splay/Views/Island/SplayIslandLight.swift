@@ -94,18 +94,19 @@ enum SplayGeometry {
     /// `AppFeatures.islandTakesMouse` can bring it back).
     static let readyWidth: CGFloat = 248
 
-    // Active states are asymmetric (owner, 2026-09-27): everything lives LEFT of
-    // the camera, so the pill's length says what is running — dictation is just
-    // the voice bars, a recording adds the timer, a meeting adds the system
-    // bars. Right of the camera is only a short ear that rounds the pill off.
+    // Active states (owner, 2026-09-27): the voice bars sit LEFT of the camera
+    // (a meeting adds the fainter system-audio bars), the timer RIGHT of it.
+    // Dictation has no timer, so right of the camera is only a short ear that
+    // rounds the pill off — its asymmetry says "dictating". Each side hugs its
+    // own content, so the pill's length says what runs.
     static let activeHeight: CGFloat = 34
-    /// Pill edge → first content.
+    /// Pill edge → content.
     static let contentInset: CGFloat = 10
-    /// Last content → camera housing.
+    /// Content → camera housing.
     static let cameraGap: CGFloat = 6
-    /// How far the pill reaches right of the camera.
+    /// How far the pill reaches past the camera on a side with no content.
     static let trailingEar: CGFloat = 12
-    /// Meters → timer.
+    /// Left content → right content when there is no camera between them.
     static let slotGap: CGFloat = 8
     /// The timer's fixed slot (fits "99:59" at 12pt), so the pill never
     /// changes length as the seconds tick.
@@ -114,25 +115,23 @@ enum SplayGeometry {
     static let glyphWidth: CGFloat = 16
 
     /// Width of the content left of the camera for a state + capture kind.
-    static func contentWidth(for state: SplayIslandState, kind: IslandCaptureKind) -> CGFloat {
+    static func leftContentWidth(for state: SplayIslandState, kind: IslandCaptureKind) -> CGFloat {
         switch state {
         case .recording:
-            let micMeter = SplayMeterTuning.width
-            switch kind {
-            case .dictation:
-                return micMeter
-            case .recording:
-                return micMeter + slotGap + timerWidth
-            case .meeting:
-                let meters = micMeter + SplayMeterTuning.twinGap
-                    + SplayMeterTuning.width(bars: SplayMeterTuning.systemBarCount)
-                return meters + slotGap + timerWidth
-            }
+            guard kind == .meeting else { return SplayMeterTuning.width }
+            return SplayMeterTuning.width + SplayMeterTuning.twinGap
+                + SplayMeterTuning.width(bars: SplayMeterTuning.systemBarCount)
         case .transcribing, .done, .copied, .warning, .failed, .dropped:
             return glyphWidth
         case .dormant, .ready:
             return 0
         }
+    }
+
+    /// Width of the content right of the camera: the timer while a recording
+    /// or meeting runs; nothing otherwise (dictation included).
+    static func rightContentWidth(for state: SplayIslandState, kind: IslandCaptureKind) -> CGFloat {
+        state == .recording && kind != .dictation ? timerWidth : 0
     }
 
     /// The pill's size and its horizontal offset from the camera's centre
@@ -147,13 +146,16 @@ enum SplayGeometry {
         case .ready:
             return (CGSize(width: readyWidth, height: 38), 0)
         case .recording, .transcribing, .done, .copied, .warning, .failed, .dropped:
-            let content = contentWidth(for: state, kind: kind)
+            let leftContent = leftContentWidth(for: state, kind: kind)
+            let rightContent = rightContentWidth(for: state, kind: kind)
             guard notchAttached else {
-                return (CGSize(width: content + 2 * contentInset, height: activeHeight), 0)
+                let middle = rightContent > 0 ? slotGap + rightContent : 0
+                return (CGSize(width: contentInset + leftContent + middle + contentInset, height: activeHeight), 0)
             }
-            let left = contentInset + content + cameraGap
-            let width = left + cameraDeadZone.width + trailingEar
-            return (CGSize(width: width, height: activeHeight), (trailingEar - left) / 2)
+            let left = contentInset + leftContent + cameraGap
+            let right = rightContent > 0 ? cameraGap + rightContent + contentInset : trailingEar
+            let width = left + cameraDeadZone.width + right
+            return (CGSize(width: width, height: activeHeight), (right - left) / 2)
         }
     }
 

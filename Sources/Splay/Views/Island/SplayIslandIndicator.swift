@@ -3,10 +3,10 @@ import SwiftUI
 /// The island as a pure indicator: a flat-black, top-flush pill, display-only
 /// (fn drives capture; the island takes no mouse input).
 ///
-/// No glow, no rim. All content sits left of the camera (`SplayGeometry.layout`):
-/// the voice meter, plus a meeting's system-audio meter, plus the timer for
-/// recordings and meetings; dictation is the voice meter alone
-/// (`SplayIslandMeter.swift`).
+/// No glow, no rim. The voice meter (plus a meeting's system-audio meter) sits
+/// left of the camera, the timer right of it; dictation is the voice meter alone
+/// with only a short ear past the camera (`SplayGeometry.layout`,
+/// `SplayIslandMeter.swift`).
 struct SplayIslandIndicator: View {
     let state: SplayIslandState
     /// Which capture the active pill shows: recording (meter + timer), meeting
@@ -25,8 +25,9 @@ struct SplayIslandIndicator: View {
     /// dead ≠ silent (Talkify's doctrine). Geometry and face stay the
     /// recording ones; only the light changes.
     var audioAlive: Bool = true
-    /// On a notched built-in display the pill hangs left of the camera housing
-    /// (content never runs under it). External displays hug the content, centred.
+    /// On a notched built-in display the pill straddles the camera housing, each
+    /// side hugging its own content (it never runs under the camera). External
+    /// displays hug the content, centred.
     var notchAttached: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -99,7 +100,7 @@ struct SplayIslandIndicator: View {
         .frame(maxWidth: .infinity, alignment: .top)
     }
 
-    // MARK: Face content (one cluster, left of the camera)
+    // MARK: Face content (bars left of the camera · timer right of it)
 
     private func face(markBreathe: (Double, Double), live: Bool, meterLevel: Double,
                       systemMeterLevel: Double, meterPhase: Double?) -> some View {
@@ -108,9 +109,10 @@ struct SplayIslandIndicator: View {
             leftCluster(markBreathe: markBreathe, live: live, meterLevel: meterLevel,
                         systemMeterLevel: systemMeterLevel, meterPhase: meterPhase)
             Spacer(minLength: 0)
+            rightCluster
         }
         .frame(height: 26)
-        .padding(.leading, SplayGeometry.contentInset)
+        .padding(.horizontal, SplayGeometry.contentInset)
         .padding(.bottom, max(0, (height - 26) / 2))
     }
 
@@ -137,20 +139,13 @@ struct SplayIslandIndicator: View {
         switch state {
         case .recording:
             // Your mic in every capture: red while frames arrive, flat motionless
-            // amber when dead. A meeting adds the fainter system-audio bars ("more
-            // voices"); recordings and meetings add the timer; dictation is the
-            // voice bars alone (owner, 2026-09-27: the length says what runs).
-            HStack(spacing: SplayGeometry.slotGap) {
-                HStack(spacing: SplayMeterTuning.twinGap) {
-                    SplayIslandMeter(level: meterLevel, phase: meterPhase, color: statusDotColor)
-                    if captureKind == .meeting {
-                        SplayIslandMeter(level: systemMeterLevel, phase: meterPhase.map { $0 + 0.7 },
-                                         color: SplayLight.systemAudio, bars: SplayMeterTuning.systemBarCount)
-                    }
-                }
-                if captureKind != .dictation {
-                    SplayIslandTimer(seconds: elapsedSeconds, color: statusDotColor)
-                        .frame(width: SplayGeometry.timerWidth, alignment: .leading)
+            // amber when dead. A meeting adds the fainter system-audio bars
+            // ("more voices"). The timer is the right cluster.
+            HStack(spacing: SplayMeterTuning.twinGap) {
+                SplayIslandMeter(level: meterLevel, phase: meterPhase, color: statusDotColor)
+                if captureKind == .meeting {
+                    SplayIslandMeter(level: systemMeterLevel, phase: meterPhase.map { $0 + 0.7 },
+                                     color: SplayLight.systemAudio, bars: SplayMeterTuning.systemBarCount)
                 }
             }
             .transition(spawn)
@@ -169,6 +164,16 @@ struct SplayIslandIndicator: View {
         case .dormant, .ready:
             // The resting nub shows nothing (no mark, owner 2026-09-26).
             EmptyView()
+        }
+    }
+
+    /// Right of the camera: the elapsed time while a recording or meeting runs.
+    /// Dictation shows nothing here (owner, 2026-09-27) — the pill just ends.
+    @ViewBuilder private var rightCluster: some View {
+        if state == .recording, captureKind != .dictation {
+            SplayIslandTimer(seconds: elapsedSeconds, color: statusDotColor)
+                .frame(width: SplayGeometry.timerWidth, alignment: .trailing)
+                .transition(spawn)
         }
     }
 

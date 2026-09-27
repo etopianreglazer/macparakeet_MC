@@ -53,10 +53,9 @@ final class IslandCaptureFaceTests: XCTestCase {
         }
     }
 
-    // MARK: Asymmetric geometry (owner, 2026-09-27)
+    // MARK: Geometry (owner, 2026-09-27): bars left; timer right; dictation has no right side
 
-    /// Everything lives left of the camera; the pill's length says what runs.
-    func testLeftSideGrowsWithWhatIsRunning() {
+    func testDictationIsTheShortestAndAMeetingTheLongest() {
         for notch in [false, true] {
             let dictation = SplayGeometry.layout(for: .recording, kind: .dictation, notchAttached: notch).size.width
             let recording = SplayGeometry.layout(for: .recording, kind: .recording, notchAttached: notch).size.width
@@ -66,21 +65,27 @@ final class IslandCaptureFaceTests: XCTestCase {
         }
     }
 
-    func testOnTheNotchContentClearsTheCameraAndTheRightSideIsJustAnEar() {
+    func testTimerSitsRightOfTheCameraAndDictationHasOnlyAnEar() {
+        XCTAssertEqual(SplayGeometry.rightContentWidth(for: .recording, kind: .recording), SplayGeometry.timerWidth)
+        XCTAssertEqual(SplayGeometry.rightContentWidth(for: .recording, kind: .meeting), SplayGeometry.timerWidth)
+        XCTAssertEqual(SplayGeometry.rightContentWidth(for: .recording, kind: .dictation), 0)
+    }
+
+    func testOnTheNotchNothingRunsUnderTheCamera() {
+        let cameraHalf = SplayGeometry.cameraDeadZone.width / 2
         for kind in [IslandCaptureKind.recording, .meeting, .dictation] {
             for state in [SplayIslandState.recording, .transcribing, .done, .failed] {
                 let layout = SplayGeometry.layout(for: state, kind: kind, notchAttached: true)
-                let w = layout.size.width
-                // Pill edges relative to the camera's centre.
-                let left = -w / 2 + layout.centerOffset
-                let right = w / 2 + layout.centerOffset
-                let cameraHalf = SplayGeometry.cameraDeadZone.width / 2
-                let content = SplayGeometry.contentWidth(for: state, kind: kind)
-                XCTAssertLessThanOrEqual(
-                    left + SplayGeometry.contentInset + content, -cameraHalf,
-                    "\(state) \(kind): content must end before the camera"
-                )
-                XCTAssertEqual(right, cameraHalf + SplayGeometry.trailingEar, accuracy: 0.001)
+                let left = -layout.size.width / 2 + layout.centerOffset
+                let right = layout.size.width / 2 + layout.centerOffset
+                let leftContent = SplayGeometry.leftContentWidth(for: state, kind: kind)
+                let rightContent = SplayGeometry.rightContentWidth(for: state, kind: kind)
+                XCTAssertLessThanOrEqual(left + SplayGeometry.contentInset + leftContent, -cameraHalf, "\(state) \(kind)")
+                if rightContent > 0 {
+                    XCTAssertGreaterThanOrEqual(right - SplayGeometry.contentInset - rightContent, cameraHalf, "\(state) \(kind)")
+                } else {
+                    XCTAssertEqual(right, cameraHalf + SplayGeometry.trailingEar, accuracy: 0.001, "\(state) \(kind)")
+                }
             }
         }
     }
@@ -90,7 +95,7 @@ final class IslandCaptureFaceTests: XCTestCase {
         XCTAssertEqual(layout.centerOffset, 0)
         XCTAssertEqual(
             layout.size.width,
-            SplayGeometry.contentWidth(for: .recording, kind: .dictation) + 2 * SplayGeometry.contentInset
+            SplayGeometry.leftContentWidth(for: .recording, kind: .dictation) + 2 * SplayGeometry.contentInset
         )
     }
 

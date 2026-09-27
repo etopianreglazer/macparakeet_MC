@@ -10,9 +10,9 @@ verbatim transcript file. It began as a fork of MacParakeet (GPL-3.0, Daniel Moo
 has since been cut down to exactly **two surfaces**:
 
 1. **The island** — a flat-black pill hanging from the notch. Indicator only: no glow, no
-   rim, takes no clicks. All content sits *left* of the camera, so the pill's length says
-   what runs: five red bars follow *your mic* (dictation = bars alone; a recording adds a
-   timer; a meeting adds fainter blue system-audio bars + timer). An amber spinner while
+   rim, takes no clicks. Five red bars follow *your mic* left of the camera (a meeting adds
+   fainter blue system-audio bars), a timer counts up right of it; dictation is the bars
+   alone, with only a short ear past the camera. An amber spinner while
    transcribing, a green check when done. Flat, motionless amber bars mean the input is
    *dead* (not merely silent).
 2. **The card** — one centred modal (Recordings · Settings · About) opened from the menu
