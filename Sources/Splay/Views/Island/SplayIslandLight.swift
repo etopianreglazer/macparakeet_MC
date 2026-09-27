@@ -1,10 +1,10 @@
 import SwiftUI
 
 // The pill face stays flat, opaque #0B0813. State colour is carried by the glyphs
-// and a thin "fiber stripe" tracing the pill's silhouette — the ambient glow the
-// handoff started with (desktop bloom, halo, talk-reactive sway) was removed on
-// 2026-09-26 (owner: "gimmicky"; the recording meter carries "I hear you" now,
-// docs/plans/island-voice-meter.md). This file owns the per-state palette +
+// alone: the ambient glow the handoff started with (desktop bloom, halo,
+// talk-reactive sway) went on 2026-09-26 ("gimmicky"), and the thin fiber rim on
+// 2026-09-27 ("the red halo"). The recording meter carries "I hear you"
+// (docs/plans/island-voice-meter.md). This file owns the per-state palette +
 // geometry and the recolorable three-stroke mark.
 //
 // The island is always near-black, so these colours are fixed sRGB (no
@@ -29,14 +29,14 @@ enum SplayLight {
     static let accent = rgb(0xA9, 0x9B, 0xF5)
     /// Failed glyph (#F0837A) on the island (card danger uses #B3352F).
     static let failedGlyph = rgb(0xF0, 0x83, 0x7A)
-    /// The record dot (Voice-Memos-style) shown in the ready state.
+    /// The recording red (meter, timer) — Voice-Memos-style.
     static let recordRed = rgb(0xFF, 0x5A, 0x52)
     /// A meeting's system-audio meter (tuner round 2026-09-26): a pale blue,
     /// fainter than the mic's red so "your voice" stays the loud signal.
     static let systemAudio = rgba(0x9F, 0xD3, 0xFF, 0.6)
 
     struct Palette {
-        let fiber: Color      // the state colour: fiber line, mark, glyphs
+        let fiber: Color      // the state colour: glyphs, mark (name kept from the retired rim)
     }
 
     /// The **brand** states (dormant / ready / dropped) wear the user's chosen
@@ -91,7 +91,7 @@ enum SplayGeometry {
     /// The compact resting nub — a quiet, hidden bar (symmetric under the notch).
     static let dormantWidth: CGFloat = 206
     /// The old hover step (clicks are off, so it is no longer reached; kept so
-    /// `SplayIslandInteraction.enabled` can bring it back).
+    /// `AppFeatures.islandTakesMouse` can bring it back).
     static let readyWidth: CGFloat = 248
 
     // Active states are asymmetric (owner, 2026-09-27): everything lives LEFT of

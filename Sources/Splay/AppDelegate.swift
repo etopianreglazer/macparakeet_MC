@@ -549,8 +549,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Present the menu card opened to the recents tab (the last five recordings)
     /// — or, while a failed recording is held, a card carrying the failure's
     /// actual text instead (the island's failed light is wordless; the card is
-    /// where the app says *why*). Every "open Splay" path lands here: the menu
-    /// bar's Recordings item, a Dock click, and an fn tap on a held failure. A
+    /// where the app says *why*). Every path that opens Recordings lands here:
+    /// the menu bar's Recordings item, a Dock click, and an fn tap on a held
+    /// failure (Settings opens its own tab directly). A
     /// non-retryable failure is cleared on open; a retryable one (the recording
     /// is on disk) stays held until the card's Retry or Dismiss.
     private func presentRecentCard() {
@@ -572,8 +573,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Present a small card carrying a recording failure's actual message. The
     /// island's failed light is wordless, so this card is the one place the app
-    /// says *why* — a failure must never be a silent vanish. Opened by clicking
-    /// the failed island. `onChoice` nil → plain OK card (the held failure was
+    /// says *why* — a failure must never be a silent vanish. Opened by
+    /// `presentRecentCard` while a failure is held. `onChoice` nil → plain OK card (the held failure was
     /// already cleared). Non-nil → Retry / Dismiss (the recording is on disk and
     /// the failure is still held); closing the card any other way counts as
     /// Dismiss, so a held failure can never be left stuck behind a closed card.

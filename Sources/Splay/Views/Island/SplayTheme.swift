@@ -12,13 +12,13 @@ struct SplayAccent: Identifiable, Equatable, Sendable {
     let name: String      // display, e.g. "Iris"
     let accentHex: String // --accent      : brand on light (buttons, selection, card)
     let hoverHex: String  // --accent-hover
-    let brightHex: String // --accent-dark : the bright-on-dark colour — island fiber/glow + mark
+    let brightHex: String // --accent-dark : the bright-on-dark colour — island glyphs + mark
     let groundTopHex: String
     let groundBaseHex: String
 
     var brand: Color { Self.color(accentHex) }
     var brandHover: Color { Self.color(hoverHex) }
-    /// The colour the island wears on its near-black surface (fiber, bloom, mark).
+    /// The colour the island wears on its near-black surface (brand glyphs, mark).
     var islandBright: Color { Self.color(brightHex) }
     var groundTop: Color { Self.color(groundTopHex) }
     var groundBase: Color { Self.color(groundBaseHex) }

@@ -11,9 +11,9 @@ enum MeetingRecordingQuitState {
 @MainActor
 final class MeetingRecordingFlowCoordinator {
     /// True whenever the flow is not idle — including transcribing, the done
-    /// dwell, and a held failure (which blocks `fn` until the island is
-    /// clicked). A bare-`fn` tap then means "stop" (`toggleRecording` ignores
-    /// it where stopping makes no sense).
+    /// dwell, and a held failure (which blocks `fn` until its card is opened).
+    /// A bare-`fn` tap then means "stop" (`toggleRecording` ignores it where
+    /// stopping makes no sense; on a held failure the router opens its card).
     var isFnBusy: Bool { stateMachine.state != .idle }
 
     var isMeetingRecordingActive: Bool {
@@ -89,8 +89,8 @@ final class MeetingRecordingFlowCoordinator {
     private var speechWarmUpObservationTask: Task<Void, Never>?
     private var lastPushedAudioAlive = true
     /// The full text of the failure the island is currently holding (see
-    /// `isAwaitingFailureDismissal`), so the click that clears it can show the
-    /// *why* in a card instead of discarding the message.
+    /// `isAwaitingFailureDismissal`), so opening its card (menu bar Recordings,
+    /// Dock, or an fn tap) shows the *why* instead of discarding the message.
     private(set) var heldFailureMessage: String?
     /// What Retry would redo for the held failure: the recording is stopped and
     /// its audio + recovery lock are on disk. Nil when there is nothing to retry
@@ -219,9 +219,9 @@ final class MeetingRecordingFlowCoordinator {
 
     /// True while the island is holding a failed-recording state that does not
     /// auto-dismiss (`.captureFailed` and `.transcriptionFailed` in the state
-    /// machine). The island's click routes here instead of opening the recents
-    /// card: a non-retryable failure is cleared on click; a retryable one stays
-    /// held until the user picks Retry or Dismiss on the card.
+    /// machine). Opening the card then shows the failure instead of the recents
+    /// (`AppDelegate.presentRecentCard`): a non-retryable failure is cleared on
+    /// open; a retryable one stays held until Retry or Dismiss on the card.
     var isAwaitingFailureDismissal: Bool {
         if case .finishing(outcome: .error) = stateMachine.state { return true }
         return false
@@ -754,7 +754,7 @@ final class MeetingRecordingFlowCoordinator {
 
         case .showError(let message):
             // Hold the full text: the island's failed light is wordless, so the
-            // click that dismisses it opens a card carrying this message.
+            // card that dismisses it carries this message.
             heldFailureMessage = message
             // Real-time audible cue so a recording failure is never silent —
             // the user is often away from the screen (walking-around dictation)

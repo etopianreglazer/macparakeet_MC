@@ -25,10 +25,20 @@ public enum AppFeatures {
     /// `vad_model_prep` allowlisted and deployed before shipping flag-on builds.
     public static let meetingVadLiveChunkingEnabled: Bool = true
 
-    /// MacParakeet-MC fork (island redesign). When `true`, the global Fn key is a
-    /// single/double-tap recording key (single = mic only, double = mic + system),
-    /// paste-style dictation is no longer driven by Fn, and the old dictation idle
-    /// pill is suppressed (the island's own idle/hover pill replaces it). See
-    /// docs/fork-product-model.md and docs/plans/fn-rework.md.
+    /// Splay island. When `true`, the island carries every capture's states:
+    /// upstream's dictation idle pill and floating overlay are suppressed, and
+    /// dictation (fn double-tap) shows on the island like recordings do. The fn
+    /// gestures themselves are `HotkeyGestureController.tapDoubleTripleToggle`
+    /// (tap = recording, double = dictation, triple = meeting). See
+    /// docs/fork-product-model.md and docs/plans/fn-dictation-double-tap.md.
     public static let islandReplacesDictationPill: Bool = true
+
+    /// Whether the island takes the mouse at all. `false` (owner, 2026-09-27):
+    /// it sits over the top-centre of the screen, and its click monitors caught
+    /// clicks meant for the app beneath — address bars and tabs opened the card
+    /// or stopped a dictation mid-sentence. The island is a pure indicator: no
+    /// clicks and no hover (the idle nub no longer grows under the cursor); fn
+    /// starts and stops, the menu bar icon opens the card. The island's tracker
+    /// and click routing are kept so `true` restores clicks and hover.
+    public static let islandTakesMouse: Bool = false
 }

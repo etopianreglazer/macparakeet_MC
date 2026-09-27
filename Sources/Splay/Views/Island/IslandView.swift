@@ -23,11 +23,8 @@ enum IslandVisual: Equatable {
     case done
 }
 
-/// The island's interactive controls — the few clickable affordances the pill
-/// exposes per visual state. Used both to route clicks and to drive per-control
-/// hover feedback (the "pop" that tells you a control is touchable). The island
-/// is in constant motion; its controls shouldn't feel dead, so the tracker feeds
-/// the hovered control into the SwiftUI indicator, which lifts it slightly.
+/// The island's click targets per visual state (the whole pill, since the face
+/// draws no buttons). Only used when `AppFeatures.islandTakesMouse` is on.
 enum IslandControl: Equatable {
     case none
     case stop     // recording → stop
@@ -59,16 +56,6 @@ enum IslandDictationPhase: Equatable {
     case pasted
     case copied
     case failed
-}
-
-/// Whether the island takes the mouse at all. Off (owner, 2026-09-27): the
-/// island sits over the top-centre of the screen, and its click watchers caught
-/// clicks meant for the app beneath — address bars and tabs opened the card or
-/// stopped a dictation mid-sentence. It is a pure indicator now: fn starts and
-/// stops, the menu bar icon opens the card (a held failure's card included).
-/// The tracker below stays intact so turning this back on restores clicks.
-enum SplayIslandInteraction {
-    static let enabled = false
 }
 
 // MARK: - Shared layout (single source of truth for view + tracker)
@@ -274,9 +261,8 @@ final class IslandChromeModel {
     /// A card (the second surface) is open — hold the idle island in its ready
     /// ("open") form until the card closes, so the two surfaces move together.
     var heldOpen = false
-    /// Which control the cursor is currently over (mark / status dot / open), fed
-    /// by the AppKit tracker so the SwiftUI indicator can pop it on hover. The
-    /// island is display-only, so hover can't come from SwiftUI itself.
+    /// Which control the cursor is over / pressed, fed by the AppKit tracker (only
+    /// with `AppFeatures.islandTakesMouse`; the face no longer draws a pop).
     var hoveredControl: IslandControl = .none
     /// Which control is momentarily *pressed* (a short pulse fired on click), so the
     /// indicator can depress it like a physical key. Cleared automatically after the
@@ -307,10 +293,9 @@ final class IslandChromeModel {
 // MARK: - Island view
 
 /// The ambient island hanging from the notch. Pure **indicator**: it renders the
-/// lifecycle indicator (fiber stripe + glyphs, meter + timer while recording) and nothing else — no controls,
-/// no expansion. All interaction is routed through `IslandController`'s AppKit
-/// tracking layer (hover/click on a non-activating panel can't go through
-/// SwiftUI), and anything the app needs to *say* is a card.
+/// lifecycle (meters, timer, glyphs) and nothing else — no controls, no
+/// expansion, no mouse input (`AppFeatures.islandTakesMouse`). Anything the app
+/// needs to *say* is a card, opened from the menu bar icon.
 struct IslandView: View {
     @Bindable var pill: MeetingRecordingPillViewModel
     @Bindable var chrome: IslandChromeModel

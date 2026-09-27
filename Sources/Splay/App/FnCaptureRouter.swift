@@ -12,8 +12,9 @@ struct FnCaptureRouter {
     let startDictation: () -> Void
     let stopDictation: () -> Void
     let startRecording: (MeetingAudioSourceMode) -> Void
-    /// Stops a recording, or does nothing while it is transcribing / showing
-    /// its result (the meeting flow decides).
+    /// Stops a recording; does nothing while it is transcribing / showing its
+    /// result; on a held failure, opens the failure's card (the app's wiring
+    /// decides).
     let stopRecording: () -> Void
 
     static let inert = FnCaptureRouter(

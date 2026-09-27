@@ -9,12 +9,14 @@ A one-gesture, on-device voice recorder for Apple Silicon Macs. Tap `fn`, talk, 
 verbatim transcript file. It began as a fork of MacParakeet (GPL-3.0, Daniel Moon) and
 has since been cut down to exactly **two surfaces**:
 
-1. **The island** — a flat-black pill hanging from the notch. Indicator only, no glow:
-   while recording, five red bars (left) follow *your mic* and a timer (right) counts up;
-   an amber spinner while transcribing, a green check when the file is written. Flat,
-   motionless amber bars mean the input is *dead* (not merely silent).
-2. **The card** — one centred modal (Recents · Settings · About) opened by clicking the
-   island's mark. Everything that isn't capture lives here.
+1. **The island** — a flat-black pill hanging from the notch. Indicator only: no glow, no
+   rim, takes no clicks. All content sits *left* of the camera, so the pill's length says
+   what runs: five red bars follow *your mic* (dictation = bars alone; a recording adds a
+   timer; a meeting adds fainter blue system-audio bars + timer). An amber spinner while
+   transcribing, a green check when done. Flat, motionless amber bars mean the input is
+   *dead* (not merely silent).
+2. **The card** — one centred modal (Recordings · Settings · About) opened from the menu
+   bar icon (Splay's status item). Everything that isn't capture lives here.
 
 There is **no main window, no CLI, no in-app LLM, no YouTube, no calendar, no Transforms,
 no Discover, no feedback form, no telemetry endpoint.** If you find code that implies
@@ -28,11 +30,14 @@ otherwise, it is dead weight from upstream, not a feature to keep alive.
 | Gesture | Audio | Result |
 |---|---|---|
 | Tap `fn` | Mic only | transcript `.md` + paired audio |
-| Double-tap `fn` | Mic + system audio (ScreenCaptureKit) | transcript `.md` + paired audio |
-| Drop a file on the menu bar icon / Capture ▸ File Transcription | Any audio/video (FFmpeg demux) | transcript `.md` |
+| Double-tap `fn` | Mic | **dictation**: verbatim text pasted into the field focused at stop |
+| Triple-tap `fn` | Mic + system audio (ScreenCaptureKit) | transcript `.md` + paired audio |
+| Drop a file on the menu bar icon / Menu ▸ Transcribe File | Any audio/video (FFmpeg demux) | transcript `.md` |
 
-Tap again to stop. Both gestures run the *same* meeting-recording pipeline with a different
-audio source (`HotkeyGestureController`, `AppFeatures.islandReplacesDictationPill`).
+Tap again to stop whatever runs. `HotkeyGestureController.tapDoubleTripleToggle` resolves the
+gesture; `FnCaptureRouter` routes it. Tap and triple-tap run the *same* meeting-recording
+pipeline with a different audio source; double-tap runs upstream's `DictationFlowCoordinator`
+(plan: `docs/plans/fn-dictation-double-tap.md`).
 Transcripts are **verbatim** — the deterministic `TextProcessingPipeline` only (ADR-004);
 nothing polishes them.
 
@@ -70,9 +75,9 @@ ios/Splay/               the iPhone app (XcodeGen): App/ (environment, Recording
 ios/SplayBench/          XcodeGen spec + harness that benchmarks Parakeet v3 on a real iPhone
 ```
 
-`AppFeatures` has three flags left: `meetingRecordingEnabled`, `meetingVadLiveChunkingEnabled`
-(VAD-guided live-preview chunking, fixed-chunker fallback, final transcript unaffected), and
-`islandReplacesDictationPill`. All `true`.
+`AppFeatures` flags: `meetingRecordingEnabled`, `meetingVadLiveChunkingEnabled`
+(VAD-guided live-preview chunking, fixed-chunker fallback, final transcript unaffected),
+`islandReplacesDictationPill` (all `true`), and `islandTakesMouse` (`false`: click-through island).
 
 ## ADRs
 
@@ -97,7 +102,7 @@ ios/SplayBench/          XcodeGen spec + harness that benchmarks Parakeet v3 on 
 - **Dead ≠ silent.** Silence never fails a recording. Only genuine engine death does.
 - **The island must never become key — and takes no clicks.** It sits over the top-centre
   of the screen, so its click monitors stole clicks meant for apps beneath (address bars,
-  tabs). It is click-through (`SplayIslandInteraction.enabled = false`); fn starts/stops,
+  tabs). It is click-through (`AppFeatures.islandTakesMouse = false`); fn starts/stops,
   the menu bar icon opens the card (a held failure's card too). If clicks ever return:
   local *and* global monitors are needed (AppKit never reports own-app events to a global
   monitor). `SplayCardController.yieldActivationIfIdle` hands focus back after the card

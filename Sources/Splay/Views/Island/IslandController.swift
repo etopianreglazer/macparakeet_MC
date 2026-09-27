@@ -5,10 +5,12 @@ import SplayViewModels
 
 // MARK: - Tracking layer
 
-/// Routes hover + clicks for the pill. The SwiftUI content is display-only, so
-/// this AppKit view owns interaction (hover/click on a non-key floating panel
-/// can't go through SwiftUI). The island is an indicator only — a click opens a
-/// card (the second surface); it never expands the pill into a control surface.
+/// Routes hover + clicks for the pill — **dormant** while
+/// `AppFeatures.islandTakesMouse` is false (the panel ignores the mouse, so none
+/// of this runs; kept so the flag can restore clicks). The SwiftUI content is
+/// display-only, so this AppKit view owns interaction (hover/click on a non-key
+/// floating panel can't go through SwiftUI). With the flag on: an idle click or
+/// the done pill opens the card, a click on a running capture stops it.
 private final class IslandTrackingView: NSView {
     var stateProvider: () -> MeetingRecordingPillViewModel.PillState = { .idle }
     var idleVisibleProvider: () -> Bool = { true }
@@ -42,7 +44,7 @@ private final class IslandTrackingView: NSView {
     /// When hover last dropped — the click router and the active-rect gate treat
     /// a click within `IslandLayout.hoverRaceGrace` of it (or while still
     /// hovering) as aimed at the *revealed* pill, so a `mouseDown` that outruns
-    /// the tracker's hover flip still reaches the mark. A cold dormant nub
+    /// the tracker's hover flip still reaches the revealed pill. A cold dormant nub
     /// (no recent hover) keeps its narrow gate and pass-through pixels.
     private var hoverDroppedAt: Date?
     private var recentlyRevealed: Bool {
@@ -75,7 +77,7 @@ private final class IslandTrackingView: NSView {
     func currentActiveRect() -> CGRect {
         let visual = currentVisual()
         // During the hover race the gate must admit the *revealed* geometry —
-        // otherwise the mark region that pokes outside the narrower nub is
+        // otherwise the revealed edges that poke outside the narrower nub are
         // dropped here and `dispatchClick`'s re-resolution never runs. A cold
         // dormant nub (no recent hover) keeps the narrow rect so the pixels
         // around the hidden bar stay click-through.
@@ -112,7 +114,7 @@ private final class IslandTrackingView: NSView {
             hovering = false; onHoverExit?()
         }
 
-        // Per-control hover (mark / status dot / open button) for the pop
+        // Per-control hover (stop / open) for the pop
         // feedback — computed for whatever the current visual is, in every state.
         setControlHover(IslandLayout.control(at: point, visual: currentVisual(), kind: kindProvider(), notchAttached: notchProvider()))
     }
@@ -135,8 +137,8 @@ private final class IslandTrackingView: NSView {
     func dispatchClick(at point: CGPoint, source: String = "direct") {
         // Hover-race tolerance lives in `clickVisual`: an idle click lands on
         // the revealed geometry only if hover is (or was just) active, so a
-        // racing click reaches the mark while a cold dormant click keeps the
-        // nub's plain click-records behavior.
+        // racing click reaches the revealed pill while a cold dormant click
+        // resolves against the nub.
         let visual = IslandLayout.clickVisual(
             for: currentVisual(), at: point,
             notchAttached: notchProvider(), recentlyRevealed: recentlyRevealed
@@ -196,8 +198,8 @@ private final class IslandPanel: NSPanel {
 }
 
 /// A lightweight AppKit cue for the otherwise hidden camera-housing anchor.
-/// Retired in the two-surface design (the bloom + fiber stripe are the light
-/// now); kept inert/hidden so its layer work never runs.
+/// Retired in the two-surface design; kept inert/hidden so its layer work
+/// never runs.
 private final class IslandNotchCueView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -229,10 +231,10 @@ private final class IslandContainerView: NSView {
 
 /// Owns the single, long-lived top-center island panel. The SwiftUI
 /// `IslandView` morphs through the capture lifecycle (dormant → recording →
-/// transcribing → done) as a pure indicator. Interaction is minimal: hover grows
-/// the nub; clicking the mark (left) opens a card (`onOpenCard`); clicking the
-/// status dot — or anywhere else on the bar — records (idle) or stops (recording).
-/// The island never becomes a control surface.
+/// transcribing → done) as a pure indicator for all three fn captures
+/// (recording, meeting, dictation). It takes no mouse input
+/// (`AppFeatures.islandTakesMouse`): fn starts and stops, the menu bar icon
+/// opens the card. The island never becomes a control surface.
 @MainActor
 final class IslandController: NSObject {
     private var anchorPanel: NSPanel?
@@ -240,8 +242,7 @@ final class IslandController: NSObject {
     private var hostingView: NSHostingView<IslandView>?
     private var trackingView: IslandTrackingView?
     private var notchCue: IslandNotchCueView?
-    /// The ambient bloom rendered on its own panel *below* app windows, so the
-    /// light sprays onto the wallpaper instead of hovering over the user's work.
+    /// Click monitors — only installed when `AppFeatures.islandTakesMouse`.
     private var localClickMonitor: Any?
     private var globalClickMonitor: Any?
     private var defaultsObserver: NSObjectProtocol?
@@ -263,9 +264,10 @@ final class IslandController: NSObject {
         return IslandPlacementPreference.resolved(placementPreference, safeAreaTop: screen.safeAreaInsets.top, hasAuxiliaryTopArea: auxiliary, isBuiltIn: builtIn) == .notch
     }
 
-    /// A running capture (recording, meeting or dictation) was clicked — stop it.
+    /// A running capture was clicked — stop it (only with `islandTakesMouse`).
     var onStop: (() -> Void)?
-    /// The idle island or the done pill was clicked — open the menu card.
+    /// The idle island or the done pill was clicked — open the menu card (only
+    /// with `islandTakesMouse`).
     var onOpenCard: (() -> Void)?
 
     init(pillViewModel: MeetingRecordingPillViewModel, idleVisible: Bool) {
@@ -328,11 +330,10 @@ final class IslandController: NSObject {
 
         let panel = IslandPanel(
             contentRect: bounds,
-            // `.nonactivatingPanel` is required, not cosmetic: it is what lets an
-            // ambient, never-key companion take a mouse click in *both* activation
-            // states. Splay holds the foreground whenever a card is up, and the
-            // island must stay clickable through that. Matches every other floating
-            // panel in the app (dictation overlay, meeting pill, transform pill).
+            // `.nonactivatingPanel` keeps this ambient companion from ever becoming
+            // key or activating Splay. (When `islandTakesMouse` is on, it is also
+            // what lets it take a click in *both* activation states.) Matches
+            // every other floating panel in the app.
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
@@ -340,10 +341,9 @@ final class IslandController: NSObject {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        // Hover-enter lives entirely in the tracker's `mouseMoved`. An NSPanel
-        // does NOT post mouseMoved to its views unless this is enabled, so without
-        // it the resting nub never grew when the cursor reached it. (mouseExited
-        // still comes via the tracking area regardless.)
+        // Hover-enter lives entirely in the tracker's `mouseMoved`; an NSPanel does
+        // NOT post mouseMoved to its views unless this is enabled. Inert while
+        // `ignoresMouseEvents` is set below (no hover, so the nub never grows).
         panel.acceptsMouseMovedEvents = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
@@ -353,8 +353,9 @@ final class IslandController: NSObject {
         // transparent hit testing still prevents a broad interaction overlay.
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = container
-        // Indicator only: every click goes straight through to the app beneath.
-        panel.ignoresMouseEvents = !SplayIslandInteraction.enabled
+        // Indicator only: every click (and hover) goes straight through to the
+        // app beneath — the island sits over address bars and tabs.
+        panel.ignoresMouseEvents = !AppFeatures.islandTakesMouse
 
         if let screen = NSScreen.main {
             chrome.isNotchResting = resolvesNotch(for: screen)
@@ -402,7 +403,7 @@ final class IslandController: NSObject {
                 self.restoreAmbientVisibility()
             }
         }
-        if SplayIslandInteraction.enabled { installClickMonitors() }
+        if AppFeatures.islandTakesMouse { installClickMonitors() }
     }
 
     /// Re-order the existing ambient panels after an activation-policy change

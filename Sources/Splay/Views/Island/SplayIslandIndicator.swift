@@ -1,33 +1,32 @@
 import SwiftUI
 
-/// The island as a pure indicator (handoff Screen 1): a flat-black, top-flush
-/// pill. It never holds a control beyond one or two glyphs; fn (or the on-screen
-/// fn chip) drives capture. All interaction in these states is owned by the
-/// AppKit tracker, so this view is display-only.
+/// The island as a pure indicator: a flat-black, top-flush pill, display-only
+/// (fn drives capture; the island takes no mouse input).
 ///
-/// No glow (owner, 2026-09-26: "gimmicky"). State colour is carried by the
-/// glyphs and the thin fiber stripe; while recording, the left slot is a voice
-/// meter and the right slot the elapsed time (`SplayIslandMeter.swift`).
+/// No glow, no rim. All content sits left of the camera (`SplayGeometry.layout`):
+/// the voice meter, plus a meeting's system-audio meter, plus the timer for
+/// recordings and meetings; dictation is the voice meter alone
+/// (`SplayIslandMeter.swift`).
 struct SplayIslandIndicator: View {
     let state: SplayIslandState
     /// Which capture the active pill shows: recording (meter + timer), meeting
-    /// (twin meter + timer) or dictation (meter + text cursor).
+    /// (twin meter + timer) or dictation (meter alone).
     var captureKind: IslandCaptureKind = .recording
     /// The live **mic** level (0…1, per-buffer RMS × 10). Shaped + envelope-smoothed
     /// here to drive the recording meter; unused otherwise.
     var level: Double = 0
     /// The live **system audio** level (0…1) — a meeting's second, fainter meter.
     var systemLevel: Double = 0
-    /// Elapsed recording time for the right-slot timer.
+    /// Elapsed recording time for the timer (recordings and meetings).
     var elapsedSeconds: Int = 0
     /// Whether audio frames are actually arriving (1 Hz writer-health signal).
     /// While recording, false renders the "waiting" register: the recording
     /// light holds a motionless warning amber instead of the breathing red —
-    /// dead ≠ silent (Talkify's doctrine). Geometry, face, and controls stay
-    /// the recording ones (the stop click still works); only the light changes.
+    /// dead ≠ silent (Talkify's doctrine). Geometry and face stay the
+    /// recording ones; only the light changes.
     var audioAlive: Bool = true
-    /// On a notched built-in display the pill straddles the camera housing, so a
-    /// central dead zone is reserved. External displays render a centred row.
+    /// On a notched built-in display the pill hangs left of the camera housing
+    /// (content never runs under it). External displays hug the content, centred.
     var notchAttached: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion

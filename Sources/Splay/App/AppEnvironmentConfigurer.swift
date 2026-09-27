@@ -24,8 +24,9 @@ final class AppEnvironmentConfigurer {
     struct Callbacks {
         let onMenuBarIconUpdate: () -> Void
         let onPresentEntitlementsAlert: (Error) -> Void
-        /// The island mark click and the menu-bar "Open Splay" item present the
-        /// menu card (the second surface), opened to its recents tab.
+        /// Open the card (the second surface) on its Recordings tab — or a held
+        /// failure's card (`AppDelegate.presentRecentCard`). Called by the fn
+        /// router on a held failure (and the island, if it takes the mouse).
         let onOpenRecentCard: () -> Void
         let onToggleMeetingRecordingFromHotkey: () -> Void
         let onTriggerFileTranscriptionFromHotkey: () -> Void
@@ -246,7 +247,7 @@ final class AppEnvironmentConfigurer {
                 }
             }
             // Only reached if island clicks are re-enabled
-            // (`SplayIslandInteraction.enabled`): the same failure-aware card
+            // (`AppFeatures.islandTakesMouse`): the same failure-aware card
             // every other "open Splay" path uses.
             controller.onOpenCard = { callbacks.onOpenRecentCard() }
             controller.show()
