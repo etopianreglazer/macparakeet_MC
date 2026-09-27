@@ -61,7 +61,6 @@ public final class TranscriptionViewModel {
     public var onFileJobFinished: ((FileJobOutcome) -> Void)?
     private var reportedFileJobActive = false
 
-
     // MARK: - Batch transcription (local files only)
     //
     // A multi-file drop / multi-select / folder fans out into a sequential
