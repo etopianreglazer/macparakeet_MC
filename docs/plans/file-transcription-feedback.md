@@ -1,6 +1,7 @@
 # File transcription feedback — say that it runs, where it went, and when it failed
 
-> Status: **IN PROGRESS** (thread 22, 2026-09-27). Mac only.
+> Status: **BUILT, AWAITING PRESS** (thread 22, 2026-09-27; `bc242370`…`db8b7afe`, installed). Mac only.
+> Mark HISTORICAL once the owner has pressed the list below.
 
 ## Why
 

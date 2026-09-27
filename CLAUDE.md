@@ -33,7 +33,7 @@ otherwise, it is dead weight from upstream, not a feature to keep alive.
 | Tap `fn` | Mic only | transcript `.md` + paired audio |
 | Double-tap `fn` | Mic | **dictation**: verbatim text pasted into the field focused at stop |
 | Triple-tap `fn` | Mic + system audio (ScreenCaptureKit) | transcript `.md` + paired audio |
-| Drop a file on the menu bar icon / Menu ▸ Transcribe File | Any audio/video (FFmpeg demux) | transcript `.md` |
+| Drop a file on the menu bar icon / Menu ▸ Transcribe File | Any audio/video (FFmpeg demux) | transcript `.md` in Transcriptions; island spinner → ✓, banner says where (click reveals) |
 
 Tap again to stop whatever runs. The gesture picks the audio source — there is no system-audio
 setting (Settings shows a read-only gesture legend); Menu ▸ Start Recording is mic-only. **Escape** during a dictation starts upstream's undo
@@ -178,4 +178,5 @@ pre-publish gate: `docs/launch-checklist.md`.
 Speech recognition is on-device. Network use: the one-time model download and Sparkle
 update checks. Telemetry reporting and crash upload are no-ops (the network class was
 deleted). No accounts. Permissions: Microphone (first record), Screen & System Audio
-Recording (first triple-tap only), Accessibility (first dictation paste).
+Recording (first triple-tap only), Accessibility (first dictation paste), Notifications (first file transcription — banners say where the
+transcript went; without it the island still shows the check / failure light).

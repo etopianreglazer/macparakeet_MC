@@ -8,14 +8,17 @@
 >
 > **Last updated:** 2026-09-27, thread 22 (end) — **FN DICTATION DONE (slice 5): Settings shows a read-only fn
 > gesture legend instead of the dead "Record system audio too" toggle; Menu ▸ Start Recording is mic-only; empty
-> state fixed; dictation plan HISTORICAL. Accent/app-icon colours parked for iOS. INSTALLED b01b9ad8.**
+> state fixed; dictation plan HISTORICAL. Accent/app-icon colours parked for iOS. Then FILE TRANSCRIPTION FEEDBACK
+> (owner: "no indication of where something is saved … and if it works"): island spinner → ✓ / failure light, menu
+> item disabled with live progress + Cancel, banners say where it went (click reveals), failed rows marked.
+> INSTALLED db8b7afe — not yet pressed.**
 > Thread 21's block is in `docs/thread-log.md`.
 
 ## 1. Live state
 
 - **Branches:** `main` = releases only (`18524b40`). **`mac/dev`** = all Mac work, **not pushed** since thread 20
   (push when the owner asks). `ios/dev` does not exist yet — cut it from `mac/dev` when iOS starts.
-- **Mac:** `/Applications/Splay.app` = `b01b9ad8`. Suite: 2008 XCTest (same 5 known environmental cases,
+- **Mac:** `/Applications/Splay.app` = `db8b7afe`. Suite: 2030 XCTest (same 5 known environmental cases,
   6 assertions) + 17 swift-testing. **Check both frameworks.**
 - **fn gestures:** tap = mic recording, double = dictation, triple = meeting (mic + system); esc during a
   dictation = 3·2·1 undo countdown. The gesture is the only source picker: both source-mode providers
@@ -24,11 +27,19 @@
 - **Card Settings:** `SplayGestureLegend` (in `SplayCard.swift`, esc row reads
   `DictationFlowTiming.cancelCountdownSeconds`) → Launch at login · Play a sound → Accent picker.
 - **Island / dictation:** unchanged from thread 21 (see the log).
+- **File transcription** (`docs/plans/file-transcription-feedback.md`, built slices 1–5): `TranscriptionViewModel`
+  `onFileJobActiveChanged` / `onFileJobFinished(FileJobOutcome)` / `cancelFileJob()`; auto-save via the throwing
+  `save()` (a failed write is reported). `FileJobIslandPresenter` → `IslandFileJobPhase` (precedence meeting >
+  dictation > file). Menu item observation-tracked (`MenuBarCoordinator.refreshFileJobItems`). Banners via
+  `TranscriptionCompletionPresenter` + `SplayNotificationDelegate` (foreground + click-to-reveal) — first use
+  asks for **notification permission**.
 
 ## 2. ⭐ Next thread starts here
 
-1. **Owner press (new, unpressed):** open the card ▸ Settings — does the legend read right and fit? Empty
-   Recordings line. Menu ▸ Start Recording records mic only.
+1. **Owner press (new, unpressed):** the file-transcription press list at the bottom of
+   `docs/plans/file-transcription-feedback.md` (one file, a folder with a bad file, a corrupt file, cancel, Open
+   folder); then mark that plan HISTORICAL. Also the Settings gesture legend + empty Recordings line; Menu ▸
+   Start Recording records mic only.
 2. **Towards iOS:** cut `ios/dev` from `mac/dev`; read `docs/plans/splay-ios-utility-layer.md` (PAUSED) first.
    Owed there: `/vet` the thread-15 island-dwell change in `ios/Splay/App/RecordingCoordinator.swift`; decide
    upstream-style recovery for iOS. New row in its Decisions table: accents + alternate app icons (owner idea,
