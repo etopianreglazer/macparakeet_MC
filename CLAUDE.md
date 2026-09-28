@@ -159,7 +159,7 @@ pre-publish gate: `docs/launch-checklist.md`.
 ## Branches
 
 - `main` = releases only. **`mac/dev`** = all Mac work; short-lived `mac/<topic>` branches are fine.
-- `ios/dev` is cut from `mac/dev` when iOS resumes. `SplayCore` changes land on `mac/dev` first and
+- **`ios/dev`** = iOS work (cut from `mac/dev` 2026-09-28). `SplayCore` changes land on `mac/dev` first and
   flow Mac → iOS. The `upstream` remote tracks MacParakeet's `main` only.
 
 ## Runtime locations

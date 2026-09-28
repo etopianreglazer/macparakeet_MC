@@ -17,7 +17,8 @@
 ## 1. Live state
 
 - **Branches:** `main` = releases only (`18524b40`). **`mac/dev`** = all Mac work, **pushed** at the end of thread 22
-  (owner asked; push again only when asked). `ios/dev` does not exist yet — cut it from `mac/dev` when iOS starts.
+  (owner asked; push again only when asked). **`ios/dev`** = iOS work, cut from `mac/dev` at the very end of thread
+  22 (2026-09-28) and pushed. The old `ios/utility-layer` was deleted in thread 20; its work is inside `mac/dev`.
 - **Mac:** `/Applications/Splay.app` = `7afd2572`. Suite: 2034 XCTest (same 5 known environmental cases,
   6 assertions) + 17 swift-testing. **Check both frameworks.**
 - **fn gestures:** tap = mic recording, double = dictation, triple = meeting (mic + system); esc during a
@@ -36,15 +37,17 @@
 
 ## 2. ⭐ Next thread starts here
 
-1. **Owner press (new, unpressed):** the file-transcription press list at the bottom of
-   `docs/plans/file-transcription-feedback.md` (one file, a folder with a bad file, a corrupt file, cancel, Open
-   folder); then mark that plan HISTORICAL. Also the Settings gesture legend + empty Recordings line; Menu ▸
-   Start Recording records mic only.
-2. **Towards iOS:** cut `ios/dev` from `mac/dev`; read `docs/plans/splay-ios-utility-layer.md` (PAUSED) first.
+1. **iOS starts here (owner, 2026-09-28): `git checkout ios/dev`.** Read `docs/plans/splay-ios-utility-layer.md`
+   (status PAUSED — flip it to active) first; it holds slices 1–2 done, the audio-session model, the dev loop.
    Owed there: `/vet` the thread-15 island-dwell change in `ios/Splay/App/RecordingCoordinator.swift`; decide
    upstream-style recovery for iOS. New row in its Decisions table: accents + alternate app icons (owner idea,
-   thread 22 — the Mac deliberately does **not** recolour its icon; no macOS API for it).
-3. Still unpressed from thread 20: the pinned island over Mission Control, a full-screen app, the lock screen.
+   thread 22 — the Mac deliberately does **not** recolour its icon; no macOS API for it). `SplayCore` changes
+   still land on `mac/dev` first and flow Mac → iOS (CLAUDE.md § Branches).
+2. **Mac, still open (on `mac/dev`, whenever the owner presses):** the file-transcription press list at the bottom
+   of `docs/plans/file-transcription-feedback.md` (one file, a folder with a bad file, a corrupt file, cancel,
+   Open folder) → then mark that plan HISTORICAL; the Settings gesture legend + empty Recordings line; Menu ▸
+   Start Recording records mic only; from thread 20: the pinned island over Mission Control, a full-screen app,
+   the lock screen.
 
 ## 3. Decided, not done
 
